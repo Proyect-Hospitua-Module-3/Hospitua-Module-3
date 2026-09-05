@@ -1,95 +1,95 @@
-# Feature Specification: Revisar temporada del año
+# Especificación de funcionalidad: Revisar temporada del año
 
-**Created**: 2026-09-04  
+**Creado**: 2026-09-04  
 
-## Business Objectives
+## Objetivos de negocio
 
 - Mantener un calendario confiable para identificar los períodos de temporada regular y temporada alta.
 - Evitar cálculos de tarifas ambiguos causados por períodos solapados, fechas inválidas o reglas incompletas.
 - Permitir que el personal autorizado revise la configuración antes de que afecte reservas, consultas y liquidaciones.
 
-## User Scenarios & Testing *(mandatory)*
+## Escenarios de usuario y pruebas *(obligatorio)*
 
-### User Story 1 - Revisar el calendario de temporadas (Priority: P1)
+### Historia de usuario 1 - Revisar el calendario de temporadas (Prioridad: P1)
 
 Como responsable de la operación hotelera, quiero consultar los períodos de temporada configurados, para conocer qué fechas tienen una condición de temporada alta y qué regla dinámica les corresponde.
 
-**Why this priority**: El calendario de temporadas controla la aplicación de tarifas dinámicas y debe ser visible antes de que se utilice en el cálculo de hospedaje.
+**Por qué esta prioridad**: El calendario de temporadas controla la aplicación de tarifas dinámicas y debe ser visible antes de que se utilice en el cálculo de hospedaje.
 
-**Independent Test**: Se puede abrir la revisión del calendario y verificar que cada período muestre sus fechas, clasificación, estado, regla asociada y posibles advertencias sin necesidad de ejecutar una reserva.
+**Prueba independiente**: Se puede abrir la revisión del calendario y verificar que cada período muestre sus fechas, clasificación, estado, regla asociada y posibles advertencias sin necesidad de ejecutar una reserva.
 
-**Acceptance Scenarios**:
+**Escenarios de aceptación**:
 
-1. **Scenario**: Revisar un período configurado
-	- **Given** que existe un período de temporada con fechas de inicio y fin, clasificación y regla dinámica configuradas
-	- **When** el usuario revisa el calendario
-	- **Then** el sistema muestra la información completa del período y su vigencia
+1. **Escenario**: Revisar un período configurado
+	- **Dado** que existe un período de temporada con fechas de inicio y fin, clasificación y regla dinámica configuradas
+	- **Cuando** el usuario revisa el calendario
+	- **Entonces** el sistema muestra la información completa del período y su vigencia
 
-2. **Scenario**: Identificar temporadas por fecha
-	- **Given** que el calendario contiene períodos regulares y de temporada alta
-	- **When** el usuario revisa una fecha determinada
-	- **Then** el sistema indica la temporada aplicable y la regla dinámica asociada, si existe
+2. **Escenario**: Identificar temporadas por fecha
+	- **Dado** que el calendario contiene períodos regulares y de temporada alta
+	- **Cuando** el usuario revisa una fecha determinada
+	- **Entonces** el sistema indica la temporada aplicable y la regla dinámica asociada, si existe
 
-3. **Scenario**: Revisar períodos futuros
-	- **Given** que existen períodos configurados para fechas futuras
-	- **When** el usuario consulta el calendario para un rango futuro
-	- **Then** el sistema muestra los períodos aplicables ordenados cronológicamente y su estado de configuración
+3. **Escenario**: Revisar períodos futuros
+	- **Dado** que existen períodos configurados para fechas futuras
+	- **Cuando** el usuario consulta el calendario para un rango futuro
+	- **Entonces** el sistema muestra los períodos aplicables ordenados cronológicamente y su estado de configuración
 
 ---
 
-### User Story 2 - Validar la consistencia del calendario (Priority: P1)
+### Historia de usuario 2 - Validar la consistencia del calendario (Prioridad: P1)
 
 Como responsable de tarifas, quiero validar el calendario de temporadas, para detectar conflictos antes de que afecten el precio de una habitación.
 
-**Why this priority**: Una configuración inconsistente puede asignar dos reglas a la misma noche o dejar noches de temporada alta sin un ajuste válido.
+**Por qué esta prioridad**: Una configuración inconsistente puede asignar dos reglas a la misma noche o dejar noches de temporada alta sin un ajuste válido.
 
-**Independent Test**: Se puede ejecutar la validación sobre un calendario con períodos válidos, solapados y con reglas incompletas, y comprobar que cada caso reciba el estado y mensaje correspondiente.
+**Prueba independiente**: Se puede ejecutar la validación sobre un calendario con períodos válidos, solapados y con reglas incompletas, y comprobar que cada caso reciba el estado y mensaje correspondiente.
 
-**Acceptance Scenarios**:
+**Escenarios de aceptación**:
 
-1. **Scenario**: Calendario válido
-	- **Given** que los períodos tienen fechas válidas, no se solapan y las temporadas altas tienen reglas completas
-	- **When** el usuario valida el calendario
-	- **Then** el sistema lo marca como válido y no muestra advertencias críticas
+1. **Escenario**: Calendario válido
+	- **Dado** que los períodos tienen fechas válidas, no se solapan y las temporadas altas tienen reglas completas
+	- **Cuando** el usuario valida el calendario
+	- **Entonces** el sistema lo marca como válido y no muestra advertencias críticas
 
-2. **Scenario**: Períodos solapados
-	- **Given** que dos períodos asignan condiciones incompatibles a una misma fecha
-	- **When** el usuario valida el calendario
-	- **Then** el sistema identifica los períodos en conflicto, las fechas afectadas y bloquea su uso para calcular tarifas hasta resolverlos
+2. **Escenario**: Períodos solapados
+	- **Dado** que dos períodos asignan condiciones incompatibles a una misma fecha
+	- **Cuando** el usuario valida el calendario
+	- **Entonces** el sistema identifica los períodos en conflicto, las fechas afectadas y bloquea su uso para calcular tarifas hasta resolverlos
 
-3. **Scenario**: Temporada alta sin regla
-	- **Given** que un período está marcado como temporada alta pero no tiene una regla dinámica completa
-	- **When** el usuario valida el calendario
-	- **Then** el sistema lo marca como incompleto e indica qué configuración falta
+3. **Escenario**: Temporada alta sin regla
+	- **Dado** que un período está marcado como temporada alta pero no tiene una regla dinámica completa
+	- **Cuando** el usuario valida el calendario
+	- **Entonces** el sistema lo marca como incompleto e indica qué configuración falta
 
 ---
 
-### User Story 3 - Corregir y confirmar la configuración de temporada (Priority: P2)
+### Historia de usuario 3 - Corregir y confirmar la configuración de temporada (Prioridad: P2)
 
 Como usuario autorizado, quiero crear, modificar o desactivar períodos de temporada, para mantener actualizado el calendario según la operación del hotel.
 
-**Why this priority**: La revisión debe permitir mantener la fuente de verdad del calendario, pero los cambios necesitan control para no introducir tarifas ambiguas.
+**Por qué esta prioridad**: La revisión debe permitir mantener la fuente de verdad del calendario, pero los cambios necesitan control para no introducir tarifas ambiguas.
 
-**Independent Test**: Se puede crear o modificar un período, ejecutar la validación y confirmar que solo una configuración válida pueda quedar activa para los cálculos futuros.
+**Prueba independiente**: Se puede crear o modificar un período, ejecutar la validación y confirmar que solo una configuración válida pueda quedar activa para los cálculos futuros.
 
-**Acceptance Scenarios**:
+**Escenarios de aceptación**:
 
-1. **Scenario**: Guardar un período válido
-	- **Given** que el usuario autorizado proporciona fechas válidas, una clasificación y la regla requerida
-	- **When** guarda el período
-	- **Then** el sistema valida la configuración, la registra y la deja disponible según su vigencia
+1. **Escenario**: Guardar un período válido
+	- **Dado** que el usuario autorizado proporciona fechas válidas, una clasificación y la regla requerida
+	- **Cuando** guarda el período
+	- **Entonces** el sistema valida la configuración, la registra y la deja disponible según su vigencia
 
-2. **Scenario**: Rechazar un período inválido
-	- **Given** que la fecha de inicio es posterior o igual a la fecha de fin, o faltan datos obligatorios
-	- **When** el usuario intenta guardar el período
-	- **Then** el sistema rechaza el cambio, explica los errores y conserva la configuración anterior
+2. **Escenario**: Rechazar un período inválido
+	- **Dado** que la fecha de inicio es posterior o igual a la fecha de fin, o faltan datos obligatorios
+	- **Cuando** el usuario intenta guardar el período
+	- **Entonces** el sistema rechaza el cambio, explica los errores y conserva la configuración anterior
 
-3. **Scenario**: Desactivar un período
-	- **Given** que existe un período que ya no debe aplicarse a nuevas consultas
-	- **When** el usuario autorizado lo desactiva
-	- **Then** el sistema conserva su historial, evita aplicarlo a cálculos futuros y muestra el cambio de estado
+3. **Escenario**: Desactivar un período
+	- **Dado** que existe un período que ya no debe aplicarse a nuevas consultas
+	- **Cuando** el usuario autorizado lo desactiva
+	- **Entonces** el sistema conserva su historial, evita aplicarlo a cálculos futuros y muestra el cambio de estado
 
-### Edge Cases
+### Casos límite
 
 - La fecha de inicio coincide con la fecha de fin: el período debe rechazarse porque no contiene noches.
 - La fecha de inicio es posterior a la fecha de fin: el período debe rechazarse.
@@ -103,29 +103,29 @@ Como usuario autorizado, quiero crear, modificar o desactivar períodos de tempo
 - El calendario está vacío: el sistema debe informar que no hay temporadas configuradas y explicar el efecto sobre el cálculo de tarifas.
 - La zona horaria del hotel afecta el cambio de fecha: la clasificación debe utilizar la zona horaria oficial del establecimiento.
 
-## Requirements *(mandatory)*
+## Requisitos *(obligatorio)*
 
-### Functional Requirements
+### Requisitos funcionales
 
-- **FR-001**: System MUST allow authorized users to review the configured season periods for a selected date range or year.
-- **FR-002**: System MUST display for each period its start date, end date, classification, status, applicable room scope if any, and associated dynamic pricing rule.
-- **FR-003**: System MUST identify the season and applicable rule for a requested date according to the active calendar.
-- **FR-004**: System MUST validate that every period has valid dates and that its start date precedes its end date.
-- **FR-005**: System MUST detect overlapping periods that could assign incompatible classifications or pricing rules to the same date.
-- **FR-006**: System MUST detect high-season periods without a complete dynamic pricing rule.
-- **FR-007**: System MUST report each validation issue with the affected period, date range, severity, and corrective information.
-- **FR-008**: System MUST allow authorized users to create, update, activate, and deactivate season periods.
-- **FR-009**: System MUST validate a period before saving it or activating it.
-- **FR-010**: System MUST reject invalid or conflicting changes without replacing the last valid configuration.
-- **FR-011**: System MUST preserve the history of changes to season periods, including the actor, date, previous value, new value, and reason when provided.
-- **FR-012**: System MUST distinguish active, inactive, pending-validation, and invalid configurations.
-- **FR-013**: System MUST prevent invalid or unresolved season configurations from being used in dynamic tariff calculations.
-- **FR-014**: System MUST distinguish the season calendar from room availability; reviewing or modifying a season MUST NOT reserve or block a room.
-- **FR-015**: System MUST apply the hotel's official time zone when determining date boundaries.
-- **FR-016**: System MUST preserve historical tariff context when a season configuration changes after a calculation or reservation has been confirmed.
-- **FR-017**: System MUST show a clear message when no season configuration exists for the requested date range.
+- **FR-001**: El sistema DEBE permitir que los usuarios autorizados revisen los períodos de temporada configurados para un rango de fechas o año seleccionado.
+- **FR-002**: El sistema DEBE mostrar para cada período las fechas de inicio y fin, clasificación, estado, alcance por habitación si corresponde y regla de tarifa dinámica asociada.
+- **FR-003**: El sistema DEBE identificar la temporada y la regla aplicable a una fecha solicitada según el calendario activo.
+- **FR-004**: El sistema DEBE validar que cada período tenga fechas válidas y que su fecha de inicio preceda a la fecha de fin.
+- **FR-005**: El sistema DEBE detectar períodos solapados que puedan asignar clasificaciones o reglas tarifarias incompatibles a una misma fecha.
+- **FR-006**: El sistema DEBE detectar períodos de temporada alta sin una regla de tarifa dinámica completa.
+- **FR-007**: El sistema DEBE informar cada problema de validación con el período afectado, el rango de fechas, la severidad y la información correctiva.
+- **FR-008**: El sistema DEBE permitir a los usuarios autorizados crear, actualizar, activar y desactivar períodos de temporada.
+- **FR-009**: El sistema DEBE validar un período antes de guardarlo o activarlo.
+- **FR-010**: El sistema DEBE rechazar cambios inválidos o conflictivos sin reemplazar la última configuración válida.
+- **FR-011**: El sistema DEBE conservar el historial de cambios de los períodos, incluyendo actor, fecha, valor anterior, valor nuevo y motivo cuando se proporcione.
+- **FR-012**: El sistema DEBE distinguir las configuraciones activas, inactivas, pendientes de validación e inválidas.
+- **FR-013**: El sistema DEBE impedir que configuraciones de temporada inválidas o no resueltas se utilicen en cálculos de tarifa dinámica.
+- **FR-014**: El sistema DEBE distinguir el calendario de temporadas de la disponibilidad de habitaciones; revisar o modificar una temporada NO DEBE reservar ni bloquear una habitación.
+- **FR-015**: El sistema DEBE aplicar la zona horaria oficial del hotel al determinar los límites de las fechas.
+- **FR-016**: El sistema DEBE conservar el contexto tarifario histórico cuando cambie una configuración de temporada después de confirmar un cálculo o una reserva.
+- **FR-017**: El sistema DEBE mostrar un mensaje claro cuando no exista configuración de temporada para el rango de fechas solicitado.
 
-### Key Entities *(include if feature involves data)*
+### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
 - **Período de temporada**: Rango de fechas que clasifica noches como temporada regular o temporada alta.
 - **Calendario de temporadas**: Conjunto ordenado de períodos activos que determina la condición aplicable a cada fecha.
@@ -134,7 +134,7 @@ Como usuario autorizado, quiero crear, modificar o desactivar períodos de tempo
 - **Historial de configuración**: Registro de cambios realizados sobre un período, su autor, momento y valores anteriores y nuevos.
 - **Usuario autorizado**: Actor con permisos para revisar o modificar la configuración según su rol.
 
-### Business Rules
+### Reglas de negocio
 
 - **BR-001**: Un período debe tener una fecha de inicio anterior a su fecha de fin y debe representar al menos una noche.
 - **BR-002**: La fecha de inicio se considera incluida y la fecha de fin se considera excluida al clasificar noches, de forma consistente con el cálculo de hospedaje.
@@ -146,17 +146,17 @@ Como usuario autorizado, quiero crear, modificar o desactivar períodos de tempo
 - **BR-008**: La disponibilidad, ocupación y estado físico de una habitación son independientes de la clasificación de temporada.
 - **BR-009**: La política para períodos que atraviesan años debe estar definida explícitamente y no inferirse de forma ambigua.
 
-### Open Questions
+### Preguntas abiertas
 
-- **OQ-001**: [NEEDS CLARIFICATION: confirmar si la fecha de fin se manejará siempre como exclusiva o si la administración usará fechas inclusivas en pantalla].
-- **OQ-002**: [NEEDS CLARIFICATION: definir si las temporadas se configuran por año específico, como períodos recurrentes o con ambas modalidades].
-- **OQ-003**: [NEEDS CLARIFICATION: definir si pueden coexistir temporadas por hotel, tipo de habitación o canal de venta].
-- **OQ-004**: [NEEDS CLARIFICATION: definir los roles autorizados para crear, modificar, activar y desactivar períodos].
-- **OQ-005**: [NEEDS CLARIFICATION: definir si un calendario sin temporada alta debe aplicar automáticamente la tarifa base o requiere una configuración explícita de temporada regular].
-- **OQ-006**: [NEEDS CLARIFICATION: definir la política para cambios sobre períodos ya usados en reservas o cálculos confirmados].
-- **OQ-007**: [NEEDS CLARIFICATION: definir la zona horaria oficial de cada establecimiento si la plataforma opera con múltiples hoteles].
+- **OQ-001**: [REQUIERE ACLARACIÓN: confirmar si la fecha de fin se manejará siempre como exclusiva o si la administración usará fechas inclusivas en pantalla].
+- **OQ-002**: [REQUIERE ACLARACIÓN: definir si las temporadas se configuran por año específico, como períodos recurrentes o con ambas modalidades].
+- **OQ-003**: [REQUIERE ACLARACIÓN: definir si pueden coexistir temporadas por hotel, tipo de habitación o canal de venta].
+- **OQ-004**: [REQUIERE ACLARACIÓN: definir los roles autorizados para crear, modificar, activar y desactivar períodos].
+- **OQ-005**: [REQUIERE ACLARACIÓN: definir si un calendario sin temporada alta debe aplicar automáticamente la tarifa base o requiere una configuración explícita de temporada regular].
+- **OQ-006**: [REQUIERE ACLARACIÓN: definir la política para cambios sobre períodos ya usados en reservas o cálculos confirmados].
+- **OQ-007**: [REQUIERE ACLARACIÓN: definir la zona horaria oficial de cada establecimiento si la plataforma opera con múltiples hoteles].
 
-## Non-Functional Requirements
+## Requisitos no funcionales
 
 - **NFR-001**: La revisión del calendario debe mostrar resultados en un tiempo adecuado para la operación diaria del hotel.
 - **NFR-002**: La validación debe ser determinista: la misma configuración debe producir el mismo resultado y las mismas advertencias.
@@ -166,9 +166,9 @@ Como usuario autorizado, quiero crear, modificar o desactivar períodos de tempo
 - **NFR-006**: La información de configuración debe protegerse según el rol del usuario y no debe exponer datos personales innecesarios.
 - **NFR-007**: La revisión y validación no deben producir cambios colaterales en reservas, disponibilidad o estados de habitaciones.
 
-## Success Criteria *(mandatory)*
+## Criterios de éxito *(obligatorio)*
 
-### Measurable Outcomes
+### Resultados medibles
 
 - **SC-001**: El 100% de los períodos activos mostrados incluye fechas, clasificación, estado y regla dinámica aplicable o una advertencia explícita si está incompleto.
 - **SC-002**: El 100% de los períodos con fechas inválidas o solapamientos incompatibles se identifica antes de poder activarse.
