@@ -6,7 +6,7 @@
 
 ### Historia de usuario 1 - Modificar precio de tarifa según temporada (Prioridad: P1)
 
-Como Administrador, quiero modificar el precio de una tarifa asociada a una temporada del año (regular o alta) para que el sistema aplique el valor correcto en el cálculo de la tarifa dinámica al momento de liquidar la estancia de un huésped.
+Como Administrador, quiero modificar el precio de una tarifa asociada a una temporada del año (baja, regular o alta) para que el sistema aplique el valor correcto en el cálculo de la tarifa dinámica al momento de liquidar la estancia de un huésped.
 
 **Por qué esta prioridad**: Es prerrequisito de "Calcular tarifa dinámica" y de toda la Matriz de Liquidación Final del Módulo 3 (Hospedaje Base = Tarifa según temporada x Noches): sin esta capacidad no se puede diferenciar el cobro entre temporada alta, regular o baja.
 
@@ -68,7 +68,7 @@ Como Administrador, quiero que el sistema rechace una modificación de precio cu
 ### Requisitos funcionales
 
 - **FR-001**: El sistema DEBE permitir al Administrador seleccionar la Tarifa por Temporada de una habitación/tipo de habitación y modificar su valor de precio. Esto NO incluye modificar la Tarifa Base de la habitación, que pertenece al Módulo 1 (Gestión de Habitaciones) y se consulta como dato externo de solo lectura mediante "Consultar tarifa base".
-- **FR-002**: El sistema DEBE asociar cada modificación de precio a una de las dos temporadas reconocidas por el Módulo 3 (temporada regular y temporada alta), conforme al calendario de "Temporada Alta" descrito en las reglas de negocio del Módulo 3 (`hospitua-modificado-minibar.md`, sección 3.1) y validado mediante "Revisar temporada del año".
+- **FR-002**: El sistema DEBE asociar cada modificación de precio a una de las temporadas reconocidas por el Módulo 3 (temporada baja, temporada regular o temporada alta), validado mediante "Revisar temporada del año".
 - **FR-003**: El sistema DEBE ejecutar la revisión de la temporada del año vigente antes de confirmar la modificación del precio, conforme a la relación `<<include>>` "Revisar temporada del año" del diagrama de casos de uso.
 - **FR-004**: El sistema DEBE validar que el nuevo precio ingresado sea numérico y mayor a cero antes de persistir el cambio.
 - **FR-005**: El sistema DEBE registrar el historial de cambios de precio de tarifa (precio anterior, precio nuevo, temporada, usuario que modifica, fecha de modificación), siguiendo el mismo patrón de auditoría que otros casos de uso del Módulo 3 ya exigen para cambios de temporada y de tarifas aplicadas.
@@ -83,7 +83,7 @@ Como Administrador, quiero que el sistema rechace una modificación de precio cu
 
 - **Tarifa Base**: Precio base de una habitación; es un atributo propio de la entidad Habitación gestionada por el Módulo 1 (Gestión de Habitaciones). Este caso de uso NO la modifica; solo se consulta como dato de solo lectura (ver "Consultar tarifa base" en el diagrama, actor Módulo1).
 - **Tarifa por Temporada** (nombre provisional): Valor o ajuste de precio propio de Módulo 3, asociado a una Temporada específica, que este caso de uso SÍ crea/modifica. Es el insumo que usa "Calcular tarifa dinámica" junto con la Tarifa Base para determinar el precio final a cobrar (Hospedaje Base = Tarifa según temporada x Noches, según la Matriz de Liquidación Final).
-- **Temporada**: Periodo del año (regular o alta) definido por un rango de fechas, usado para determinar qué Tarifa por Temporada aplicar. Gestionada por "Revisar temporada del año".
+- **Temporada**: Periodo del año (baja, regular o alta) definido por un rango de fechas, usado para determinar qué Tarifa por Temporada aplicar. Gestionada por "Revisar temporada del año".
 - **Administrador**: Usuario con permisos para gestionar facturación y modificar tarifas (actor asumido para este caso de uso; ver nota de supuesto en la Historia 1).
 
 ### Reglas de negocio
@@ -93,7 +93,7 @@ Como Administrador, quiero que el sistema rechace una modificación de precio cu
 - **BR-003**: La Tarifa Base de la habitación (Módulo 1) es de solo lectura para este caso de uso; cualquier modificación de la Tarifa Base corresponde exclusivamente al Módulo 1.
 - **BR-004**: El precio de tarifa por temporada modificado debe quedar disponible como insumo directo de "Calcular tarifa dinámica" (ambos casos de uso comparten la inclusión de "Revisar temporada del año"), sin que este caso de uso ejecute el cálculo dinámico en sí.
 - **BR-005**: El valor guardado por esta funcionalidad impacta directamente el Hospedaje Base de la Matriz de Liquidación Final (Hospedaje Base = Tarifa según temporada x Noches), por lo que debe quedar inequívoco para el cálculo posterior.
-- **BR-006**: El Módulo 3 solo reconoce dos categorías de temporada para efectos de tarifas dinámicas (temporada regular y temporada alta); no existen categorías intermedias según la documentación de reglas de negocio disponible.
+- **BR-006**: El Módulo 3 reconoce tres categorías de temporada para efectos de tarifas dinámicas: temporada baja, temporada regular y temporada alta.
 - **BR-007**: Una vez que el importe de hospedaje de una reserva queda confirmado, esta modificación de precio de tarifa NO lo afecta retroactivamente; es el mismo principio de no retroactividad que se repite de forma consistente en otros casos de uso del Módulo 3 relacionados con tarifas, temporadas e impuestos.
 - **BR-008**: La detección y el bloqueo de temporadas con fechas solapadas es responsabilidad de "Revisar temporada del año", no de este caso de uso; este caso de uso confía en que la temporada indicada ya fue validada por esa revisión antes de permitir la modificación de precio, conforme a la relación `<<include>>` de FR-003.
 - **BR-009**: El precio modificado por este caso de uso se propaga por la cadena de casos de uso del Módulo 3: Modificar precio de tarifa → Revisar temporada del año / Calcular tarifa dinámica → Aplicar tarifa dinámica (confirma y congela el importe) → Generar liquidación (reutiliza el importe sin recalcularlo) → Calcular Impuesto (IVA). Ninguno de esos casos de uso posteriores recalcula el precio de tarifa por su cuenta.
