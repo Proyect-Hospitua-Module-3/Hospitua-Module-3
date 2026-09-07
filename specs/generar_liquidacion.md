@@ -78,40 +78,14 @@ Como agente de recepción, quiero contar con una liquidación preliminar visible
    - **Cuando** se registra el check-out de la misma estancia
    - **Entonces** el sistema genera una liquidación definitiva independiente
 
----
-
-### Historia de Usuario 4 - Rechazar liquidaciones con datos incompletos o inconsistentes (Prioridad: P1)
-
-Como responsable de la operación hotelera, quiero que el sistema rechace la generación de una liquidación cuando falten datos obligatorios o existan inconsistencias, para evitar que un ingreso neto incorrecto llegue a la facturación.
-
-**Por qué esta prioridad**: Una liquidación generada con datos incompletos puede traducirse directamente en una factura incorrecta y en una conciliación errónea con la OTA.
-
-**Prueba independiente**: Se puede intentar generar una liquidación sin valor de hospedaje calculado, con un porcentaje de comisión inválido, o duplicando una liquidación definitiva ya existente, y verificar que el sistema no entregue un resultado inválido.
-
-**Escenarios de Aceptación**:
-
-1. **Escenario**: Falta el valor de hospedaje
-   - **Dado** que la tarifa dinámica de la estancia aún no ha sido calculada o fue rechazada
-   - **Cuando** el sistema intenta generar la liquidación
-   - **Entonces** rechaza la operación, identifica la causa y no genera un ingreso neto
-
-2. **Escenario**: Datos de comisión inconsistentes
-   - **Dado** que la reserva indica un canal OTA con un código de confirmación externo, pero el porcentaje de comisión configurado es inválido (negativo o mayor al 100%)
-   - **Cuando** el sistema intenta generar la liquidación
-   - **Entonces** rechaza la operación y no sustituye el valor inválido por una comisión estimada
-
-3. **Escenario**: Intento de generar una segunda liquidación definitiva
-   - **Dado** que ya existe una liquidación definitiva vigente para la estancia
-   - **Cuando** se intenta generar una nueva liquidación definitiva para la misma estancia
-   - **Entonces** el sistema rechaza la operación y mantiene la liquidación definitiva original vigente
-
 ### Casos Límite
 
 - La estancia aún no tiene check-in ni check-out registrado (por ejemplo, una reserva cancelada o un no-show): no debe existir ninguna liquidación, ni preliminar ni definitiva.
 - La estancia tiene check-in pero no check-out registrado (huésped aún en sitio): solo debe existir liquidación preliminar, visible como estimado, nunca definitiva.
 - El porcentaje de comisión OTA cambia entre el check-in y el check-out: la liquidación definitiva debe usar el porcentaje vigente al momento del check-out, no el usado en la preliminar.
+- El porcentaje de comisión OTA configurado es inválido (negativo o mayor al 100%): el sistema rechaza la generación de la liquidación y no sustituye el valor inválido por una comisión estimada.
 - La reserva no tiene un canal de origen registrado: el sistema asume canal directo y no aplica comisión.
-- El valor de hospedaje calculado por la tarifa dinámica es cero o el cálculo fue rechazado: la liquidación no debe generarse con un ingreso neto parcial.
+- El valor de hospedaje calculado por la tarifa dinámica aún no ha sido calculado, es cero, o el cálculo fue rechazado: la liquidación no debe generarse con un ingreso neto parcial.
 - Se intenta generar más de una liquidación definitiva para la misma estancia: el sistema debe impedirlo y conservar la liquidación definitiva original.
 
 ## Requisitos *(obligatorio)*
