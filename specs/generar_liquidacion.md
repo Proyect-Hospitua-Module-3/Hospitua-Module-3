@@ -92,11 +92,11 @@ Como agente de recepción, quiero contar con una liquidación preliminar visible
 
 ### Requisitos Funcionales
 
-- **RF-001**: El sistema DEBE generar la liquidación de una estancia únicamente a partir de los eventos de check-in (liquidación preliminar) o check-out (liquidación definitiva) registrados por el módulo de reservas; sin que haya ocurrido alguno de estos dos eventos no debe existir liquidación.
+- **RF-001**: El sistema DEBE generar la liquidación de una estancia únicamente a partir de los eventos de check-in (liquidación preliminar) o check-out (liquidación definitiva) recibidos del Módulo 2; sin que haya ocurrido alguno de estos dos eventos no debe existir liquidación.
 - **RF-002**: El sistema DEBE obtener el valor de hospedaje de la estancia a partir del resultado del cálculo de tarifa dinámica para el tipo de habitación y el período correspondiente.
 - **RF-003**: El sistema DEBE identificar el canal de origen de la reserva (directo o intermediario OTA) antes de determinar si corresponde un descuento de comisión.
 - **RF-004**: El sistema DEBE asumir canal directo cuando la reserva no tenga un canal de origen registrado.
-- **RF-005**: El sistema DEBE consultar el porcentaje de comisión vigente y pactado cuando el canal de origen sea un intermediario OTA.
+- **RF-005**: El sistema DEBE obtener el porcentaje de comisión pactado desde los datos de la reserva suministrados por el Módulo 2 cuando el canal de origen sea un intermediario OTA; el sistema no mantiene una tabla propia de convenios de comisión por OTA.
 - **RF-006**: El sistema DEBE descontar del valor de hospedaje la comisión correspondiente únicamente cuando la reserva provenga de un intermediario OTA.
 - **RF-007**: El sistema NO DEBE aplicar ningún descuento de comisión cuando la reserva sea de canal directo o no tenga canal de origen registrado.
 - **RF-008**: El sistema DEBE calcular el ingreso neto de la liquidación como el valor de hospedaje menos la comisión OTA aplicable, cuando corresponda.
@@ -115,9 +115,9 @@ Como agente de recepción, quiero contar con una liquidación preliminar visible
 ### Entidades Clave *(incluir si la funcionalidad involucra datos)*
 
 - **Liquidación**: Resultado del proceso de liquidación de una estancia; incluye estado (preliminar o definitivo), valor de hospedaje, comisión OTA aplicada (si corresponde) e ingreso neto.
-- **Estancia/Reserva**: Registro proveniente del módulo de reservas con eventos de check-in y check-out, tipo de habitación y canal de origen.
+- **Estancia/Reserva**: Registro proveniente del Módulo 2 con eventos de check-in y check-out, tipo de habitación y canal de origen.
 - **Canal de origen**: Clasificación de la reserva como directo o como intermediario OTA, con su código de confirmación externo cuando aplica.
-- **Comisión OTA**: Porcentaje pactado con un intermediario, vigente para el canal de origen de la reserva.
+- **Comisión OTA**: Porcentaje pactado con un intermediario, suministrado por el Módulo 2 como parte de los datos de la reserva, vigente para el canal de origen de la reserva.
 - **Valor de hospedaje**: Resultado del cálculo de tarifa dinámica para el tipo de habitación y el período de la estancia, usado como base de la liquidación.
 - **Ingreso neto**: Valor de hospedaje menos la comisión OTA aplicable, sin incluir impuestos.
 - **Detalle de liquidación**: Desglose que identifica el valor de hospedaje, el canal, la comisión aplicada y el ingreso neto de una liquidación específica.
