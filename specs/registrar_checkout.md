@@ -22,12 +22,12 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero proces
 2. **Escenario**: Cierre de liquidación con salida anticipada
 	- **Dado** que la fecha de salida real informada en "Registrar Check-out" es anterior a la fecha de salida originalmente programada
 	- **Cuando** el Módulo 3 ejecuta "Generar liquidación"
-	- **Entonces** recalcula el hospedaje sobre el número de noches efectivamente transcurridas entre el check-in y la salida real, sin aplicar penalidad por las noches restantes no disfrutadas, ajusta el IVA sobre esa nueva base y cierra la liquidación con el total definitivo correspondiente.
+	- **Entonces** recalcula el hospedaje sobre el número de noches efectivamente transcurridas entre el check-in y la salida real, sin aplicar penalidad por las noches restantes no disfrutadas, recalcula el IVA sobre esa base reducida usando el mismo porcentaje fijado en el check-in, y cierra la liquidación con el total definitivo correspondiente.
 
 3. **Escenario**: Cierre de liquidación con extensión de estancia
 	- **Dado** que la fecha de salida real informada es posterior a la fecha de salida originalmente programada
 	- **Cuando** el Módulo 3 ejecuta "Generar liquidación"
-	- **Entonces** invoca nuevamente "Aplicar tarifa dinámica" para calcular las noches adicionales según la regla de temporada que corresponda a cada una, suma el hospedaje adicional al ya calculado y cierra la liquidación con el total consolidado.
+	- **Entonces** invoca nuevamente "Aplicar tarifa dinámica" para calcular las noches adicionales según la regla de temporada que corresponda a cada una, calcula el IVA de esas noches adicionales usando el porcentaje vigente al momento del check-out (independiente del porcentaje ya fijado para las noches originales del check-in), suma ambos montos de hospedaje e IVA a los ya calculados, y cierra la liquidación con el total consolidado.
 
 ---
 
@@ -72,7 +72,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero proces
 - **FR-005**: Si la fecha real de salida difiere de la fecha de salida originalmente programada en el check-in, el sistema DEBE recalcular el número de noches efectivamente hospedadas e invocar nuevamente `Aplicar tarifa dinamica` (`<<include>>`) para las noches afectadas.
 - **FR-006**: El sistema DEBE calcular el hospedaje final como la suma de las tarifas dinámicas correspondientes a cada noche efectivamente transcurrida entre el check-in y la fecha real de salida.
 - **FR-007**: Si la reserva proviene de un canal `OTA`, el sistema DEBE recalcular la deducción de comisión (`Descontar comision OTA`, `<<extend>>`) sobre el valor de hospedaje final definitivo, no sobre el valor preliminar estimado en el check-in.
-- **FR-008**: El sistema DEBE recalcular el IVA (`Calcular Impuesto (IVA)`, `<<include>>`) sobre la base gravable definitiva del hospedaje final.
+- **FR-008**: El sistema DEBE calcular el IVA del cierre invocando `Calcular Impuesto (IVA)` (`<<include>>`) de acuerdo con la regla de bloques: si no hubo extensión de estancia, confirma el mismo monto de IVA ya calculado en el check-in sin recalcularlo; si hubo extensión, calcula un monto adicional de IVA únicamente sobre las noches adicionales, usando el porcentaje vigente al momento del check-out, y lo suma al monto ya fijado en el check-in.
 - **FR-009**: El sistema DEBE transicionar el estado de la liquidación de "Abierta" a "Cerrada" una vez consolidados el hospedaje, la comisión (si aplica) y el IVA definitivos.
 - **FR-010**: Al ejecutar `Generar factura final` (`<<include>>`) en el check-out, el sistema DEBE emitir un documento fiscal formal con numeración consecutiva oficial, a diferencia de la prefactura generada en el check-in.
 - **FR-011**: El sistema DEBE persistir el desglose final auditable de la liquidación cerrada: hospedaje definitivo, ajuste dinámico por temporada, comisión OTA definitiva (si aplica), IVA definitivo y total liquidado final.
@@ -98,7 +98,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero proces
 - **BR-004**: Salida anticipada sin penalidad: ante una salida anticipada respecto a la fecha programada, el hospedaje se cobra únicamente por las noches efectivamente transcurridas, sin penalidad por las noches restantes no disfrutadas 
 - **BR-005**: Formalización fiscal: a diferencia del check-in (que genera una prefactura/borrador), la factura emitida en el check-out mediante `Generar factura final` constituye un documento fiscal definitivo con numeración consecutiva.
 - **BR-006**: La comisión OTA definitiva se calcula sobre el valor de hospedaje final, no sobre el valor preliminar estimado en el check-in.
-- **BR-007**: El IVA definitivo se calcula sobre la base gravable final del hospedaje, aplicando el porcentaje vigente mantenido por el actor `Administrador` mediante `Actualizar porcentaje de IVA`.
+- **BR-007**: El IVA del cierre sigue la regla de bloques definida en el SPEC de `Calcular Impuesto (IVA)`: el porcentaje fijado en el check-in se conserva para las noches originales, incluso ante una salida anticipada; solo las noches adicionales de una extensión de estancia usan el porcentaje vigente al momento del check-out.
 - **BR-008**: Cierre atómico: si alguna dependencia de cálculo falla al momento del cierre, la liquidación permanece en estado "Abierta" y no se cierra con datos parciales o estimados.
 - **BR-009**: Idempotencia operativa: la recepción repetida del evento "Registrar Check-out" para una liquidación ya cerrada debe retornar la liquidación final ya existente, sin recalcular ni duplicar el cierre.
 
