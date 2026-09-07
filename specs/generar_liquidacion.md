@@ -78,6 +78,11 @@ Como agente de recepción, quiero contar con una liquidación preliminar visible
    - **Cuando** se registra el check-out de la misma estancia
    - **Entonces** el sistema genera una liquidación definitiva independiente
 
+4. **Escenario**: La liquidación preliminar se anula si se anula el check-in
+   - **Dado** que existe una liquidación preliminar generada en el check-in y el Módulo 2 notifica la anulación de ese check-in antes del check-out
+   - **Cuando** el sistema procesa la notificación de anulación
+   - **Entonces** transiciona la liquidación al estado anulado, conserva el registro completo sin eliminarlo, y no permite que posteriormente se genere una liquidación definitiva para esa estancia
+
 ### Casos Límite
 
 - La estancia aún no tiene check-in ni check-out registrado (por ejemplo, una reserva cancelada o un no-show): no debe existir ninguna liquidación, ni preliminar ni definitiva.
@@ -87,6 +92,8 @@ Como agente de recepción, quiero contar con una liquidación preliminar visible
 - La reserva no tiene un canal de origen registrado: el sistema asume canal directo y no aplica comisión.
 - El valor de hospedaje calculado por la tarifa dinámica aún no ha sido calculado, es cero, o el cálculo fue rechazado: la liquidación no debe generarse con un ingreso neto parcial.
 - Se intenta generar más de una liquidación definitiva para la misma estancia: el sistema debe impedirlo y conservar la liquidación definitiva original.
+- El check-in se anula después de generarse la liquidación preliminar: la liquidación transiciona a estado anulado, se conserva para trazabilidad, y nunca deriva en una liquidación definitiva.
+- Se intenta anular una liquidación que ya es definitiva (posterior al check-out): el sistema debe rechazarlo, ya que la anulación solo aplica a una liquidación preliminar cuya estancia aún no ha cerrado.
 
 ## Requisitos *(obligatorio)*
 
@@ -111,10 +118,12 @@ Como agente de recepción, quiero contar con una liquidación preliminar visible
 - **RF-017**: El sistema DEBE identificar la reserva, el tipo de habitación, las fechas de la estancia y el canal de origen asociados a cada liquidación generada.
 - **RF-018**: El sistema DEBE permitir consultar posteriormente una liquidación ya generada sin recalcularla, para que su valor pueda reutilizarse en la generación de la factura final.
 - **RF-019**: El sistema NO DEBE modificar el estado de disponibilidad, ocupación o bloqueo de la habitación como efecto de generar una liquidación.
+- **RF-020**: El sistema DEBE transicionar una liquidación preliminar a estado anulado cuando el Módulo 2 notifique la anulación del check-in correspondiente antes del check-out, conservando el registro completo sin eliminarlo.
+- **RF-021**: El sistema NO DEBE generar una liquidación definitiva para una estancia cuya liquidación fue transicionada a estado anulado.
 
 ### Entidades Clave *(incluir si la funcionalidad involucra datos)*
 
-- **Liquidación**: Resultado del proceso de liquidación de una estancia; incluye estado (preliminar o definitivo), valor de hospedaje, comisión OTA aplicada (si corresponde) e ingreso neto.
+- **Liquidación**: Resultado del proceso de liquidación de una estancia; incluye estado (preliminar, definitivo o anulado), valor de hospedaje, comisión OTA aplicada (si corresponde) e ingreso neto.
 - **Estancia/Reserva**: Registro proveniente del Módulo 2 con eventos de check-in y check-out, tipo de habitación y canal de origen.
 - **Canal de origen**: Clasificación de la reserva como directo o como intermediario OTA, con su código de confirmación externo cuando aplica.
 - **Comisión OTA**: Porcentaje pactado con un intermediario, suministrado por el Módulo 2 como parte de los datos de la reserva, vigente para el canal de origen de la reserva.
@@ -134,6 +143,8 @@ Como agente de recepción, quiero contar con una liquidación preliminar visible
 - **RN-008**: El porcentaje de comisión OTA aplicado en la liquidación definitiva debe ser el vigente al momento del check-out.
 - **RN-009**: Un dato obligatorio faltante o inconsistente debe detener la generación de la liquidación, sin producir un ingreso neto estimado o parcial.
 - **RN-010**: La disponibilidad, ocupación o bloqueo de la habitación no forma parte de la liquidación y no se modifica al generarla.
+- **RN-011**: Una liquidación preliminar transiciona a estado anulado cuando se anula el check-in correspondiente antes del check-out; una liquidación definitiva nunca transiciona a anulada, dado que el check-out ya cerró la estancia.
+- **RN-012**: Una liquidación anulada conserva su registro completo para trazabilidad, pero no puede recalcularse ni derivar en una liquidación definitiva.
 
 ## Requisitos No Funcionales
 
@@ -157,3 +168,4 @@ Como agente de recepción, quiero contar con una liquidación preliminar visible
 - **CE-006**: Ninguna generación de liquidación modifica el estado de disponibilidad, ocupación o bloqueo de una habitación.
 - **CE-007**: El 100% de las estancias activas (con check-in y sin check-out) exponen únicamente liquidaciones en estado preliminar, visibles como estimado.
 - **CE-008**: El 100% de los intentos de generar una segunda liquidación definitiva para la misma estancia son rechazados, conservando la original.
+- **CE-009**: El 100% de las liquidaciones preliminares cuyo check-in fue anulado transicionan a estado anulado, conservan su registro, y nunca derivan en una liquidación definitiva.
