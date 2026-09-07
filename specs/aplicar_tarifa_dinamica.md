@@ -8,7 +8,7 @@
 - Mantener coherencia entre la tarifa mostrada, la tarifa confirmada y la liquidación final.
 - Evitar cambios de precio no autorizados y conservar trazabilidad de la tarifa utilizada.
 
-## Escenarios de usuario y pruebas *(obligatorio)*
+## Escenarios de usuario y pruebas _(obligatorio)_
 
 ### Historia de usuario 1 - Aplicar la tarifa calculada a una reserva (Prioridad: P1)
 
@@ -21,17 +21,17 @@ Como agente de recepción, quiero aplicar a una reserva la tarifa dinámica vál
 **Escenarios de aceptación**:
 
 1. **Escenario**: Aplicar tarifa en temporada regular
-   - **Dado** que existe una reserva válida y sus noches pertenecen a temporada regular
+   - **Dado** que existe una reserva válida y sus noches pertenecen a temporada baja, regular o alta
    - **Cuando** el usuario aplica la tarifa dinámica
    - **Entonces** la reserva recibe la tarifa base vigente para cada noche y el total de hospedaje correspondiente
 
-2. **Escenario**: Aplicar tarifa en temporada alta
-   - **Dado** que existe una reserva válida y sus noches pertenecen a un período de temporada alta con una regla vigente
+2. **Escenario**: Aplicar tarifa en temporada baja, regular o alta
+   - **Dado** que existe una reserva válida y sus noches pertenecen a un período de temporada con un porcentaje vigente
    - **Cuando** el usuario aplica la tarifa dinámica
-   - **Entonces** la reserva recibe el valor ajustado por temporada alta, con el detalle de cada noche y el total aplicado
+   - **Entonces** la reserva recibe el valor ajustado por el porcentaje de la temporada, con el detalle de cada noche y el total aplicado
 
 3. **Escenario**: Aplicar una estancia que cruza temporadas
-   - **Dado** que la reserva contiene noches de temporada regular y temporada alta
+   - **Dado** que la reserva contiene noches de temporada baja, regular y alta
    - **Cuando** el usuario aplica la tarifa dinámica
    - **Entonces** cada noche recibe la regla que corresponde a su fecha y el total aplicado es la suma de los valores nocturnos
 
@@ -127,10 +127,10 @@ Como agente de recepción, quiero recibir un motivo claro cuando no sea posible 
 - La reserva fue confirmada con una tarifa y posteriormente cambia la temporada: el precio confirmado no debe variar automáticamente.
 - La reserva es cancelada, cerrada o ya liquidada: debe definirse si se permite reaplicar o corregir la tarifa.
 - El canal de reserva no está identificado: el sistema debe aplicar el hospedaje sin calcular una comisión OTA hasta resolver el canal.
-- Faltan impuestos o reglas de comisión: deben permanecer como conceptos pendientes, sin alterar silenciosamente el hospedaje aplicado.
+- Faltan impuestos o reglas de comisión: el sistema debe informar el problema, mantener los conceptos separados y no alterar silenciosamente el hospedaje aplicado.
 - La habitación está ocupada o en mantenimiento: aplicar la tarifa no debe modificar el estado físico ni la disponibilidad.
 
-## Requisitos *(obligatorio)*
+## Requisitos _(obligatorio)_
 
 ### Requisitos funcionales
 
@@ -154,8 +154,9 @@ Como agente de recepción, quiero recibir un motivo claro cuando no sea posible 
 - **FR-018**: El sistema NO DEBE cambiar la disponibilidad, el estado de la reserva, el registro de entrada ni el estado físico de la habitación por el solo hecho de aplicar una tarifa.
 - **FR-019**: El sistema DEBE impedir que usuarios no autorizados apliquen o reemplacen una tarifa confirmada.
 - **FR-020**: El sistema DEBE mantener estable una tarifa confirmada para la liquidación final, salvo que un proceso de corrección autorizado la modifique explícitamente.
+- **FR-021**: El sistema DEBE conservar durante al menos un año calendario la trazabilidad de la tarifa base, los porcentajes de temporada, los impuestos y las aplicaciones realizadas.
 
-### Entidades clave *(incluir si la funcionalidad maneja datos)*
+### Entidades clave _(incluir si la funcionalidad maneja datos)_
 
 - **Reserva**: Estancia asociada a un tipo de habitación, fechas, canal, estado y valores económicos.
 - **Tarifa aplicada**: Valor de hospedaje aceptado para una reserva, con su desglose y contexto de cálculo.
@@ -174,21 +175,12 @@ Como agente de recepción, quiero recibir un motivo claro cuando no sea posible 
 - **BR-004**: Una tarifa confirmada no cambia automáticamente por modificaciones posteriores del calendario o de la tarifa base.
 - **BR-005**: Todo reemplazo de una tarifa no confirmada debe requerir confirmación explícita y conservar el valor anterior en el historial.
 - **BR-006**: Las comisiones OTA se descuentan del hospedaje bruto aplicado y no forman parte de la tarifa dinámica de hospedaje.
-- **BR-007**: Los impuestos se calculan y muestran como conceptos separados según la regla tributaria aplicable.
+- **BR-007**: Los impuestos se calculan y muestran como conceptos separados tanto en la aplicación como en la liquidación final, según la regla tributaria aplicable.
 - **BR-008**: Un error durante la aplicación debe ser atómico: no debe guardar un desglose parcial ni modificar el importe anterior.
 - **BR-009**: La aplicación de la tarifa no confirma por sí sola disponibilidad, pago, registro de entrada ni estado físico de la habitación.
 - **BR-010**: Las correcciones posteriores a la confirmación deben estar restringidas a usuarios o procesos autorizados y deben quedar auditadas.
-
-### Preguntas abiertas
-
-- **OQ-001**: [REQUIERE ACLARACIÓN: definir en qué momento del flujo se aplica y se confirma la tarifa, por ejemplo, al crear la reserva, al confirmar el pago o al realizar el registro de entrada].
-- **OQ-002**: [REQUIERE ACLARACIÓN: definir si el precio confirmado puede cambiar por solicitud del huésped, cambio de fechas o modificación de habitación].
-- **OQ-003**: [REQUIERE ACLARACIÓN: definir la política de recálculo cuando cambia el calendario entre la consulta y la confirmación].
-- **OQ-004**: [REQUIERE ACLARACIÓN: definir la fórmula y base exacta para calcular la comisión de cada OTA].
-- **OQ-005**: [REQUIERE ACLARACIÓN: definir si los impuestos se aplican al hospedaje, a todos los servicios o a una base diferenciada].
-- **OQ-006**: [REQUIERE ACLARACIÓN: definir los roles autorizados para aplicar, confirmar y corregir tarifas].
-- **OQ-007**: [REQUIERE ACLARACIÓN: definir la política para reaplicar tarifas en reservas canceladas, cerradas o ya liquidadas].
-- **OQ-008**: [REQUIERE ACLARACIÓN: definir la vigencia máxima de un cálculo entre su generación y su aplicación].
+- **BR-011**: El porcentaje de cada temporada se aplica sobre la tarifa base vigente de cada noche; si hay solapamiento, un solo día usa la tarifa más alta y varios días prorratean el valor según los períodos aplicables.
+- **BR-012**: La tarifa base, los porcentajes de temporada, los impuestos y las aplicaciones deben conservar trazabilidad durante al menos un año calendario.
 
 ## Requisitos no funcionales
 
@@ -200,7 +192,7 @@ Como agente de recepción, quiero recibir un motivo claro cuando no sea posible 
 - **NFR-006**: El sistema debe mantener precisión monetaria conforme a la moneda y política de redondeo configuradas.
 - **NFR-007**: La operación no debe exponer datos personales innecesarios ni alterar estados operativos no relacionados con el precio.
 
-## Criterios de éxito *(obligatorio)*
+## Criterios de éxito _(obligatorio)_
 
 ### Resultados medibles
 
