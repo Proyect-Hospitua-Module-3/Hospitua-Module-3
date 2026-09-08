@@ -87,23 +87,24 @@ Como agente de recepción, quiero contar con una liquidación `Preliminary` visi
 
 - La estancia aún no tiene check-in ni check-out registrado (por ejemplo, una reserva cancelada o un no-show): no debe existir ninguna liquidación, ni `Preliminary` ni `Final`.
 - La estancia tiene check-in pero no check-out registrado (huésped aún en sitio): solo debe existir liquidación `Preliminary`, visible como estimado, nunca `Final`.
-- El porcentaje de comisión OTA cambia entre el check-in y el check-out: la liquidación `Final` debe usar el porcentaje vigente al momento del check-out, no el usado en la `Preliminary`.
+- El porcentaje de comisión OTA pactado con la OTA cambia en Módulo 2 después del check-in de una estancia: el cambio no afecta liquidaciones ya iniciadas; la liquidación `Final` usa el mismo porcentaje capturado en el check-in y persistido en la liquidación `Preliminary`, sin volver a consultarlo ni recalcularlo.
 - El porcentaje de comisión OTA configurado es inválido (negativo o mayor al 100%): el sistema rechaza la generación de la liquidación y no sustituye el valor inválido por una comisión estimada.
 - La reserva no tiene un canal de origen registrado: el sistema asume canal directo y no aplica comisión.
 - El valor de hospedaje calculado por la tarifa dinámica aún no ha sido calculado, es cero, o el cálculo fue rechazado: la liquidación no debe generarse con un ingreso neto parcial.
 - Se intenta generar más de una liquidación `Final` para la misma estancia: el sistema debe impedirlo y conservar la liquidación `Final` original.
 - El check-in se anula después de generarse la liquidación `Preliminary`: la liquidación transiciona a estado `Cancelled`, se conserva para trazabilidad, y nunca deriva en una liquidación `Final`.
 - Se intenta anular una liquidación que ya es `Final` (posterior al check-out): el sistema debe rechazarlo, ya que la anulación solo aplica a una liquidación `Preliminary` cuya estancia aún no ha cerrado.
+- La fecha real de salida registrada en el check-out difiere de la fecha de salida programada usada para calcular la liquidación `Preliminary` (salida anticipada o extensión de estancia): el valor de hospedaje de la liquidación `Final` debe recalcularse sobre las noches efectivamente transcurridas, y puede diferir del valor estimado en la `Preliminary`, sin que esto se considere un error.
 
 ## Requisitos *(obligatorio)*
 
 ### Requisitos Funcionales
 
-- **RF-001**: El sistema DEBE generar la liquidación de una estancia únicamente a partir de los eventos de check-in (liquidación `Preliminary`) o check-out (liquidación `Final`) recibidos del Módulo 2; sin que haya ocurrido alguno de estos dos eventos no debe existir liquidación.
+- **RF-001**: El sistema DEBE generar la liquidación de una estancia únicamente cuando sea invocado (`<<include>>`) por `Registrar Check-in` (liquidación `Preliminary`) o por `Registrar Check-out` (liquidación `Final`), casos de uso que son los que reciben directamente los eventos del Módulo 2; sin que haya ocurrido alguno de estos dos eventos no debe existir liquidación.
 - **RF-002**: El sistema DEBE obtener el valor de hospedaje de la estancia a partir del resultado del cálculo de tarifa dinámica para el tipo de habitación y el período correspondiente.
 - **RF-003**: El sistema DEBE identificar el canal de origen de la reserva (directo o intermediario OTA) antes de determinar si corresponde un descuento de comisión.
 - **RF-004**: El sistema DEBE asumir canal directo cuando la reserva no tenga un canal de origen registrado.
-- **RF-005**: El sistema DEBE obtener el porcentaje de comisión pactado desde los datos de la reserva suministrados por el Módulo 2 cuando el canal de origen sea un intermediario OTA; el sistema no mantiene una tabla propia de convenios de comisión por OTA.
+- **RF-005**: El sistema DEBE obtener el porcentaje de comisión pactado desde los datos de la reserva suministrados por el Módulo 2 en el payload del check-in cuando el canal de origen sea un intermediario OTA, y conservarlo sin cambios para usarlo tanto en la liquidación `Preliminary` como en la `Final`; el sistema no mantiene una tabla propia de convenios de comisión por OTA ni vuelve a consultar el porcentaje en el check-out.
 - **RF-006**: El sistema DEBE descontar del valor de hospedaje la comisión correspondiente únicamente cuando la reserva provenga de un intermediario OTA.
 - **RF-007**: El sistema NO DEBE aplicar ningún descuento de comisión cuando la reserva sea de canal directo o no tenga canal de origen registrado.
 - **RF-008**: El sistema DEBE calcular el ingreso neto de la liquidación como el valor de hospedaje menos la comisión OTA aplicable, cuando corresponda.
@@ -120,10 +121,12 @@ Como agente de recepción, quiero contar con una liquidación `Preliminary` visi
 - **RF-019**: El sistema NO DEBE modificar el estado de disponibilidad, ocupación o bloqueo de la habitación como efecto de generar una liquidación.
 - **RF-020**: El sistema DEBE transicionar una liquidación `Preliminary` a estado `Cancelled` cuando el Módulo 2 notifique la anulación del check-in correspondiente antes del check-out, conservando el registro completo sin eliminarlo.
 - **RF-021**: El sistema NO DEBE generar una liquidación `Final` para una estancia cuya liquidación fue transicionada a estado `Cancelled`.
+- **RF-022**: El sistema DEBE invocar obligatoriamente (`<<include>>`) el caso de uso `Generar factura final` como parte de la generación de cada liquidación, produciendo una prefactura cuando la liquidación resultante sea `Preliminary` y una factura fiscal definitiva cuando sea `Final`.
+- **RF-023**: El sistema DEBE calcular el valor de hospedaje de la liquidación `Final` sobre el número de noches efectivamente transcurridas entre el check-in y la fecha real de salida, el cual puede diferir del número de noches programadas utilizado para la liquidación `Preliminary`.
 
 ### Entidades Clave *(incluir si la funcionalidad involucra datos)*
 
-- **Liquidación**: Resultado del proceso de liquidación de una estancia; incluye estado (`Preliminary`, `Final` o `Cancelled`), valor de hospedaje, comisión OTA aplicada (si corresponde) e ingreso neto.
+- **Liquidación**: Resultado del proceso de liquidación de una estancia; incluye estado (`Preliminary`, `Final` o `Cancelled`), valor de hospedaje, comisión OTA aplicada (si corresponde), ingreso neto, y el documento de facturación asociado (prefactura o factura definitiva) generado mediante el include obligatorio a `Generar factura final`.
 - **Estancia/Reserva**: Registro proveniente del Módulo 2 con eventos de check-in y check-out, tipo de habitación y canal de origen.
 - **Canal de origen**: Clasificación de la reserva como directo o como intermediario OTA, con su código de confirmación externo cuando aplica.
 - **Comisión OTA**: Porcentaje pactado con un intermediario, suministrado por el Módulo 2 como parte de los datos de la reserva, vigente para el canal de origen de la reserva.
@@ -140,11 +143,13 @@ Como agente de recepción, quiero contar con una liquidación `Preliminary` visi
 - **RN-005**: El Impuesto al Valor Agregado y otros impuestos no forman parte del ingreso neto de la liquidación; se gestionan en la generación de la factura final.
 - **RN-006**: La liquidación generada en el check-in tiene carácter `Preliminary`, es visible como estimado y puede recalcularse mientras la estancia siga activa; la liquidación generada en el check-out tiene carácter `Final`.
 - **RN-007**: Debe existir una única liquidación `Final` por estancia; el sistema no genera una segunda liquidación `Final` para la misma estancia.
-- **RN-008**: El porcentaje de comisión OTA aplicado en la liquidación `Final` debe ser el vigente al momento del check-out.
+- **RN-008**: El porcentaje de comisión OTA aplicado en la liquidación `Final` es el mismo capturado a partir del payload del check-in y persistido en la liquidación `Preliminary`; el sistema no vuelve a consultarlo ni a recalcularlo en el check-out, incluso si el porcentaje pactado con la OTA cambia posteriormente en Módulo 2.
 - **RN-009**: Un dato obligatorio faltante o inconsistente debe detener la generación de la liquidación, sin producir un ingreso neto estimado o parcial.
 - **RN-010**: La disponibilidad, ocupación o bloqueo de la habitación no forma parte de la liquidación y no se modifica al generarla.
 - **RN-011**: Una liquidación `Preliminary` transiciona a estado `Cancelled` cuando se anula el check-in correspondiente antes del check-out; una liquidación `Final` nunca transiciona a `Cancelled`, dado que el check-out ya cerró la estancia.
 - **RN-012**: Una liquidación `Cancelled` conserva su registro completo para trazabilidad, pero no puede recalcularse ni derivar en una liquidación `Final`.
+- **RN-013**: Toda liquidación generada incluye (`<<include>>`) obligatoriamente a `Generar factura final`; no existe una liquidación `Preliminary` sin su prefactura asociada ni una liquidación `Final` sin su factura fiscal definitiva asociada.
+- **RN-014**: El valor de hospedaje de la liquidación `Final` puede diferir del estimado en la liquidación `Preliminary` cuando la fecha real de salida difiera de la programada (salida anticipada o extensión de estancia); en ambos casos, el hospedaje `Final` refleja las noches efectivamente transcurridas.
 
 ## Requisitos No Funcionales
 
@@ -161,7 +166,7 @@ Como agente de recepción, quiero contar con una liquidación `Preliminary` visi
 ### Resultados Medibles
 
 - **CE-001**: El 100% de los check-out registrados generan una liquidación `Final` antes de habilitar la generación de la factura final.
-- **CE-002**: El 100% de las liquidaciones de reservas con canal OTA reflejan el descuento de comisión con el porcentaje vigente al check-out.
+- **CE-002**: El 100% de las liquidaciones de reservas con canal OTA reflejan el descuento de comisión con el mismo porcentaje capturado en el check-in, sin variación entre la liquidación `Preliminary` y la `Final`.
 - **CE-003**: El 100% de las liquidaciones de reservas de canal directo, o sin canal registrado, no presentan ningún descuento de comisión.
 - **CE-004**: El 100% de los intentos de generar una liquidación con el valor de hospedaje o el porcentaje de comisión faltantes o inválidos se rechazan sin producir un ingreso neto.
 - **CE-005**: El ingreso neto de la liquidación `Final` coincide con el valor reutilizado posteriormente en la factura final en el 100% de los casos.

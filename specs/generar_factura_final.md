@@ -85,7 +85,6 @@ Como responsable de facturación, quiero que cada factura (prefactura o definiti
 - Se solicita la factura definitiva sobre una liquidación que aún no ha cerrado (sigue en estado `Preliminary`): el sistema no debe asignar numeración oficial sin un cierre previo confirmado.
 - La liquidación transiciona a estado `Cancelled` antes del check-out: la prefactura asociada se descarta y nunca deriva en una factura definitiva.
 - Salto o duplicado en la numeración consecutiva oficial: el sistema debe garantizar que cada número se asigne una única vez y en orden, sin reutilizar números de facturas ya emitidas.
-- La moneda de la liquidación, recibida del Módulo 2 en el check-in, no está soportada o configurada para el cliente: la emisión debe rechazarse hasta resolver la configuración, tanto para la prefactura como para la definitiva.
 
 ## Requisitos *(obligatorio)*
 
