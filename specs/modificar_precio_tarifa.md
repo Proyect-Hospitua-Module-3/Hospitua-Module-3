@@ -10,7 +10,6 @@ Como Administrador, quiero modificar el precio de una tarifa asociada a una temp
 
 **Por qué esta prioridad**: Es prerrequisito de "Calcular tarifa dinámica" y de toda la Matriz de Liquidación Final del Módulo 3 (Hospedaje Base = Tarifa según temporada x Noches): sin esta capacidad no se puede diferenciar el cobro entre temporada alta, regular o baja.
 
-
 **Prueba independiente**: Se puede probar por completo ingresando como Administrador, seleccionando una tarifa existente, cambiando su precio para una temporada dada, guardando el cambio, y verificando que el nuevo precio se refleje al consultar la tarifa dinámica para una fecha dentro de esa temporada.
 
 **Escenarios de aceptación**:
@@ -20,27 +19,22 @@ Como Administrador, quiero modificar el precio de una tarifa asociada a una temp
    - **Cuando** el Administrador ingresa un nuevo valor de precio para esa temporada y confirma el guardado
    - **Entonces** el sistema actualiza el precio de la tarifa y lo deja disponible para el cálculo de tarifa dinámica en fechas de esa temporada
 
-2. **Escenario**: Revisión de temporada incluida antes de aplicar el cambio
-   - **Dado** que el Administrador selecciona una tarifa para modificar
-   - **Cuando** el sistema procesa la solicitud de modificación
-   - **Entonces** el sistema ejecuta la revisión de la temporada del año asociada (relación `<<include>>` "Revisar temporada del año" del diagrama de casos de uso) para asegurar que el precio se aplique al periodo correcto
-
-3. **Escenario**: El precio actualizado se propaga a la tarifa dinámica (efecto observable de esta historia, no una historia aparte)
+2. **Escenario**: El precio actualizado se propaga a la tarifa dinámica (efecto observable de esta historia, no una historia aparte)
    - **Dado** que el Administrador modificó y guardó el precio de la tarifa de temporada alta
    - **Cuando** cualquier consumidor (p. ej. una OTA a través de "Consultar tarifa dinámica") consulta la tarifa dinámica para una fecha de esa temporada
    - **Entonces** el sistema retorna el precio actualizado
 
-> **Nota de alcance**: "Consultar tarifa dinámica" y "Calcular tarifa dinámica" son casos de uso propios del diagrama (actor OTA) y se especifican en su propio documento (`calcular_tarifa_dinamica.md`). Aquí solo se cubre que la modificación del Administrador se propague correctamente hacia ellos (ver FR-006); no se especifica el comportamiento interno de esos casos de uso.
+> **Nota de alcance**: "Consultar tarifa dinámica" y "Calcular tarifa dinámica" son casos de uso propios del diagrama (actor OTA) y se especifican en su propio documento (`calcular_tarifa_dinamica.md`). Aquí solo se cubre que la modificación del Administrador se propague correctamente hacia ellos (ver FR-005); no se especifica el comportamiento interno de esos casos de uso.
 
 ---
 
-### Historia de usuario 2 - Rechazar modificaciones con datos inválidos o temporada no configurada (Prioridad: P1)
+### Historia de usuario 2 - Rechazar modificaciones con porcentaje inválido (Prioridad: P1)
 
-Como Administrador, quiero que el sistema rechace una modificación de precio cuando el valor ingresado o la temporada indicada no sean válidos, para evitar que datos incorrectos afecten la facturación y la Matriz de Liquidación Final.
+Como Administrador, quiero que el sistema rechace una modificación de precio cuando el valor ingresado no sea válido, para evitar que datos incorrectos afecten la facturación y la Matriz de Liquidación Final.
 
 **Por qué esta prioridad**: Un precio de tarifa inválido persistido se propaga directamente al Hospedaje Base de cada liquidación (Hospedaje Base = Tarifa según temporada x Noches), afectando ingresos y confianza del huésped; por eso la validación es tan crítica como la modificación misma.
 
-**Prueba independiente**: Se puede ejecutar el flujo de modificación con un porcentaje negativo o no numérico, o con una temporada inexistente en el calendario, y verificar que el sistema rechace el cambio, muestre un mensaje de error y no persista ninguna modificación.
+**Prueba independiente**: Se puede ejecutar el flujo de modificación con un porcentaje negativo o no numérico, y verificar que el sistema rechace el cambio, muestre un mensaje de error y no persista ninguna modificación.
 
 **Escenarios de aceptación**:
 
@@ -49,65 +43,54 @@ Como Administrador, quiero que el sistema rechace una modificación de precio cu
    - **Cuando** ingresa un valor negativo o no numérico
    - **Entonces** el sistema rechaza el cambio, muestra un mensaje de error y no persiste la modificación
 
-2. **Escenario**: Intento de modificación sobre una temporada no configurada
-   - **Dado** que el Administrador indica una temporada para asociar el nuevo precio
-   - **Cuando** esa temporada no existe o no está configurada en el calendario (revisado mediante "Revisar temporada del año")
-   - **Entonces** el sistema rechaza la modificación, muestra un mensaje de error y no persiste el cambio
-
 ### Casos límite
 
-- Si dos temporadas se solapan parcialmente en el calendario, esa ambigüedad debe quedar resuelta por la revisión de temporada antes de llegar a este caso de uso; si aun así se recibe una temporada en conflicto, el sistema debe rechazar la modificación (ver BR-008, FR-009).
-- Si un segundo Administrador intenta editar una tarifa que ya está siendo editada por otro, el sistema debe impedírselo mediante el bloqueo exclusivo y debe indicarle que la tarifa está en edición (ver BR-010, FR-010).
+- Si un segundo Administrador intenta editar una tarifa que ya está siendo editada por otro, el sistema debe impedírselo mediante el bloqueo exclusivo y debe indicarle que la tarifa está en edición (ver BR-008, FR-007).
 - Si el nuevo precio ingresado es idéntico al precio vigente, el sistema debe aceptar el guardado sin error, tratándolo como una operación sin cambio real (no-op).
 - Si el porcentaje ingresado es cero, el sistema debe aceptarlo como un ajuste neutro válido (típicamente para temporada regular), sin tratarlo como un error de validación.
-- Si existen reservas ya confirmadas con el precio anterior al momento de la modificación, el importe ya confirmado permanece congelado y no se recalcula automáticamente; solo los cálculos nuevos posteriores al cambio usan el precio actualizado (ver BR-007).
-- La temporada indicada no está configurada en el calendario: el sistema rechaza la modificación sin persistir el cambio (ver FR-009).
+- Si existen reservas ya confirmadas con el precio anterior al momento de la modificación, el importe ya confirmado permanece congelado y no se recalcula automáticamente; solo los cálculos nuevos posteriores al cambio usan el precio actualizado (ver BR-006).
 
 ## Requisitos *(obligatorio)*
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE permitir al Administrador seleccionar la Tarifa por Temporada de una habitación/tipo de habitación y modificar su valor de precio. Esto NO incluye modificar la Tarifa Base de la habitación, que pertenece al Módulo 1 (Gestión de Habitaciones) y se consulta como dato externo de solo lectura mediante "Consultar tarifa base".
-- **FR-002**: El sistema DEBE asociar cada modificación de precio a una de las temporadas reconocidas por el Módulo 3 (temporada baja, temporada regular o temporada alta), validado mediante "Revisar temporada del año"; la temporada seleccionada determina si el porcentaje ingresado se aplica como un incremento (temporada alta), un decremento (temporada baja), o un ajuste neutro (temporada regular).
-- **FR-003**: El sistema DEBE ejecutar la revisión de la temporada del año vigente antes de confirmar la modificación del precio, conforme a la relación `<<include>>` "Revisar temporada del año" del diagrama de casos de uso.
-- **FR-004**: El sistema DEBE validar que el porcentaje de ajuste ingresado sea numérico y mayor o igual a cero antes de persistir el cambio; el Administrador ingresa una magnitud, y la temporada seleccionada determina el sentido del ajuste (no se ingresan valores negativos directamente).
-- **FR-005**: El sistema DEBE registrar el historial de cambios de precio de tarifa (precio anterior, precio nuevo, temporada, usuario que modifica, fecha de modificación), siguiendo el mismo patrón de auditoría que otros casos de uso del Módulo 3 ya exigen para cambios de temporada y de tarifas aplicadas.
-- **FR-006**: El sistema DEBE reflejar el precio actualizado de forma inmediata en "Calcular tarifa dinámica" para toda consulta posterior a la modificación, sin retrasos de propagación.
-- **FR-007**: El sistema DEBE restringir la modificación del precio de tarifa exclusivamente al rol Administrador.
-- **FR-008**: El sistema NO DEBE alterar retroactivamente el importe de hospedaje ya confirmado de una reserva; una modificación de precio de tarifa solo debe afectar cálculos nuevos realizados después del cambio, en línea con el principio de no retroactividad que ya siguen otros casos de uso del Módulo 3 relacionados con tarifas y temporadas.
-- **FR-009**: El sistema DEBE rechazar la modificación de precio si la temporada indicada no está configurada en el calendario, mostrando un mensaje de error sin persistir el cambio.
-- **FR-010**: El sistema DEBE aplicar un bloqueo exclusivo sobre una Tarifa por Temporada mientras un Administrador la esté editando, impidiendo que otro Administrador inicie una edición simultánea sobre la misma tarifa hasta que el primero guarde, cancele, o el bloqueo expire.
-- **FR-011**: El sistema DEBE almacenar el valor modificado como un porcentaje de ajuste (incremento para temporada alta, decremento para temporada baja, o ajuste neutro para temporada regular) sobre la Tarifa Base, para que "Calcular tarifa dinámica" lo combine con la Tarifa Base del Módulo 1 y obtenga la tarifa nocturna efectiva de esa temporada.
+- **FR-001**: El sistema DEBE permitir al Administrador seleccionar la Tarifa por Temporada de una habitación/tipo de habitación y modificar su valor de precio. Esto NO incluye modificar la Tarifa Base de la habitación, que pertenece a `Modulo1` (Gestión de Habitaciones) y se consulta como dato externo de solo lectura mediante "Consultar tarifa base".
+- **FR-002**: El sistema DEBE asociar cada modificación de precio a una de las temporadas reconocidas por el Módulo 3 (temporada baja, temporada regular o temporada alta); la temporada seleccionada determina si el porcentaje ingresado se aplica como un incremento (temporada alta), un decremento (temporada baja), o un ajuste neutro (temporada regular).
+- **FR-003**: El sistema DEBE validar que el porcentaje de ajuste ingresado sea numérico y mayor o igual a cero antes de persistir el cambio; el Administrador ingresa una magnitud, y la temporada seleccionada determina el sentido del ajuste (no se ingresan valores negativos directamente).
+- **FR-004**: El sistema DEBE registrar el historial de cambios de precio de tarifa (precio anterior, precio nuevo, temporada, usuario que modifica, fecha de modificación), siguiendo el mismo patrón de auditoría que otros casos de uso del Módulo 3 ya exigen para cambios de temporada y de tarifas aplicadas.
+- **FR-005**: El sistema DEBE reflejar el precio actualizado de forma inmediata en "Calcular tarifa dinámica" para toda consulta posterior a la modificación, sin retrasos de propagación.
+- **FR-006**: El sistema DEBE restringir la modificación del precio de tarifa exclusivamente al rol Administrador.
+- **FR-007**: El sistema NO DEBE alterar retroactivamente el importe de hospedaje ya confirmado de una reserva; una modificación de precio de tarifa solo debe afectar cálculos nuevos realizados después del cambio, en línea con el principio de no retroactividad que ya siguen otros casos de uso del Módulo 3 relacionados con tarifas y temporadas.
+- **FR-008**: El sistema DEBE aplicar un bloqueo exclusivo sobre una Tarifa por Temporada mientras un Administrador la esté editando, impidiendo que otro Administrador inicie una edición simultánea sobre la misma tarifa hasta que el primero guarde, cancele, o el bloqueo expire.
+- **FR-009**: El sistema DEBE almacenar el valor modificado como un porcentaje de ajuste (incremento para temporada alta, decremento para temporada baja, o ajuste neutro para temporada regular) sobre la Tarifa Base, para que "Calcular tarifa dinámica" lo combine con la Tarifa Base de `Modulo1` y obtenga la tarifa nocturna efectiva de esa temporada.
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
-- **Tarifa Base**: Precio base de una habitación; es un atributo propio de la entidad Habitación gestionada por el Módulo 1 (Gestión de Habitaciones). Este caso de uso NO la modifica; solo se consulta como dato de solo lectura (ver "Consultar tarifa base" en el diagrama, actor Módulo1).
-- **Tarifa por Temporada** (nombre provisional): Porcentaje de ajuste (incremento o decremento) propio de Módulo 3, asociado a una Temporada específica (alta = incremento, baja = decremento, regular = ajuste neutro), que este caso de uso SÍ crea/modifica. "Calcular tarifa dinámica" combina este porcentaje con la Tarifa Base del Módulo 1 para obtener la tarifa nocturna efectiva que aparece en la Matriz de Liquidación Final (Hospedaje Base = Tarifa según temporada x Noches); este caso de uso guarda únicamente el porcentaje, no la tarifa nocturna final ya combinada.
-- **Temporada**: Periodo del año (baja, regular o alta) definido por un rango de fechas, usado para determinar qué Tarifa por Temporada aplicar. Gestionada por "Revisar temporada del año".
-- **Administrador**: Usuario con permisos para gestionar facturación y modificar tarifas.
+- **Tarifa Base**: Precio base de una habitación; es un atributo propio de la entidad Habitación gestionada por `Modulo1` (Gestión de Habitaciones). Este caso de uso NO la modifica; solo se consulta como dato de solo lectura (ver "Consultar tarifa base" en el diagrama, actor `Modulo1`).
+- **Tarifa por Temporada** (nombre provisional): Porcentaje de ajuste (incremento o decremento) propio de Módulo 3, asociado a una Temporada específica (alta = incremento, baja = decremento, regular = ajuste neutro), que este caso de uso SÍ crea/modifica. "Calcular tarifa dinámica" combina este porcentaje con la Tarifa Base de `Modulo1` para obtener la tarifa nocturna efectiva que aparece en la Matriz de Liquidación Final (Hospedaje Base = Tarifa según temporada x Noches); este caso de uso guarda únicamente el porcentaje, no la tarifa nocturna final ya combinada.
+- **Temporada**: Una de las tres categorías fijas del Módulo 3 (baja, regular o alta), usada para determinar qué Tarifa por Temporada aplicar. El calendario de fechas que asocia cada fecha real a una de estas categorías es gestionado por "Revisar temporada del año", pero este caso de uso no depende de él ni lo consulta directamente.
+- **Administrador**: Administrador que gestiona facturación y modifica tarifas.
 
 ### Reglas de negocio
 
-- **BR-001**: La modificación del precio de tarifa está restringida exclusivamente al rol Administrador, el mismo actor que gestiona facturación y revisa la temporada del año en el diagrama de casos de uso del Módulo 3.
-- **BR-002**: Toda modificación de precio de tarifa DEBE ejecutar el caso de uso incluido "Revisar temporada del año" antes de confirmarse, conforme a la relación `<<include>>` del diagrama.
-- **BR-003**: La Tarifa Base de la habitación (Módulo 1) es de solo lectura para este caso de uso; cualquier modificación de la Tarifa Base corresponde exclusivamente al Módulo 1.
-- **BR-004**: El precio de tarifa por temporada modificado debe quedar disponible como insumo directo de "Calcular tarifa dinámica" (ambos casos de uso comparten la inclusión de "Revisar temporada del año"), sin que este caso de uso ejecute el cálculo dinámico en sí.
-- **BR-005**: El porcentaje de ajuste guardado por esta funcionalidad determina, junto con la Tarifa Base, el valor de "Tarifa según temporada" usado en el Hospedaje Base de la Matriz de Liquidación Final (Hospedaje Base = Tarifa según temporada x Noches); el porcentaje debe quedar inequívoco (incremento, decremento o neutro) para que "Calcular tarifa dinámica" lo combine correctamente.
-- **BR-006**: El Módulo 3 reconoce tres categorías de temporada para efectos de tarifas dinámicas: temporada baja, temporada regular y temporada alta. La categoría determina el sentido del ajuste: temporada alta aplica un incremento porcentual, temporada baja aplica un decremento porcentual, y temporada regular representa el ajuste neutro o base.
-- **BR-007**: Una vez que el importe de hospedaje de una reserva queda confirmado, esta modificación de precio de tarifa NO lo afecta retroactivamente; es el mismo principio de no retroactividad que se repite de forma consistente en otros casos de uso del Módulo 3 relacionados con tarifas, temporadas e impuestos.
-- **BR-008**: La detección y el bloqueo de temporadas con fechas solapadas es responsabilidad de "Revisar temporada del año", no de este caso de uso; este caso de uso confía en que la temporada indicada ya fue validada por esa revisión antes de permitir la modificación de precio, conforme a la relación `<<include>>` de FR-003.
-- **BR-009**: El precio modificado por este caso de uso se propaga por la cadena de casos de uso del Módulo 3: Modificar precio de tarifa → Revisar temporada del año / Calcular tarifa dinámica → Aplicar tarifa dinámica (confirma y congela el importe) → Generar liquidación (reutiliza el importe sin recalcularlo) → Calcular Impuesto (IVA). Ninguno de esos casos de uso posteriores recalcula el precio de tarifa por su cuenta.
-- **BR-010**: Mientras un Administrador tiene abierta la edición de una Tarifa por Temporada, el sistema DEBE bloquearla exclusivamente para los demás Administradores; ningún otro Administrador puede iniciar una edición concurrente sobre la misma tarifa hasta que se libere el bloqueo (por guardado, cancelación, o expiración).
-- **BR-011**: El bloqueo exclusivo de una Tarifa por Temporada expira automáticamente tras 15 minutos de inactividad del Administrador que la tiene en edición, liberándola para que otro Administrador pueda iniciar su propia edición.
+- **BR-001**: La modificación del precio de tarifa está restringida exclusivamente al rol Administrador.
+- **BR-002**: La Tarifa Base de la habitación (`Modulo1`) es de solo lectura para este caso de uso; cualquier modificación de la Tarifa Base corresponde exclusivamente a `Modulo1`.
+- **BR-003**: El precio de tarifa por temporada modificado debe quedar disponible como insumo directo de "Calcular tarifa dinámica", sin que este caso de uso ejecute el cálculo dinámico en sí ni dependa de "Revisar temporada del año" para ello.
+- **BR-004**: El porcentaje de ajuste guardado por esta funcionalidad determina, junto con la Tarifa Base, el valor de "Tarifa según temporada" usado en el Hospedaje Base de la Matriz de Liquidación Final (Hospedaje Base = Tarifa según temporada x Noches); el porcentaje debe quedar inequívoco (incremento, decremento o neutro) para que "Calcular tarifa dinámica" lo combine correctamente.
+- **BR-005**: El Módulo 3 reconoce tres categorías de temporada para efectos de tarifas dinámicas: temporada baja, temporada regular y temporada alta. La categoría determina el sentido del ajuste: temporada alta aplica un incremento porcentual, temporada baja aplica un decremento porcentual, y temporada regular representa el ajuste neutro o base.
+- **BR-006**: Una vez que el importe de hospedaje de una reserva queda confirmado, esta modificación de precio de tarifa NO lo afecta retroactivamente; es el mismo principio de no retroactividad que se repite de forma consistente en otros casos de uso del Módulo 3 relacionados con tarifas, temporadas e impuestos.
+- **BR-007**: El precio modificado por este caso de uso se propaga por la cadena de casos de uso del Módulo 3: Modificar precio de tarifa → Calcular tarifa dinámica (que internamente incluye "Revisar temporada del año") → Aplicar tarifa dinámica (confirma y congela el importe) → Generar liquidación (reutiliza el importe sin recalcularlo) → Calcular Impuesto (IVA). Ninguno de esos casos de uso posteriores recalcula el precio de tarifa por su cuenta.
+- **BR-008**: Mientras un Administrador tiene abierta la edición de una Tarifa por Temporada, el sistema DEBE bloquearla exclusivamente para los demás Administradores; ningún otro Administrador puede iniciar una edición concurrente sobre la misma tarifa hasta que se libere el bloqueo (por guardado, cancelación, o expiración).
+- **BR-009**: El bloqueo exclusivo de una Tarifa por Temporada expira automáticamente tras 15 minutos de inactividad del Administrador que la tiene en edición, liberándola para que otro Administrador pueda iniciar su propia edición.
 
 ## Requisitos no funcionales
 
 - **NFR-001**: La modificación del precio debe completarse en un tiempo adecuado para no interrumpir la operación de recepción/facturación (ver SC-001).
 - **NFR-002**: El precio actualizado debe propagarse de forma inmediata y consistente hacia "Calcular tarifa dinámica", sin generar discrepancias entre lo configurado por el Administrador y lo consultado por las OTAs (ver SC-002, SC-004).
 - **NFR-003**: Los mensajes de error de validación deben ser comprensibles y accionables para el Administrador, indicando específicamente qué dato es inválido.
-- **NFR-004**: El sistema debe mantener la integridad referencial entre la Tarifa por Temporada modificada y la Temporada del calendario asociada, evitando estados huérfanos o inconsistentes tras la modificación.
-- **NFR-005**: El registro de historial de cambios (FR-005) no debe exponer datos personales de huéspedes; solo debe contener información de configuración tarifaria y del usuario administrador que realizó el cambio.
-- **NFR-006**: El bloqueo exclusivo de edición (BR-010) debe liberarse automáticamente a los 15 minutos de inactividad (BR-011), para evitar que una tarifa quede inaccesible indefinidamente por una sesión abandonada.
+- **NFR-004**: El sistema debe garantizar que cada Tarifa por Temporada quede asociada exactamente a una de las tres categorías reconocidas (baja, regular, alta), sin permitir valores fuera de ese conjunto.
+- **NFR-005**: El registro de historial de cambios (FR-004) no debe exponer datos personales de huéspedes; solo debe contener información de configuración tarifaria y del usuario administrador que realizó el cambio.
+- **NFR-006**: El bloqueo exclusivo de edición (BR-008) debe liberarse automáticamente a los 15 minutos de inactividad (BR-009), para evitar que una tarifa quede inaccesible indefinidamente por una sesión abandonada.
 
 ## Criterios de éxito *(obligatorio)*
 
@@ -115,6 +98,6 @@ Como Administrador, quiero que el sistema rechace una modificación de precio cu
 
 - **SC-001**: El Administrador puede modificar el precio de una tarifa en menos de 1 minuto desde que inicia la edición.
 - **SC-002**: El 100% de las consultas de tarifa dinámica realizadas después de una modificación reflejan el precio actualizado, sin retrasos de propagación.
-- **SC-003**: El sistema rechaza el 100% de los intentos de modificación con valores de porcentaje inválidos (negativos o no numéricos) o con temporadas no configuradas.
+- **SC-003**: El sistema rechaza el 100% de los intentos de modificación con valores de porcentaje inválidos (negativos o no numéricos).
 - **SC-004**: Cero discrepancias de precio entre lo configurado por el Administrador y lo consultado por las OTAs para una misma fecha/temporada.
 - **SC-005**: El 100% de los intentos de edición concurrente sobre una misma tarifa son bloqueados hasta que el Administrador que la tiene en edición la guarde, cancele, o el bloqueo expire.

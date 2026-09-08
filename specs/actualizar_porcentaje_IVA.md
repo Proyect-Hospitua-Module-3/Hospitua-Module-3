@@ -90,7 +90,7 @@ Como responsable de facturación, quiero que el sistema impida calcular el IVA c
 
 - **Porcentaje de IVA**: Tasa vigente aplicable a todo el hospedaje del Módulo 3 (valor único, sin variar por servicio o tipo de habitación), definida por la legislación local y registrada en el sistema por el Administrador.
 - **Historial de configuración**: Registro de cambios del porcentaje, con su autor, momento, valor anterior y valor nuevo.
-- **Administrador**: Usuario con permisos para configurar el porcentaje de IVA.
+- **Administrador**: Un Administrador que configurar el porcentaje de IVA.
 
 ### Reglas de negocio
 
