@@ -10,7 +10,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero calcul
 
 **Por qué esta prioridad**: El IVA es un componente obligatorio de toda liquidación. Fijar el porcentaje al momento del check-in evita que cambios posteriores en la tasa afecten retroactivamente el hospedaje ya calculado.
 
-**Prueba independiente**: Se puede invocar el cálculo en el contexto del check-in con una base gravable y un porcentaje de IVA vigente, y verificar que el resultado sea la multiplicación correcta, redondeada según la política de la moneda, y que el porcentaje utilizado quede persistido junto con la liquidación.
+**Prueba independiente**: Se puede invocar el cálculo en el contexto del check-in con una base gravable y un porcentaje de IVA vigente, y verificar que el resultado sea la multiplicación correcta, redondeada según la política de redondeo definida, y que el porcentaje utilizado quede persistido junto con la liquidación.
 
 **Escenarios de aceptación**:
 
@@ -51,7 +51,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero calcul
 - **Salida anticipada (menos noches que las originales)**: El IVA se recalcula sobre el hospedaje reducido, pero usando el mismo porcentaje fijado en el check-in, no uno nuevo, ya que no se trata de una extensión.
 - **Porcentaje de IVA igual a cero (exención configurada)**: El sistema debe calcular un impuesto de 0.00 de forma explícita, distinguiendo este caso de un porcentaje no configurado.
 - **Cambio del porcentaje de IVA entre el check-in y el check-out sin extensión de estancia**: El cambio de porcentaje no afecta el monto ya calculado en el check-in; solo aplicaría a una extensión, si la hubiera.
-- **Base gravable con más decimales que los permitidos por la moneda**: El sistema debe aplicar la misma política de redondeo utilizada en el cálculo de tarifa dinámica, de forma consistente.
+- **Base gravable con más decimales que los permitidos por la precisión decimal configurada**: El sistema debe aplicar la misma política de redondeo utilizada en el cálculo de tarifa dinámica, de forma consistente.
 
 ## Requisitos *(obligatorio)*
 
@@ -63,7 +63,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero calcul
 - **FR-004**: Si el check-out incluye una extensión de estancia (la fecha real de salida es posterior a la programada), el sistema DEBE calcular un segundo monto de IVA correspondiente únicamente a las noches adicionales, usando el porcentaje de IVA vigente al momento del check-out.
 - **FR-005**: El sistema DEBE mantener ambos montos de IVA (el del hospedaje original y el de las noches adicionales, si aplica) como valores independientes y sumarlos para obtener el IVA total de la liquidación.
 - **FR-006**: El sistema DEBE rechazar el cálculo y no producir un monto de impuesto si el porcentaje de IVA no está configurado o es inválido (negativo, no numérico, o fuera de un rango lógico razonable).
-- **FR-007**: El sistema DEBE aplicar la política de redondeo y precisión decimal de la moneda configurada de forma consistente con el cálculo de hospedaje.
+- **FR-007**: El sistema DEBE aplicar la política de redondeo y precisión decimal definida, de forma consistente con el cálculo de hospedaje.
 - **FR-008**: El sistema DEBE persistir, como parte del desglose auditable de la liquidación o factura, el o los porcentajes de IVA utilizados y los montos resultantes de cada bloque.
 - **FR-009**: El sistema NO DEBE aplicar el cálculo de IVA sobre la comisión OTA descontada; el impuesto se calcula únicamente sobre el valor de los servicios de hospedaje.
 
