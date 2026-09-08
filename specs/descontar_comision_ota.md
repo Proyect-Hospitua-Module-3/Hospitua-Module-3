@@ -17,12 +17,17 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero calcul
 1. **Escenario**: Reserva con intermediario y comisión configurada
    - **Dado** que la reserva identifica un canal OTA con un porcentaje de comisión vigente obtenido mediante "Consultar porcentaje de comisión OTA"
    - **Cuando** se invoca "Descontar comisión OTA" con el valor de hospedaje bruto correspondiente
-   - **Entonces** el sistema calcula el monto de comisión como el producto entre el valor de hospedaje bruto y el porcentaje vigente, y lo devuelve junto con el valor bruto sin mezclarlos
+   - **Entonces** el sistema calcula el monto de comisión como un valor negativo, igual en magnitud al producto entre el valor de hospedaje bruto y el porcentaje vigente, y lo devuelve junto con el valor bruto sin mezclarlos
 
 2. **Escenario**: Reserva de canal directo
    - **Dado** que la reserva se originó por canal directo o no tiene canal de origen registrado
    - **Cuando** se invoca "Descontar comisión OTA"
    - **Entonces** el sistema determina que el monto de comisión es cero sin necesidad de consultar ningún porcentaje, y no descuenta nada del valor de hospedaje
+
+3. **Escenario**: Reutilización del monto ya calculado al generar la factura final
+   - **Dado** que ya existe una liquidación definitiva de la estancia con su monto de comisión OTA calculado y persistido
+   - **Cuando** "Generar factura final" requiere el monto de comisión de esa estancia
+   - **Entonces** el sistema reutiliza el monto ya calculado y persistido en la liquidación, sin ejecutar un nuevo cálculo de "Descontar comisión OTA"
 
 ---
 
@@ -81,37 +86,33 @@ Como responsable de la operación hotelera, quiero que el sistema rechace el cá
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE calcular el monto de comisión OTA como el producto entre el valor de hospedaje bruto recibido y el porcentaje de comisión vigente, únicamente cuando el canal de origen de la reserva sea un intermediario OTA.
+- **FR-001**: El sistema DEBE calcular el monto de comisión OTA como un valor negativo, igual en magnitud al producto entre el valor de hospedaje bruto recibido y el porcentaje de comisión vigente, únicamente cuando el canal de origen de la reserva sea un intermediario OTA.
 - **FR-002**: El sistema DEBE obtener el porcentaje de comisión mediante "Consultar porcentaje de comisión OTA" antes de calcular el monto, conforme a la relación `<<include>>` del diagrama de casos de uso; no debe asumir ni almacenar un porcentaje propio.
 - **FR-003**: El sistema DEBE determinar que el monto de comisión es cero, sin invocar la consulta de porcentaje, cuando la reserva sea de canal directo o no tenga canal de origen registrado.
 - **FR-004**: El sistema DEBE rechazar el cálculo, sin producir un monto de comisión, cuando la consulta del porcentaje sea rechazada por ausencia de configuración, valor inválido o ambigüedad.
 - **FR-005**: El sistema DEBE validar que el valor de hospedaje bruto recibido sea numérico y no negativo antes de calcular el descuento.
-- **FR-006**: El sistema DEBE devolver por separado el valor de hospedaje bruto, el porcentaje utilizado y el monto de comisión resultante, sin mezclarlos en un único total.
+- **FR-006**: El sistema DEBE devolver por separado el valor de hospedaje bruto, el porcentaje utilizado y el monto de comisión resultante (expresado como valor negativo), sin mezclarlos en un único total.
 - **FR-007**: El sistema DEBE aplicar la política de redondeo y precisión monetaria de la moneda configurada, de forma consistente con el resto de los cálculos financieros del Módulo 3.
 - **FR-008**: El sistema NO DEBE modificar el valor de hospedaje bruto original ni el estado de la reserva; el monto calculado queda disponible para que "Generar liquidación" o "Generar factura final" lo utilicen.
 - **FR-009**: El sistema DEBE producir el mismo monto de comisión ante los mismos datos de entrada (valor de hospedaje bruto, canal de origen y porcentaje vigente).
+- **FR-010**: El sistema NO DEBE ejecutar un nuevo cálculo cuando "Generar factura final" requiera el monto de comisión de una estancia que ya tiene una liquidación definitiva; DEBE reutilizar el monto ya calculado y persistido en esa liquidación.
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
 - **Valor de hospedaje bruto**: Importe calculado por la tarifa dinámica antes de aplicar cualquier descuento de comisión.
 - **Canal de origen**: Clasificación de la reserva como directo o como un canal OTA específico, de la cual depende si el descuento aplica.
 - **Porcentaje de comisión**: Tasa vigente obtenida mediante "Consultar porcentaje de comisión OTA", usada como base del cálculo.
-- **Monto de comisión OTA**: Resultado del cálculo; valor a descontar del hospedaje bruto para obtener el ingreso neto.
+- **Monto de comisión OTA**: Resultado del cálculo; valor negativo a descontar del hospedaje bruto para obtener el ingreso neto, consistente con la fórmula de la Matriz de Liquidación Final (Comisión OTA = - (Valor Hospedaje x % Comisión)).
 - **Resultado del descuento**: Agrupa el valor de hospedaje bruto, el porcentaje utilizado (cuando aplica), el monto de comisión y el motivo de rechazo cuando corresponda.
 
 ### Reglas de negocio
 
-- **BR-001**: El monto de comisión se calcula únicamente como el producto entre el valor de hospedaje bruto y el porcentaje de comisión vigente, y solo cuando el canal de la reserva es un intermediario OTA.
+- **BR-001**: El monto de comisión se calcula únicamente como un valor negativo, igual en magnitud al producto entre el valor de hospedaje bruto y el porcentaje de comisión vigente, y solo cuando el canal de la reserva es un intermediario OTA.
 - **BR-002**: Un canal directo, o una reserva sin canal de origen registrado, produce un monto de comisión igual a cero sin necesidad de consultar ningún porcentaje.
 - **BR-003**: Este caso de uso no determina ni valida el canal de origen de la reserva; recibe esa clasificación ya establecida por el proceso que lo invoca.
 - **BR-004**: Una consulta de porcentaje rechazada detiene por completo el cálculo del descuento; no se sustituye por 0% ni por un valor supuesto, a diferencia del canal directo, que legítimamente no requiere consulta.
 - **BR-005**: El monto de comisión se mantiene como concepto separado del valor de hospedaje bruto y de los impuestos, conforme a la Matriz de Liquidación Final.
-
-### Preguntas abiertas
-
-- **OQ-001**: [REQUIERE ACLARACIÓN: si el monto de comisión debe expresarse siempre como un valor negativo (deducción explícita) o como un valor positivo que el proceso que lo invoca se encarga de restar].
-- **OQ-002**: [REQUIERE ACLARACIÓN: cuando "Generar factura final" incluye este caso de uso, ¿reutiliza el monto de comisión ya calculado y persistido en la liquidación, o ejecuta un nuevo cálculo independiente? El diagrama dibuja una relación `<<include>>` directa entre ambos, pero no aclara si implica un nuevo cálculo o una reutilización del valor ya generado].
-- **OQ-003**: [REQUIERE ACLARACIÓN: si debe registrarse un historial o auditoría propio de los montos de comisión calculados por reserva, o si basta con que el valor quede embebido en la liquidación y la factura generadas].
+- **BR-006**: El cálculo de comisión se ejecuta cada vez que "Generar liquidación" calcula una liquidación (preliminar en el check-in, sus recálculos antes del check-out, o la definitiva en el check-out); su reutilización posterior por "Generar factura final" a partir de la liquidación definitiva ya generada no constituye un nuevo cálculo (ver FR-010).
 
 ## Requisitos no funcionales
 
@@ -125,8 +126,9 @@ Como responsable de la operación hotelera, quiero que el sistema rechace el cá
 
 ### Resultados medibles
 
-- **SC-001**: El 100% de los cálculos con canal OTA y porcentaje vigente configurado producen un monto igual al producto exacto entre el valor de hospedaje bruto y ese porcentaje.
+- **SC-001**: El 100% de los cálculos con canal OTA y porcentaje vigente configurado producen un monto negativo, igual en magnitud al producto exacto entre el valor de hospedaje bruto y ese porcentaje.
 - **SC-002**: El 100% de las reservas de canal directo o sin canal registrado obtienen un monto de comisión igual a cero, sin haber invocado la consulta de porcentaje.
 - **SC-003**: El 100% de los cálculos donde la consulta de porcentaje es rechazada se rechazan también, sin producir un monto de comisión sustituto.
 - **SC-004**: El 100% de los resultados distinguen explícitamente el valor de hospedaje bruto, el porcentaje utilizado y el monto de comisión, sin mezclarlos en un solo total.
 - **SC-005**: El 0% de los cálculos modifica el valor de hospedaje bruto original o el estado de la reserva.
+- **SC-006**: El 100% de las veces que "Generar factura final" requiere el monto de comisión de una estancia con liquidación definitiva ya generada, reutiliza el monto persistido sin ejecutar un nuevo cálculo.

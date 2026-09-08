@@ -64,7 +64,7 @@ Como responsable de facturación, quiero que el sistema rechace la consulta cuan
    - **Entonces** el sistema rechaza la consulta e informa la ausencia de configuración, sin sustituirla por cero
 
 2. **Escenario**: Canal OTA no reconocido
-   - **Dado** que el canal de origen indicado no corresponde a ninguna OTA reconocida por el sistema
+   - **Dado** que el canal de origen indicado no corresponde a ninguna OTA reconocida por `Modulo2`
    - **Cuando** se invoca la consulta
    - **Entonces** el sistema rechaza la consulta en vez de asumir un canal por defecto
 
@@ -81,43 +81,36 @@ Como responsable de facturación, quiero que el sistema rechace la consulta cuan
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE consultar el porcentaje de comisión vigente y pactado para el canal OTA identificado como origen de una reserva.
+- **FR-001**: El sistema DEBE consultar el porcentaje de comisión vigente y pactado para el canal OTA identificado como origen de una reserva, obteniéndolo de `Modulo2`, que es quien gestiona el registro del canal de origen y el porcentaje pactado con cada intermediario.
 - **FR-002**: El sistema DEBE indicar que no aplica comisión OTA cuando la reserva sea de canal directo o no tenga canal de origen registrado, sin devolver un porcentaje de cero como si fuera una configuración explícita.
 - **FR-003**: El sistema DEBE reflejar siempre el porcentaje vigente en el momento de la consulta, sin depender de una copia cacheada o desactualizada.
 - **FR-004**: El sistema DEBE rechazar la consulta y no devolver un valor sustituto cuando el canal OTA no tenga ningún porcentaje de comisión pactado configurado.
 - **FR-005**: El sistema DEBE rechazar la consulta cuando se detecte más de un porcentaje vigente simultáneamente para el mismo canal OTA, sin resolver la ambigüedad de forma arbitraria.
 - **FR-006**: El sistema DEBE rechazar la consulta cuando el porcentaje configurado sea inválido (negativo, mayor a 100%, o no numérico).
 - **FR-007**: El sistema DEBE identificar el canal OTA específico consultado (p. ej. Booking, Airbnb, Expedia) en el resultado de la consulta.
-- **FR-008**: El sistema NO DEBE modificar, negociar ni completar la configuración del porcentaje de comisión OTA; esta consulta es de solo lectura.
+- **FR-008**: El sistema NO DEBE modificar, negociar ni completar la configuración del porcentaje de comisión OTA en `Modulo2`; esta consulta es de solo lectura.
 - **FR-009**: El sistema DEBE distinguir entre un porcentaje de comisión configurado en 0% y la ausencia total de configuración para un canal OTA.
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
-- **Canal OTA**: Intermediario de reserva (p. ej. Booking, Airbnb, Expedia) con un porcentaje de comisión pactado.
-- **Porcentaje de comisión pactado**: Tasa vigente acordada con un canal OTA, usada para descontar del valor de hospedaje bruto.
+- **Canal OTA**: Intermediario de reserva (p. ej. Booking, Airbnb, Expedia) gestionado y registrado por `Modulo2`, con un porcentaje de comisión pactado.
+- **Porcentaje de comisión pactado**: Tasa vigente acordada con un canal OTA, gestionada por `Modulo2` y usada por Módulo 3 para descontar del valor de hospedaje bruto (ver `descontar_comision_ota.md`).
 - **Canal de origen de la reserva**: Clasificación de la reserva como directo o como un canal OTA específico, de la cual depende si esta consulta aplica.
 - **Resultado de consulta**: Porcentaje vigente devuelto, indicación de que no aplica comisión (canal directo), o motivo de rechazo cuando no exista configuración válida.
 
 ### Reglas de negocio
 
-- **BR-001**: El porcentaje de comisión OTA es pactado externamente con cada intermediario; este caso de uso únicamente lo consulta, no lo negocia ni lo modifica.
+- **BR-001**: Frontera arquitectónica: el canal OTA de una reserva y su porcentaje de comisión pactado son propiedad y responsabilidad de `Modulo2`. El Módulo 3 únicamente lo consulta como insumo para "Descontar comisión OTA" y "Generar factura final"; no lo configura, identifica, negocia ni almacena de forma independiente.
 - **BR-002**: La ausencia de un porcentaje configurado para un canal OTA detiene la consulta; el sistema no sustituye el valor faltante por cero ni por un valor supuesto.
 - **BR-003**: Un canal directo, o una reserva sin canal de origen registrado, no tiene comisión OTA aplicable; esto es distinto de un canal OTA con 0% configurado explícitamente.
 - **BR-004**: El porcentaje devuelto debe ser siempre el vigente en el momento exacto de la consulta, permitiendo que "Generar liquidación" use el porcentaje vigente al check-out aunque difiera del usado en una liquidación preliminar previa.
 - **BR-005**: Unicidad por canal: cada canal OTA debe tener, como máximo, un porcentaje vigente en un momento dado; una consulta que detecte más de uno debe rechazarse en vez de elegir uno arbitrariamente.
 
-### Preguntas abiertas
-
-- **OQ-001**: [REQUIERE ACLARACIÓN: quién configura y mantiene el porcentaje de comisión pactado por canal OTA — si lo administra el propio Módulo 3, o si se origina en el registro del canal de la reserva. El diagrama de casos de uso no dibuja una línea de actor directa hacia "Consultar porcentaje de comisión OTA", solo relaciones `<<include>>` desde "Descontar comisión OTA" y "Generar factura final"].
-- **OQ-002**: [REQUIERE ACLARACIÓN: cómo se identifica formalmente un "canal OTA" (lista cerrada de intermediarios soportados vs. registro abierto configurable) y qué ocurre operativamente cuando se agrega una OTA nueva sin porcentaje pactado].
-- **OQ-003**: [REQUIERE ACLARACIÓN: si el porcentaje pactado puede variar por tipo de habitación, temporada o rango de fechas, o si es un único valor fijo por canal OTA].
-- **OQ-004**: [REQUIERE ACLARACIÓN: la fórmula y base exacta de la comisión — si se aplica siempre sobre el valor bruto de hospedaje o si existen conceptos adicionales incluidos o excluidos].
-
 ## Requisitos no funcionales
 
 - **NFR-001**: Determinismo: para el mismo canal OTA y el mismo estado de configuración vigente, la consulta debe devolver siempre el mismo resultado.
 - **NFR-002**: Rendimiento: la consulta debe completarse en un tiempo que no genere demoras perceptibles dentro de los procesos de liquidación y facturación que la invocan.
-- **NFR-003**: Actualidad: la consulta debe reflejar siempre el estado más reciente del porcentaje pactado, sin depender de una copia cacheada desactualizada.
+- **NFR-003**: Actualidad: la consulta debe reflejar siempre el estado más reciente del porcentaje pactado en `Modulo2`, sin depender de una copia cacheada desactualizada.
 - **NFR-004**: Los mensajes de rechazo deben ser comprensibles para el personal de facturación y suficientemente específicos para identificar el canal OTA afectado.
 
 ## Criterios de éxito *(obligatorio)*
