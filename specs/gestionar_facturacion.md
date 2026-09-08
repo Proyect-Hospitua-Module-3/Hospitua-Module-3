@@ -47,7 +47,7 @@ Como Administrador, quiero abrir el detalle completo de una factura encontrada (
    - **Entonces** el sistema muestra el desglose completo (hospedaje, comisión informativa, IVA, total), el número de numeración consecutiva oficial, y su carácter inmutable
 
 2. **Escenario**: Detalle de una prefactura
-   - **Dado** que se localiza una prefactura generada en un check-in aún abierto
+   - **Dado** que se localiza una prefactura generada en una estancia cuya liquidación aún está en estado `Preliminary`
    - **Cuando** el Administrador abre su detalle
    - **Entonces** el sistema deja explícito que es un borrador sin numeración oficial y que puede cambiar antes del check-out
 
@@ -81,7 +81,7 @@ Como Administrador, quiero obtener un resumen consolidado de las facturas de un 
 ### Casos límite
 
 - Búsqueda sin ningún criterio ingresado: el sistema no debe devolver la totalidad de las facturas sin control; debe exigir al menos un criterio antes de ejecutar la consulta.
-- Estancia cuya liquidación transicionó a estado anulado (per `generar_factura_final.md` FR-013): la búsqueda no debe devolver una factura para esa estancia, ya que la prefactura fue descartada.
+- Estancia cuya liquidación transicionó a estado `Cancelled` (per `generar_factura_final.md` FR-013): la búsqueda no debe devolver una factura para esa estancia, ya que la prefactura fue descartada.
 - Volumen alto de coincidencias: el sistema debe paginar o limitar los resultados sin omitir coincidencias de forma silenciosa.
 - Intento de modificar, anular o reemitir una factura desde esta consulta: el sistema debe rechazarlo; "Gestionar facturación" es exclusivamente de lectura y no reemplaza a "Generar factura final".
 - Factura cuya liquidación de origen incluye datos de control migratorio en su registro: la búsqueda y el detalle no deben exponer esos datos, respetando la frontera con Módulo 2.
@@ -101,14 +101,14 @@ Como Administrador, quiero obtener un resumen consolidado de las facturas de un 
 - **FR-004**: El sistema DEBE permitir al Administrador abrir el detalle completo de una factura localizada, incluyendo el desglose de hospedaje, comisión OTA (si aplica), IVA y total, tal como fue generado por "Generar factura final".
 - **FR-005**: El sistema DEBE identificar en el detalle de cada factura la liquidación de origen y la fecha y hora de emisión, para permitir su trazabilidad.
 - **FR-006**: El sistema NO DEBE permitir modificar, recalcular, anular ni reemitir una factura desde "Gestionar facturación"; esta funcionalidad es exclusivamente de consulta.
-- **FR-007**: El sistema NO DEBE devolver en los resultados de búsqueda facturas o prefacturas asociadas a liquidaciones en estado anulado.
+- **FR-007**: El sistema NO DEBE devolver en los resultados de búsqueda facturas o prefacturas asociadas a liquidaciones en estado `Cancelled`.
 - **FR-008**: El sistema DEBE paginar o limitar los resultados de búsqueda cuando el número de coincidencias sea alto, sin omitir coincidencias de forma silenciosa.
 - **FR-009**: El sistema DEBE informar de manera explícita cuando una búsqueda no arroje resultados, sin producir un error genérico.
 - **FR-010**: El sistema NO DEBE exponer datos de control migratorio en los resultados de búsqueda ni en el detalle de una factura, respetando la frontera de responsabilidad con Módulo 2.
 - **FR-011**: El sistema DEBE restringir el acceso a "Gestionar facturación" exclusivamente al actor `Administrador`.
 - **FR-012**: El sistema DEBE permitir al Administrador solicitar un resumen consolidado de facturas emitidas dentro de un rango de fechas, agrupado por canal de origen.
 - **FR-013**: El sistema DEBE presentar en el resumen consolidado, para cada canal, el total de hospedaje, el total de comisión OTA (si aplica) y el total de IVA, sin mezclar los importes entre canales.
-- **FR-014**: El sistema DEBE separar en el resumen consolidado el total definitivo (facturas emitidas) del estimado preliminar (prefacturas de estancias aún abiertas), presentándolos como cifras independientes.
+- **FR-014**: El sistema DEBE separar en el resumen consolidado el total definitivo (facturas emitidas) del estimado preliminar (prefacturas de estancias cuya liquidación está en estado `Preliminary`), presentándolos como cifras independientes.
 - **FR-015**: El sistema DEBE rechazar una búsqueda o una solicitud de resumen consolidado cuando el rango de fechas ingresado sea inválido (fecha de inicio posterior a la fecha de fin), sin devolver un resultado parcial.
 - **FR-016**: El sistema DEBE mostrar un total en cero para un canal sin facturas dentro del período consultado, en lugar de omitirlo o producir un error.
 
@@ -123,7 +123,7 @@ Como Administrador, quiero obtener un resumen consolidado de las facturas de un 
 
 - **BR-001**: "Gestionar facturación" es una funcionalidad exclusivamente de consulta; no crea, modifica, recalcula ni anula facturas ni liquidaciones.
 - **BR-002**: El acceso a "Gestionar facturación" está reservado al actor `Administrador`.
-- **BR-003**: Las facturas o prefacturas asociadas a liquidaciones anuladas no se exponen como resultados válidos de búsqueda.
+- **BR-003**: Las facturas o prefacturas asociadas a liquidaciones en estado `Cancelled` no se exponen como resultados válidos de búsqueda.
 - **BR-004**: El estado de cada factura mostrado (borrador o definitiva) debe reflejar fielmente el estado producido por "Generar factura final", sin reinterpretarlo ni derivarlo por separado.
 - **BR-005**: "Gestionar facturación" consulta el mismo universo de facturas que ya expone "Consultar liquidación" a `Módulo 2` y `OTA`, pero añade búsqueda y filtrado de uso administrativo; no constituye una fuente de datos distinta ni duplicada.
 - **BR-006**: El resumen consolidado nunca mezcla el total definitivo (facturas emitidas) con el estimado de prefacturas activas; ambos se presentan como cifras separadas, coherente con la distinción entre prefactura y factura definitiva de `generar_factura_final.md`.
@@ -144,7 +144,7 @@ Como Administrador, quiero obtener un resumen consolidado de las facturas de un 
 
 - **SC-001**: El 100% de las búsquedas con al menos un criterio válido devuelven únicamente las facturas que cumplen ese criterio.
 - **SC-002**: El 100% de las búsquedas sin coincidencias informan la ausencia de resultados sin mostrar un error genérico.
-- **SC-003**: El 0% de las búsquedas expone facturas o prefacturas de liquidaciones anuladas.
+- **SC-003**: El 0% de las búsquedas expone facturas o prefacturas de liquidaciones en estado `Cancelled`.
 - **SC-004**: El 100% de los detalles de factura consultados coinciden exactamente con el desglose generado originalmente por "Generar factura final".
 - **SC-005**: El 0% de las operaciones de "Gestionar facturación" modifica, recalcula o anula una factura o liquidación existente.
 - **SC-006**: El 100% de los accesos a "Gestionar facturación" quedan restringidos al actor `Administrador`.
