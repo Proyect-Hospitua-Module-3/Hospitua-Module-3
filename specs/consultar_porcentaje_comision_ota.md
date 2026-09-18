@@ -46,10 +46,33 @@ Como sistema de gestión hotelera, quiero garantizar que `Consultar porcentaje d
    - **Cuando** se revisa el diseño del sistema
    - **Entonces** esa invocación no existe; `Generar liquidación` obtiene el porcentaje únicamente del evento de check-out
 
+---
+
+### Historia de usuario 3 - La OTA verifica el porcentaje de comisión que se le ha registrado (Prioridad: P2)
+
+Como OTA (Booking, Airbnb, Expedia), quiero consultar el porcentaje de comisión que Módulo 3 registró en mis propias liquidaciones `Final` más recientes, para verificar por mi cuenta que el porcentaje aplicado coincide con lo pactado, de forma similar a como ya puedo hacerlo en `Consultar liquidación`.
+
+**Por qué esta prioridad**: Complementa a HU1 dando a la propia OTA la misma visibilidad histórica y referencial que ya tiene Módulo 2, consistente con su rol ya reconocido como actor en `Consultar liquidación` (`diccionario.md`).
+
+**Prueba independiente**: Se puede generar la liquidación `Final` de una reserva de una OTA con un porcentaje de comisión conocido, consultar como esa OTA su propio porcentaje de comisión, y verificar que el resultado coincide con lo aplicado, sin exponer datos de otras OTAs.
+
+**Escenarios de aceptación**:
+
+1. **Escenario**: OTA consulta su propio historial de comisión
+   - **Dado** que existe al menos una liquidación `Final` de una reserva intermediada por la OTA que consulta
+   - **Cuando** esa OTA consulta su porcentaje de comisión
+   - **Entonces** el sistema devuelve el porcentaje de su liquidación `Final` más reciente, marcado como referencial
+
+2. **Escenario**: Una OTA intenta consultar el porcentaje de otra OTA
+   - **Dado** que existen liquidaciones `Final` de más de una OTA distinta
+   - **Cuando** una OTA intenta consultar el porcentaje de comisión de una OTA diferente a ella misma
+   - **Entonces** el sistema rechaza la consulta, sin exponer datos de comisión de una OTA ajena
+
 ### Casos límite
 
 - La misma OTA presenta distintos porcentajes en liquidaciones históricas diferentes (por ejemplo, un cambio de convenio en el tiempo): el sistema no debe promediar ni elegir uno arbitrario; debe devolver el de la liquidación `Final` más reciente.
 - Se consulta el porcentaje de comisión de una reserva o canal directo (sin OTA): el sistema debe rechazar la consulta o indicar explícitamente que no aplica, sin devolver 0% como si fuera un resultado válido de comisión OTA.
+- Una OTA intenta consultar el porcentaje de comisión de una OTA distinta a ella misma: el sistema debe rechazar la consulta, respetando el mismo ámbito de acceso por actor que ya aplica en `Consultar liquidación` (BR-002 de `consultar_liquidacion.md`).
 - Intento de actualizar, corregir o fijar el porcentaje de comisión de una OTA desde esta consulta: el sistema debe rechazarlo; la propiedad del dato sigue siendo exclusiva de Módulo 2, conforme a BR-010 de `generar_liquidacion.md`.
 - Consultas repetidas e inmediatas sobre la misma OTA sin liquidaciones nuevas: deben devolver siempre el mismo resultado.
 - OTA cuya única liquidación `Final` fue generada hace mucho tiempo: el sistema igual devuelve ese dato como la referencia histórica más reciente disponible, sin expirarlo ni ocultarlo por antigüedad.
@@ -58,25 +81,26 @@ Como sistema de gestión hotelera, quiero garantizar que `Consultar porcentaje d
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE permitir a Módulo 2 consultar, para una OTA o canal específico, el porcentaje de comisión registrado en la liquidación `Final` más reciente generada para esa OTA.
+- **FR-001**: El sistema DEBE permitir a los actores autorizados (`Módulo 2`, `OTA`) consultar el porcentaje de comisión registrado en la liquidación `Final` más reciente generada para una OTA o canal específico.
 - **FR-002**: El resultado de la consulta DEBE indicar explícitamente que el dato devuelto es histórico y referencial, y que no constituye una tarifa contractual gestionada o garantizada por Módulo 3.
 - **FR-003**: El sistema NO DEBE invocar `Consultar porcentaje de comisión OTA` desde `Generar liquidación`; este último continúa obteniendo el porcentaje de comisión exclusivamente del evento de check-out, conforme a FR-005 de `generar_liquidacion.md`.
 - **FR-004**: El sistema DEBE informar de manera explícita cuando no exista ninguna liquidación `Final` previa para la OTA consultada, sin devolver un porcentaje por defecto ni en cero.
 - **FR-005**: El sistema NO DEBE permitir actualizar, corregir ni fijar el porcentaje de comisión de una OTA a través de esta consulta; es una operación exclusivamente de lectura.
 - **FR-006**: El sistema DEBE rechazar o marcar como no aplicable una consulta realizada sobre una reserva de canal directo, sin devolver 0% como si fuera un resultado válido de comisión OTA.
-- **FR-007**: El sistema DEBE restringir el acceso a `Consultar porcentaje de comisión OTA` exclusivamente al actor Módulo 2.
+- **FR-007**: El sistema DEBE restringir el acceso a `Consultar porcentaje de comisión OTA` a los actores autorizados (`Módulo 2`, `OTA`).
 - **FR-008**: El sistema DEBE devolver siempre el mismo resultado ante consultas repetidas sobre la misma OTA cuando no existan liquidaciones nuevas, garantizando que la consulta no tenga efectos secundarios.
+- **FR-009**: El sistema DEBE restringir a una OTA la consulta de este caso de uso exclusivamente al porcentaje registrado en sus propias liquidaciones `Final`, identificadas por su código de confirmación externo y canal, de la misma forma en que `Consultar liquidación` restringe a cada OTA a sus propias reservas (FR-006 de `consultar_liquidacion.md`).
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
-- **Consulta de comisión OTA**: Solicitud de Módulo 2 identificando la OTA o canal cuyo historial de comisión se desea revisar.
+- **Consulta de comisión OTA**: Solicitud de un actor autorizado (`Módulo 2`, `OTA`) identificando la OTA o canal cuyo historial de comisión se desea revisar.
 - **Resultado histórico de comisión**: Porcentaje registrado en la liquidación `Final` más reciente de una OTA, junto con la fecha de esa liquidación, marcado explícitamente como referencial y no contractual.
 
 ### Reglas de negocio
 
 - **BR-001**: Este caso de uso nunca constituye la fuente de verdad del porcentaje de comisión de una reserva; esa fuente es exclusivamente Módulo 2, conforme a BR-010 de `generar_liquidacion.md`.
 - **BR-002**: `Consultar porcentaje de comisión OTA` es una operación exclusivamente de lectura sobre liquidaciones `Final` ya generadas; no crea, administra ni corrige convenios de comisión con ninguna OTA.
-- **BR-003**: El acceso está restringido al actor Módulo 2.
+- **BR-003**: El acceso está restringido a los actores autorizados `Módulo 2` y `OTA`; una OTA solo accede al porcentaje registrado en sus propias liquidaciones, nunca en las de otra OTA.
 - **BR-004**: `Generar liquidación` nunca depende de este caso de uso para determinar el porcentaje de comisión a aplicar.
 
 ## Requisitos no funcionales
@@ -94,4 +118,5 @@ Como sistema de gestión hotelera, quiero garantizar que `Consultar porcentaje d
 - **SC-002**: El 100% de las consultas de una OTA sin liquidaciones previas informan la ausencia de historial, sin valores por defecto.
 - **SC-003**: El 0% de las ejecuciones de `Generar liquidación` invoca esta consulta como fuente del porcentaje de comisión.
 - **SC-004**: El 0% de las consultas permite modificar el porcentaje de comisión histórico registrado.
-- **SC-005**: El 100% de los accesos a `Consultar porcentaje de comisión OTA` quedan restringidos al actor Módulo 2.
+- **SC-005**: El 100% de los accesos a `Consultar porcentaje de comisión OTA` quedan restringidos a los actores autorizados (`Módulo 2`, `OTA`).
+- **SC-006**: El 0% de las consultas de una OTA expone el porcentaje de comisión registrado para una OTA distinta.

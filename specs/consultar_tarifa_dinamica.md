@@ -46,6 +46,28 @@ Como Módulo 2, quiero consultar la tarifa dinámica de cada noche dentro de un 
    - **Cuando** Módulo 2 ejecuta la consulta
    - **Entonces** el sistema rechaza la consulta y no devuelve ningún resultado parcial
 
+---
+
+### Historia de usuario 3 - La OTA verifica la tarifa dinámica vigente para mantener paridad de precios (Prioridad: P2)
+
+Como OTA (Booking, Airbnb, Expedia), quiero consultar la tarifa dinámica vigente de un tipo de habitación para una fecha o rango de fechas, para mantener actualizado el precio que publico en mi propio canal y evitar discrepancias con la tarifa real del hotel.
+
+**Por qué esta prioridad**: No es indispensable para que Módulo 2 pueda calcular el valor de hospedaje (eso ya lo cubren HU1 y HU2), pero es necesaria para que la OTA mantenga paridad de precios con el hotel sin depender de actualizaciones manuales por parte del Administrador.
+
+**Prueba independiente**: Se puede configurar una tarifa base y una regla de temporada para una fecha, consultar la tarifa dinámica de esa fecha como OTA, y verificar que el resultado es idéntico al que obtendría Módulo 2 para la misma fecha y tipo de habitación.
+
+**Escenarios de aceptación**:
+
+1. **Escenario**: OTA consulta la tarifa vigente de una fecha futura
+   - **Dado** que existe una tarifa base y una regla de temporada configuradas para una fecha futura
+   - **Cuando** la OTA consulta la tarifa dinámica de esa fecha para un tipo de habitación
+   - **Entonces** el sistema devuelve el mismo resultado que obtendría Módulo 2 para esa misma consulta, sin distinción de trato entre actores autorizados
+
+2. **Escenario**: Consulta idéntica repetida por distintos actores
+   - **Dado** que Módulo 2 y una OTA consultan la misma fecha y tipo de habitación bajo la misma configuración vigente
+   - **Cuando** ambos ejecutan la consulta
+   - **Entonces** ambos reciben exactamente el mismo resultado, dado que la tarifa dinámica no es información restringida por actor
+
 ### Casos límite
 
 - La habitación o tipo de habitación consultado no tiene tarifa base registrada en Módulo 1: el sistema rechaza la consulta; no debe devolver una tarifa dinámica calculada sobre una tarifa base en cero o supuesta.
@@ -58,7 +80,7 @@ Como Módulo 2, quiero consultar la tarifa dinámica de cada noche dentro de un 
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE permitir a Módulo 2 consultar la tarifa dinámica de un tipo de habitación para una fecha específica o para un rango de fechas.
+- **FR-001**: El sistema DEBE permitir a los actores autorizados (`Módulo 2`, `OTA`) consultar la tarifa dinámica de un tipo de habitación para una fecha específica o para un rango de fechas.
 - **FR-002**: El sistema DEBE calcular la tarifa dinámica ajustando la tarifa base obtenida de Módulo 1 (mediante `Consultar tarifa base`) según la regla de temporada vigente aplicable a cada noche consultada (temporada alta = incremento, temporada baja = decremento, temporada regular = ajuste neutro), conforme a la clasificación que administra el Administrador en `Revisar temporada del año` y `Modificar precio tarifa según temporada`.
 - **FR-003**: Cuando la consulta cubra un rango de varias noches, el sistema DEBE devolver el resultado de cada noche de forma individual, sin promediar ni aplicar una única temporada a todo el rango.
 - **FR-004**: El sistema DEBE asumir temporada regular cuando una fecha consultada no tenga una clasificación de temporada explícita configurada.
@@ -66,21 +88,23 @@ Como Módulo 2, quiero consultar la tarifa dinámica de cada noche dentro de un 
 - **FR-006**: El sistema DEBE rechazar la consulta cuando Módulo 1 no reporte una tarifa base para la habitación o tipo de habitación solicitado, sin devolver una tarifa dinámica basada en un valor supuesto o en cero.
 - **FR-007**: El sistema NO DEBE persistir un valor fijo de "tarifa dinámica" para una fecha; cada consulta refleja la configuración de temporada y la tarifa base vigentes en el momento en que se ejecuta.
 - **FR-008**: El sistema DEBE rechazar una consulta cuyo rango de fechas sea inválido (fecha de fin anterior a la fecha de inicio), sin devolver un resultado parcial.
-- **FR-009**: El resultado de la consulta DEBE identificar, para cada noche, la tarifa base de origen, la temporada aplicada y la tarifa dinámica resultante, para que Módulo 2 pueda trazar cómo se compuso el valor de hospedaje que reportará en el check-out.
-- **FR-010**: El sistema DEBE restringir el acceso a `Consultar tarifa dinámica` exclusivamente al actor Módulo 2.
+- **FR-009**: El resultado de la consulta DEBE identificar, para cada noche, la tarifa base de origen, la temporada aplicada y la tarifa dinámica resultante, para que el actor consultante pueda trazar cómo se compuso ese valor (en el caso de Módulo 2, para el valor de hospedaje que reportará en el check-out).
+- **FR-010**: El sistema DEBE restringir el acceso a `Consultar tarifa dinámica` exclusivamente a los actores autorizados (`Módulo 2`, `OTA`).
+- **FR-011**: El sistema NO DEBE aplicar restricciones de visibilidad por actor sobre el resultado de esta consulta; la tarifa dinámica de una fecha y tipo de habitación es la misma para cualquier actor autorizado que la consulte, dado que no es información específica de una reserva ni de un canal en particular.
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
 - **Tarifa dinámica**: Valor resultante de ajustar la tarifa base según la temporada aplicable a una noche específica; se calcula en el momento de la consulta, no se almacena como valor independiente.
-- **Consulta de tarifa**: Solicitud de Módulo 2 identificando el tipo de habitación y una fecha o rango de fechas.
+- **Consulta de tarifa**: Solicitud de un actor autorizado (`Módulo 2`, `OTA`) identificando el tipo de habitación y una fecha o rango de fechas.
 - **Resultado por noche**: Tarifa base de origen, temporada aplicada y tarifa dinámica resultante para una noche específica dentro del rango consultado.
 
 ### Reglas de negocio
 
 - **BR-001**: La tarifa dinámica es siempre una función de la tarifa base vigente en Módulo 1 y la regla de temporada vigente administrada por el Administrador en el momento de la consulta; no es un valor almacenado de forma independiente.
-- **BR-002**: El acceso a `Consultar tarifa dinámica` está reservado a Módulo 2, único actor externo con la necesidad de calcular el valor de hospedaje de una estancia antes de reportarlo en el evento de check-out.
+- **BR-002**: El acceso a `Consultar tarifa dinámica` está reservado a los actores autorizados `Módulo 2` (que la necesita para calcular el valor de hospedaje antes de reportarlo en el evento de check-out) y `OTA` (que la necesita para mantener paridad de precios con su propio canal).
 - **BR-003**: Cada noche de una estancia se valora con la temporada que corresponde a esa fecha específica; una estancia que abarca más de una temporada nunca se homogeniza a una sola.
 - **BR-004**: `Consultar tarifa dinámica` es una operación exclusivamente de lectura: no crea ni modifica la tarifa base, la clasificación de temporada, ni ningún registro de liquidación o factura.
+- **BR-005**: A diferencia de `Consultar liquidación`, este caso de uso no segmenta el resultado por actor: la tarifa dinámica de una fecha y tipo de habitación es pública entre los actores autorizados, no un dato privado de una reserva o canal.
 
 ## Requisitos no funcionales
 
@@ -97,4 +121,5 @@ Como Módulo 2, quiero consultar la tarifa dinámica de cada noche dentro de un 
 - **SC-002**: El 100% de las estancias que cruzan más de una temporada reciben el valor correcto por cada noche, verificable sumando manualmente.
 - **SC-003**: El 0% de las consultas devuelve una tarifa dinámica cuando Módulo 1 no reporta una tarifa base válida.
 - **SC-004**: El 100% de las consultas con un rango de fechas inválido son rechazadas sin devolver un resultado parcial.
-- **SC-005**: El 100% de los accesos a `Consultar tarifa dinámica` quedan restringidos al actor Módulo 2.
+- **SC-005**: El 100% de los accesos a `Consultar tarifa dinámica` quedan restringidos a los actores autorizados (`Módulo 2`, `OTA`).
+- **SC-006**: El 100% de las consultas idénticas (misma fecha, mismo tipo de habitación, misma configuración vigente) devuelven el mismo resultado sin importar cuál actor autorizado las ejecute.
