@@ -26,7 +26,7 @@ Como sistema de gestión hotelera, quiero generar la liquidación `Final` de una
 
 3. **Escenario**: Reenvío del evento de check-out
    - **Dado** que el check-out de una estancia ya generó una liquidación `Final`
-   - **Cuando** Módulo 2 reenvía el mismo evento de check-out (por ejemplo, por un reintento de red)
+   - **Cuando** Módulo 1 reenvía el mismo evento de check-out (por ejemplo, por un reintento de red)
    - **Entonces** el sistema responde de forma idempotente devolviendo la liquidación `Final` existente, sin crear un duplicado
 
 ---
@@ -92,10 +92,10 @@ Como sistema de gestión hotelera, quiero garantizar que ninguna estancia tenga 
 ### Requisitos funcionales
 
 - **FR-001**: El sistema DEBE generar la liquidación de una estancia únicamente cuando sea invocado (`<<include>>`) por `Registrar Check-out`; ningún otro caso de uso ni actor externo puede invocarlo directamente, y sin que ese evento haya ocurrido no debe existir liquidación para la estancia.
-- **FR-002**: El sistema DEBE recibir, como parte del evento de check-out emitido por Módulo 2, el valor de hospedaje ya calculado (sobre las noches efectivamente transcurridas) y el canal de origen de la reserva; `Generar liquidación` no calcula ni recalcula la tarifa dinámica por su cuenta, dado que esa responsabilidad no está incluida (`<<include>>`) por este caso de uso en el diagrama vigente.
+- **FR-002**: El sistema DEBE recibir, como parte del evento de check-out emitido por Módulo 1, el valor de hospedaje ya calculado (sobre las noches efectivamente transcurridas) y el canal de origen de la reserva; `Generar liquidación` no calcula ni recalcula la tarifa dinámica por su cuenta, dado que esa responsabilidad no está incluida (`<<include>>`) por este caso de uso en el diagrama vigente.
 - **FR-003**: El sistema DEBE identificar el canal de origen de la reserva (directo o intermediario OTA) a partir del evento de check-out, antes de determinar si corresponde un descuento de comisión.
 - **FR-004**: El sistema DEBE asumir canal directo cuando el evento de check-out no reporte un canal de origen.
-- **FR-005**: El sistema DEBE obtener el porcentaje de comisión pactado directamente del evento de check-out emitido por Módulo 2 cuando el canal de origen sea un intermediario OTA; el sistema no mantiene una tabla propia de convenios de comisión por OTA ni invoca un caso de uso de consulta independiente para obtenerlo.
+- **FR-005**: El sistema DEBE obtener el porcentaje de comisión pactado directamente del evento de check-out emitido por Módulo 1 cuando el canal de origen sea un intermediario OTA; el sistema no mantiene una tabla propia de convenios de comisión por OTA ni invoca un caso de uso de consulta independiente para obtenerlo.
 - **FR-006**: El sistema DEBE descontar del valor de hospedaje la comisión correspondiente cuando la reserva provenga de un intermediario OTA con un porcentaje válido reportado.
 - **FR-007**: El sistema NO DEBE aplicar ningún descuento de comisión cuando la reserva sea de canal directo o no tenga canal de origen registrado.
 - **FR-008**: El sistema DEBE calcular el ingreso neto de la liquidación como el valor de hospedaje menos la comisión OTA aplicable, cuando corresponda.
@@ -114,9 +114,9 @@ Como sistema de gestión hotelera, quiero garantizar que ninguna estancia tenga 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
 - **Liquidación**: Resultado del proceso de liquidación de una estancia; existe únicamente con estado `Final`, e incluye valor de hospedaje, comisión OTA aplicada (si corresponde), ingreso neto, y la factura definitiva asociada generada mediante el include obligatorio a `Generar factura final`.
-- **Estancia/Reserva**: Registro proveniente del Módulo 2, identificado por el evento de check-out, con tipo de habitación y canal de origen.
+- **Estancia/Reserva**: Registro identificado por el evento de check-out, con tipo de habitación y canal de origen.
 - **Canal de origen**: Clasificación de la reserva como directo o como intermediario OTA, con su código de confirmación externo cuando aplica; reportado en el evento de check-out.
-- **Comisión OTA**: Porcentaje pactado con un intermediario, suministrado por Módulo 2 como parte del evento de check-out.
+- **Comisión OTA**: Porcentaje pactado con un intermediario, suministrado por Módulo 1 como parte del evento de check-out.
 - **Valor de hospedaje**: Monto ya calculado (sobre las noches efectivamente transcurridas) que llega como dato de entrada en el evento de check-out; `Generar liquidación` lo usa como base sin recalcularlo.
 - **Ingreso neto**: Valor de hospedaje menos la comisión OTA aplicable, sin incluir impuestos.
 - **Detalle de liquidación**: Desglose que identifica el valor de hospedaje, el canal, la comisión aplicada y el ingreso neto de una liquidación específica.
@@ -132,7 +132,7 @@ Como sistema de gestión hotelera, quiero garantizar que ninguna estancia tenga 
 - **BR-007**: Un dato obligatorio faltante o inconsistente en el evento de check-out debe detener la generación de la liquidación, sin producir un ingreso neto estimado o parcial.
 - **BR-008**: La disponibilidad, ocupación o bloqueo de la habitación no forma parte de la liquidación y no se modifica al generarla.
 - **BR-009**: Toda liquidación generada incluye (`<<include>>`) obligatoriamente a `Generar factura final`; no existe una liquidación `Final` sin su factura fiscal definitiva asociada.
-- **BR-010**: El canal de origen y el porcentaje de comisión de la reserva son los reportados por Módulo 2 en el evento de check-out; Módulo 3 no los gestiona, corrige ni vuelve a consultar de forma independiente, ya que esa información es propiedad exclusiva de Módulo 2.
+- **BR-010**: El canal de origen y el porcentaje de comisión de la reserva son los reportados por Módulo 1 en el evento de check-out; Módulo 3 no los gestiona, corrige ni vuelve a consultar de forma independiente, ya que esa información es propiedad de los módulos de origen.
 
 ## Requisitos no funcionales
 

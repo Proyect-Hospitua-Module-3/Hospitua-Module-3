@@ -116,7 +116,7 @@ Como Administrador, quiero obtener un resumen consolidado de las facturas de un 
 - **BR-002**: El acceso a `Gestionar facturación` está reservado al actor `Administrador`.
 - **BR-003**: Solo existen facturas para estancias que llegaron a check-out; una estancia cancelada antes del check-out nunca tuvo liquidación ni factura, por lo que no aparece en ningún resultado.
 - **BR-004**: El desglose de cada factura mostrado debe reflejar fielmente el producido por `Generar factura final`, sin reinterpretarlo ni derivarlo por separado.
-- **BR-005**: `Gestionar facturación` consulta el mismo universo de facturas que ya expone `Consultar liquidación` a `Módulo 2` y `OTA`, pero añade búsqueda y filtrado de uso administrativo; no constituye una fuente de datos distinta ni duplicada.
+- **BR-005**: `Gestionar facturación` consulta el mismo universo de facturas que ya expone `Consultar liquidación` a `Módulo 1`, `Módulo 2` y `OTA`, pero añade búsqueda y filtrado de uso administrativo; no constituye una fuente de datos distinta ni duplicada.
 
 ## Requisitos no funcionales
 
