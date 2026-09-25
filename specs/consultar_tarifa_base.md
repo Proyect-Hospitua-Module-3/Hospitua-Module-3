@@ -6,7 +6,7 @@
 
 ### Historia de usuario 1 - Obtener la tarifa base vigente para un tipo de habitación (Prioridad: P1)
 
-Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consultar la tarifa base vigente de un tipo de habitación para una fecha específica, para usarla como valor inicial del precio de hospedaje que ofrece "Consultar tarifa dinámica".
+Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consultar la tarifa base vigente de un tipo de habitación para una fecha específica, para usarla como valor inicial del precio de hospedaje.
 
 **Por qué esta prioridad**: La tarifa base es el punto de partida de todo cálculo de hospedaje. Sin una consulta confiable a esta información (propiedad del Módulo 1), ningún cálculo de tarifa dinámica ni liquidación puede completarse.
 
@@ -16,7 +16,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consul
 
 1. **Escenario**: Consulta exitosa de tarifa base vigente
 	- **Dado** que el tipo de habitación solicitado tiene una tarifa base configurada en `Modulo1`, vigente para la fecha consultada
-	- **Cuando** `Consultar tarifa dinámica` invoca "Consultar tarifa base"
+	- **Cuando** el sistema consulta la tarifa base al actor `Modulo1`
 	- **Entonces** el sistema devuelve el valor de la tarifa y el período de vigencia correspondiente, sin modificar ni almacenar una copia independiente de esa configuración.
 
 2. **Escenario**: Consulta para una estancia que cruza un cambio de tarifa base
@@ -31,7 +31,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consul
 - **Tipo de habitación inexistente o inválido**: Si el identificador de tipo de habitación no corresponde a ningún registro conocido, el sistema debe rechazar la consulta en vez de asumir un tipo por defecto.
 - **Períodos de vigencia solapados para el mismo tipo de habitación**: Si `Modulo1` reporta más de una tarifa base vigente simultáneamente para la misma fecha, el sistema debe rechazar la consulta por ambigüedad, sin elegir arbitrariamente una de las dos.
 - **Tarifa base con valor no válido**: Si el valor reportado es negativo, cero, o no numérico, el sistema debe rechazar la consulta en vez de propagarlo al cálculo de tarifa dinámica.
-- **Cambio de tarifa base durante una estancia ya liquidada en el check-in**: Un cambio posterior en `Modulo1` no debe alterar retroactivamente un cálculo ya persistido; la consulta solo afecta cálculos nuevos a partir del cambio.
+- **Cambio de tarifa base después de una consulta ya utilizada**: Un cambio posterior en `Modulo1` no debe alterar retroactivamente un cálculo que ya se haya realizado con el valor previamente consultado; la consulta solo afecta cálculos nuevos a partir del cambio.
 - **Indisponibilidad técnica de Módulo 1 al momento de la consulta**: Si la consulta hacia `Modulo1` falla por un problema de comunicación (no porque falte la tarifa, sino porque el módulo no responde), el sistema debe detener el cálculo que la invoca sin asumir que la tarifa no existe ni sustituirla por un valor supuesto.
 
 ## Requisitos *(obligatorio)*
@@ -56,7 +56,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consul
 
 ### Reglas de negocio
 
-- **BR-001**: Frontera arquitectónica: la tarifa base es propiedad y responsabilidad de `Modulo1`. El Módulo 3 únicamente la consulta como insumo interno del cálculo de precio que expone `Consultar tarifa dinámica`; no la configura, corrige ni almacena de forma independiente.
+- **BR-001**: Frontera arquitectónica: la tarifa base es propiedad y responsabilidad de `Modulo1`. El Módulo 3 únicamente la consulta como insumo interno de su propio cálculo de precio; no la configura, corrige ni almacena de forma independiente.
 - **BR-002**: Unicidad por fecha: cada tipo de habitación debe tener, como máximo, una tarifa base vigente por fecha; una consulta que detecte más de una debe rechazarse en vez de elegir una arbitrariamente.
 - **BR-003**: Ausencia de valores por defecto: la falta de una tarifa base vigente detiene el cálculo que la invoca; el sistema no sustituye el valor faltante por cero ni por un valor supuesto.
 
