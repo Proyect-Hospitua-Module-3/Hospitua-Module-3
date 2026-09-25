@@ -26,31 +26,31 @@ Como OTA (Booking, Airbnb, Expedia), quiero consultar la liquidación de una res
 
 ---
 
-### Historia de usuario 2 - Módulo 1 y Módulo 2 confirman el resultado financiero tras el check-out (Prioridad: P1)
+### Historia de usuario 2 - Módulo 1 confirma el resultado financiero tras el check-out (Prioridad: P1)
 
-Como Módulo 1 (que emite el evento de check-out) o Módulo 2 (módulo de reservas), quiero consultar la liquidación de una estancia después del check-out, para confirmar que Módulo 3 procesó el evento correctamente y poder reflejar el monto correspondiente a recepción o al huésped.
+Como Módulo 1 (que emite el evento de check-out), quiero consultar la liquidación de una estancia después del check-out, para confirmar que Módulo 3 procesó el evento correctamente y poder reflejar el monto correspondiente a recepción o al huésped.
 
 **Por qué esta prioridad**: Módulo 1 emite el evento que dispara `Generar liquidación` de forma asíncrona; sin una forma de consultar el resultado, no puede cerrar su propio flujo operativo con la certeza de que la liquidación se generó.
 
-**Prueba independiente**: Se puede emitir el evento de check-out para una estancia y verificar que, al consultarla inmediatamente después como Módulo 1 o Módulo 2, el resultado refleje exactamente el desglose producido por ese evento.
+**Prueba independiente**: Se puede emitir el evento de check-out para una estancia y verificar que, al consultarla inmediatamente después como Módulo 1, el resultado refleje exactamente el desglose producido por ese evento.
 
 **Escenarios de aceptación**:
 
 1. **Escenario**: Confirmación tras un check-out
    - **Dado** que Módulo 1 acaba de emitir el evento `Registrar Check-out` para una estancia
-   - **Cuando** Módulo 1 o Módulo 2 consulta la liquidación de esa estancia
+   - **Cuando** Módulo 1 consulta la liquidación de esa estancia
    - **Entonces** el sistema devuelve la liquidación `Final` recién generada, con el hospedaje, la comisión (si aplica) y el IVA calculados en ese check-out
 
 2. **Escenario**: Consulta de una estancia sin check-out
    - **Dado** que una estancia todavía no ha tenido check-out
-   - **Cuando** Módulo 1 o Módulo 2 consulta su liquidación
+   - **Cuando** Módulo 1 consulta su liquidación
    - **Entonces** el sistema informa explícitamente que aún no existe liquidación para esa estancia
 
 ---
 
 ### Historia de usuario 3 - La consulta nunca deja ambigüedad entre "sin liquidación" y "liquidación `Final`" (Prioridad: P2)
 
-Como actor autorizado (Módulo 1, Módulo 2 u OTA), quiero que cada respuesta de `Consultar liquidación` indique con claridad si la liquidación ya existe (`Final`) o si la estancia todavía no ha llegado al check-out, para no tratar por error la ausencia de datos como un ingreso neto en cero.
+Como actor autorizado (Módulo 1 u OTA), quiero que cada respuesta de `Consultar liquidación` indique con claridad si la liquidación ya existe (`Final`) o si la estancia todavía no ha llegado al check-out, para no tratar por error la ausencia de datos como un ingreso neto en cero.
 
 **Por qué esta prioridad**: Complementa a HU1 y HU2 dándoles una garantía adicional de interpretación correcta; no es indispensable para obtener el valor en sí, pero previene errores de conciliación o de cobro, por lo que su prioridad es menor.
 
@@ -81,7 +81,7 @@ Como actor autorizado (Módulo 1, Módulo 2 u OTA), quiero que cada respuesta de
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE permitir a los actores autorizados (`Módulo 1`, `Módulo 2`, `OTA`) consultar la liquidación de una estancia identificada por su reserva/estancia.
+- **FR-001**: El sistema DEBE permitir a los actores autorizados (`Módulo 1`, `OTA`) consultar la liquidación de una estancia identificada por su reserva/estancia.
 - **FR-002**: El sistema DEBE devolver, cuando la liquidación exista, el desglose completo: valor de hospedaje, canal de origen, porcentaje y valor de la comisión OTA (si aplica), IVA y el ingreso neto resultante.
 - **FR-003**: El sistema DEBE incluir en la respuesta la factura definitiva asociada, tal como fue generada por `Generar factura final`, sin necesidad de recalcularla.
 - **FR-004**: El sistema NO DEBE recalcular la liquidación ni ninguno de sus componentes como efecto de una consulta; `Consultar liquidación` es una operación exclusivamente de lectura.
@@ -92,20 +92,20 @@ Como actor autorizado (Módulo 1, Módulo 2 u OTA), quiero que cada respuesta de
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
-- **Consulta de liquidación**: Solicitud de un actor autorizado (`Módulo 1`, `Módulo 2`, `OTA`) para obtener el desglose de la liquidación `Final` de una estancia, o la confirmación explícita de que aún no existe.
+- **Consulta de liquidación**: Solicitud de un actor autorizado (`Módulo 1`, `OTA`) para obtener el desglose de la liquidación `Final` de una estancia, o la confirmación explícita de que aún no existe.
 - **Resultado de consulta**: Desglose de hospedaje, comisión OTA, IVA e ingreso neto, junto con la factura definitiva asociada, cuando la liquidación existe; o una indicación explícita de ausencia, cuando no.
-- **Ámbito de acceso por actor**: Regla que determina qué liquidaciones puede ver cada actor; `Módulo 1` y `Módulo 2` acceden a las de las estancias que gestionan, `OTA` únicamente a las de las reservas que ella misma intermedió.
+- **Ámbito de acceso por actor**: Regla que determina qué liquidaciones puede ver cada actor; `Módulo 1` accede a las de las estancias que gestiona, `OTA` únicamente a las de las reservas que ella misma intermedió.
 
 ### Reglas de negocio
 
 - **BR-001**: `Consultar liquidación` es una operación exclusivamente de lectura; no crea, modifica ni recalcula la liquidación ni su factura asociada.
-- **BR-002**: El acceso está restringido a los actores autorizados `Módulo 1`, `Módulo 2` y `OTA`; una OTA solo accede a las liquidaciones de las reservas que ella misma intermedió.
+- **BR-002**: El acceso está restringido a los actores autorizados `Módulo 1` y `OTA`; una OTA solo accede a las liquidaciones de las reservas que ella misma intermedió.
 - **BR-003**: El desglose devuelto debe reflejar fielmente el producido por `Generar liquidación` y `Generar factura final`, sin reinterpretarlo.
 - **BR-004**: Una liquidación inexistente nunca se representa como un resultado con valores en cero; su ausencia se informa de forma explícita.
 
 ## Requisitos no funcionales
 
-- **NFR-001**: Rendimiento: la consulta debe responder en un tiempo adecuado para no bloquear la interacción de Módulo 1 o Módulo 2 con recepción ni la conciliación periódica de la OTA.
+- **NFR-001**: Rendimiento: la consulta debe responder en un tiempo adecuado para no bloquear la interacción de Módulo 1 con recepción ni la conciliación periódica de la OTA.
 - **NFR-002**: Determinismo: para la misma liquidación, la consulta debe devolver siempre el mismo resultado.
 - **NFR-003**: Confidencialidad: ninguna OTA debe poder acceder a liquidaciones de reservas de canal directo o de otra OTA.
 - **NFR-004**: Privacidad: el resultado no debe exponer información personal del huésped ni datos migratorios que no sean necesarios para el proceso financiero.
