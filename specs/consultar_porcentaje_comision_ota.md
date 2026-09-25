@@ -8,7 +8,7 @@
 
 Como Módulo 2 (módulo de reservas), quiero consultar el porcentaje de comisión que quedó registrado en la liquidación `Final` más reciente de una OTA determinada, para tener una referencia histórica antes de reportar el porcentaje de esa misma OTA en un nuevo evento de check-out.
 
-**Por qué esta prioridad**: `Generar liquidación` obtiene el porcentaje de comisión exclusivamente del evento de check-out que emite Módulo 2, sin mantener una tabla propia de convenios ni invocar una consulta independiente para obtenerlo (FR-005 y BR-010 de `generar_liquidacion.md`). El dato pactado sigue siendo propiedad de Módulo 2; esta consulta solo ofrece una referencia histórica de lo ya liquidado, útil para que Módulo 2 detecte inconsistencias antes de emitir un nuevo check-out.
+**Por qué esta prioridad**: `Generar liquidación` obtiene el porcentaje de comisión exclusivamente del evento de check-out que dispara Módulo 1 con el dato reportado por Módulo 2, sin mantener una tabla propia de convenios ni invocar una consulta independiente para obtenerlo (FR-005 y BR-010 de `generar_liquidacion.md`). El dato pactado sigue siendo propiedad de Módulo 2; esta consulta solo ofrece una referencia histórica de lo ya liquidado, útil para que Módulo 2 detecte inconsistencias antes de reportar el porcentaje en un nuevo check-out.
 
 **Prueba independiente**: Se puede generar la liquidación `Final` de una reserva OTA con un porcentaje de comisión conocido y, luego, consultar esa misma OTA para verificar que el resultado muestra ese porcentaje y la fecha de la liquidación de la que proviene.
 
