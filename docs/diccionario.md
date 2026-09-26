@@ -15,7 +15,7 @@ Glosario compartido por los tres módulos del proyecto, para que todos usemos lo
 - **Módulo 1 (Gestión de Habitaciones e Inventario de Aforo)**: Digitaliza la infraestructura física del hotel y controla la disponibilidad en tiempo real.
 - **Módulo 1 (Gestión de Habitaciones e Inventario de Aforo, Check-In y Check-Out)**: Digitaliza la infraestructura física del hotel, controla la disponibilidad en tiempo real, y gestiona directamente la admisión y salida física de los huéspedes.
 - **Módulo 2 (Operación de Reservas y Cumplimiento Legal)**: Gestiona el ciclo de vida de la reserva, el origen de la reserva y el cumplimiento migratorio (SIRE). Es la fuente de los datos de reserva que consumen Módulo 1 y Módulo 3, y recibe de Módulo 1 las notificaciones de Check-In/Check-Out para actualizar el estado de sus reservas.
-- **OTA (Booking, Airbnb, Expedia)**: Intermediario externo que origina reservas con comisión pactada. Aparece como dato del canal de la reserva en casi todos los casos de uso de Módulo 3, y como actor que consulta directamente en "Consultar liquidación".
+- **OTA (Booking, Airbnb, Expedia)**: Intermediario externo que origina reservas con comisión pactada. En Módulo 3 puede consultar tarifas dinámicas, liquidaciones y el porcentaje histórico registrado en sus propias liquidaciones; no configura ni modifica las comisiones.
 - **Huésped**: Persona que se aloja en una habitación durante una estancia.
 - **Responsable de facturación (rol)**: Forma en que varias historias de Módulo 3 nombran a quien necesita el ingreso neto, la comisión y el IVA correctamente reflejados para conciliar; no es un actor propio del diagrama, sino el Administrador actuando en su función de facturación.
 
@@ -26,15 +26,15 @@ Glosario compartido por los tres módulos del proyecto, para que todos usemos lo
 - **Tarifa base**: Valor regular de una habitación, usado como punto de partida del cálculo de tarifa dinámica (Módulo 3).
 - **Check-in / Check-out**: Eventos gestionados directamente por **Módulo 1**, ejecutados por el Recepcionista.
   - El **Check-In** transiciona la habitación de `Available` o `Reserved` a `Occupied`, de forma interna y síncrona. No genera ninguna liquidación ni interviene Módulo 3. Notifica de forma asíncrona a Módulo 2 para actualizar la reserva a `CHECKED_IN`.
-  - El **Check-Out** transiciona la habitación de `Occupied` a `PendingCleaning`, de forma interna y síncrona. Incluye el paso **"Consultar liquidación"**: envía a Módulo 3 las fechas reservadas y reales de la estancia para obtener la liquidación final, y notifica de forma asíncrona a Módulo 2 para actualizar la reserva a `CHECKED_OUT`.
+  - El **Check-Out** transiciona la habitación de `Occupied` a `PendingCleaning`, de forma interna y síncrona. Emite a Módulo 3 el evento **"Registrar Check-out"** con los datos de la estancia y, una vez procesado, puede consultar la liquidación resultante. También notifica de forma asíncrona a Módulo 2 para actualizar la reserva a `CHECKED_OUT`.
   - Ningún fallo de integración con Módulo 2 o Módulo 3 bloquea la transición física de la habitación en ninguno de los dos eventos.
 - **Estancia (Stay)**: Entidad que representa la ocupación física real de una habitación durante un período determinado. Se crea de forma síncrona al confirmar el Check-In y se cierra al registrar el Check-Out. Atributos clave: ID único, referencia de reserva (`reservationRef`), identificador de habitación (`roomId`), fecha/hora de llegada real (`checkInTime`), fecha/hora de salida real (`checkOutTime`), recepcionista de check-in (`receptionistIdCheckIn`) y recepcionista de check-out (`receptionistIdCheckOut`).
 - **Ocupante (RoomGuest)**: Entidad inmutable de Módulo 1 que representa a cada persona físicamente alojada en la habitación durante la estancia. Se crea al confirmar el Check-In y no puede modificarse posteriormente. Atributos: nombre completo, tipo de documento de identidad, número de documento y nacionalidad. Vinculada a la Estancia.
 - **Reserva (Reservation) — referencia desde Módulo 1**: Registro contractual que origina una estancia, administrado por Módulo 2 y consultado de forma de solo lectura por Módulo 1. Atributos relevantes para Módulo 1: referencia de reserva (`reservationRef`), fecha de inicio (`startDate`), fecha de fin (`endDate`), estado (`status`), habitación asignada (`assignedRoomId`), datos del huésped titular (`guestRef`, nombre, documento, nacionalidad).
 - **ReservationQuery**: Objeto conceptual de búsqueda que encapsula los criterios con los que Módulo 1 consulta reservas a Módulo 2: código de reserva (`reservationRef`), número de documento del huésped (`documentNumber`) o nombre completo del titular (`fullName`).
 - **ReservationSummary**: Estructura contractual devuelta por Módulo 2 como respuesta a una consulta de reserva. Contiene: `reservationRef`, datos del huésped titular (`guestRef`, `fullName`, `documentNumber`, `documentType`, `nationality`), habitación asignada (`roomId`), fechas de estadía (`startDate`, `endDate`), canal de origen (`source`) y estado de la reserva (`status`).
-- **SettlementRequest**: Objeto conceptual que Módulo 1 envía a Módulo 3 al ejecutar "Consultar liquidación" durante el Check-Out. Incluye los parámetros de la estancia: `reservationRef`, `eventType`, `startDate`, `endDate`, `checkInTime`, `checkOutTime`, `source` y `roomId`.
-- **SettlementSummary**: Estructura informativa de solo lectura devuelta por Módulo 3 como respuesta a la solicitud de liquidación. Contiene dos grupos: (1) **Resumen para el huésped**: valor del hospedaje (total ya calculado), IVA y total a pagar; y (2) **Información de la operación**: canal de origen, porcentaje de comisión OTA (si aplica), valor de comisión OTA (si aplica), ingreso neto y factura definitiva asociada. Módulo 1 la presenta en recepción pero no recalcula ni modifica sus valores.
+- **CheckoutEvent**: Evento que Módulo 1 emite a Módulo 3 al registrar el Check-Out. Identifica la reserva o estancia, tipo de habitación, fechas de entrada y salida, canal de origen y datos tributarios mínimos del cliente. No contiene ni transporta datos migratorios.
+- **SettlementSummary**: Estructura informativa de solo lectura devuelta por Módulo 3 como resultado de una consulta posterior al Check-Out. Contiene el valor de hospedaje, canal de origen, comisión OTA (si aplica), ingreso neto, IVA y factura definitiva asociada. Módulo 1 la presenta en recepción, pero no recalcula ni modifica sus valores.
 
 ## Módulo 2: Operación de Reservas y Cumplimiento Legal
 
@@ -55,42 +55,45 @@ Glosario compartido por los tres módulos del proyecto, para que todos usemos lo
 
 ## Módulo 3: Facturación, Consumos y Liquidación
 
+- **Evento Registrar Check-out**: Único evento de una estancia que dispara el procesamiento financiero de Módulo 3. Su recepción válida genera una liquidación `Final` y, si existen datos tributarios mínimos, una factura fiscal definitiva.
+
 ### Tarifas
 
-- **Temporada (baja / regular / alta)**: Clasificación de una fecha según reglas de estacionalidad, en una de tres categorías — temporada baja, regular o alta — que determina el sentido del ajuste dinámico aplicado sobre la tarifa base (alta = incremento, baja = decremento, regular = ajuste neutro).
-- **Tarifa dinámica**: Resultado de ajustar la tarifa base según la regla de temporada aplicable a cada noche.
-- **Valor de hospedaje (bruto)**: Suma de las tarifas dinámicas de todas las noches de la estancia, antes de descontar comisión OTA. Es la base que la liquidación reutiliza sin recalcular.
+- **Temporada (baja / regular / alta)**: Clasificación de una fecha en el calendario anual del hotel. Alta incrementa la tarifa base, baja la reduce y regular aplica un ajuste neutro. Una fecha sin clasificación explícita se trata como regular; los solapamientos son inconsistencias que deben señalarse.
+- **Regla de temporada**: Ajuste vigente que el Administrador configura para una temporada. Modifica el cálculo de la tarifa dinámica, pero nunca la tarifa base propiedad del Módulo 1.
+- **Tarifa dinámica**: Resultado calculado por noche al ajustar la tarifa base vigente consultada a Módulo 1 según la regla de temporada vigente en Módulo 3. No se persiste como tarifa independiente.
+- **Valor de hospedaje (bruto)**: Suma de las tarifas dinámicas de todas las noches, con entrada inclusive y salida exclusive, antes de descontar comisión OTA. Es el valor que se usa en la liquidación y en la factura.
 
 ### Comisión OTA
 
-- **Comisión OTA**: Porcentaje pactado con un intermediario, aplicado sobre el valor de hospedaje cuando la reserva proviene de un canal OTA.
-- **Fórmula de comisión**: `- (Valor Hospedaje × % Comisión)`. Solo se aplica si el canal es OTA; en Canal Directo o sin canal registrado, la comisión es siempre cero.
+- **Comisión OTA**: Porcentaje pactado con un intermediario y suministrado por Módulo 2 en el evento de Check-Out. Módulo 3 lo registra y aplica, pero no administra el convenio.
+- **Valor de comisión OTA**: `Valor Hospedaje × % Comisión`. Reduce el ingreso neto y se muestra como referencia informativa en la factura; solo aplica a reservas OTA. En Canal Directo o sin canal registrado es cero.
+- **Porcentaje histórico de comisión OTA**: Porcentaje aplicado en la liquidación `Final` más reciente de una OTA. Es un dato referencial de solo lectura, no una tarifa contractual ni la fuente del cálculo de una nueva liquidación.
 
 ### Impuestos
 
-- **IVA**: Impuesto al Valor Agregado, calculado sobre el valor de hospedaje (nunca sobre la comisión OTA descontada). No forma parte del ingreso neto de la liquidación; se incorpora en la generación de la factura final.
-- **Base gravable**: Valor de hospedaje (original o de noches adicionales por extensión) sobre el que se calcula el IVA.
-- **Porcentaje de IVA vigente**: Tasa configurada por el Administrador; se fija en el check-in para el hospedaje original y solo cambia para noches adicionales de una extensión.
+- **IVA**: Impuesto al Valor Agregado calculado una sola vez sobre el valor de hospedaje bruto al emitir la factura definitiva. No se calcula sobre la comisión OTA ni forma parte del ingreso neto.
+- **Base gravable**: Valor de hospedaje bruto de la estancia sobre el que se calcula el IVA.
+- **Porcentaje de IVA vigente**: Tasa única configurada por el Administrador y aplicada al momento de emitir cada factura. La tasa aplicada queda registrada y los cambios posteriores no afectan facturas emitidas.
 
 ### Liquidación
 
-- **Liquidación**: Resultado del proceso de liquidar una estancia. Incluye estado, valor de hospedaje, comisión OTA aplicada (si corresponde) e ingreso neto. Solo existe a partir de un evento de un check-out.
+- **Liquidación**: Resultado financiero único de una estancia, generado por el Check-Out. Siempre se crea en estado `Final` e incluye valor de hospedaje bruto, canal, comisión OTA aplicada (si corresponde) e ingreso neto; no incluye IVA.
 - **Ingreso neto**: Valor de hospedaje menos la comisión OTA aplicable, sin incluir impuestos. Es el valor que reutiliza la generación de la factura final.
 - **Detalle / Desglose de liquidación**: Desglose que identifica el valor de hospedaje, el canal, la comisión aplicada y el ingreso neto de una liquidación específica.
 
 ### Factura
 
-- **Prefactura**: Documento en borrador generado al check-in; sin numeración oficial, mutable mientras la liquidación se mantenga en estado `Preliminary`; no es un documento fiscal válido ante terceros.
-- **Factura fiscal definitiva**: Documento formal generado al check-out; con numeración consecutiva oficial, inmutable una vez emitida.
-- **Numeración consecutiva oficial**: Secuencia única y ordenada de números asignados exclusivamente a facturas definitivas; nunca a prefacturas.
+- **Factura fiscal definitiva**: Único documento de factura del módulo, emitido después de una liquidación `Final` cuando existen los datos tributarios mínimos del cliente. Tiene numeración consecutiva oficial y es inmutable una vez emitida.
+- **Numeración consecutiva oficial**: Secuencia única y ordenada de números asignados una sola vez a facturas definitivas, incluso ante reintentos concurrentes.
 - **Cliente responsable de facturación**: Datos tributarios mínimos (nombre o razón social, documento fiscal) requeridos para emitir una factura definitiva.
-- **Desglose facturable**: Hospedaje, comisión OTA (solo como referencia informativa, nunca como cargo al huésped), IVA y total, expuestos en cada factura.
+- **Desglose facturable**: Hospedaje bruto, comisión OTA (referencia informativa, nunca cargo al huésped), ingreso neto, IVA y total. El total a cobrar es hospedaje bruto más IVA.
 
 ### Gestión y consulta
 
-- **Consulta de liquidación**: Solicitud de un actor autorizado para obtener el desglose y estado de la liquidación de una estancia, sin recalcularla.
-- **Resultado de consulta**: Desglose de hospedaje, comisión OTA, IVA e ingreso neto, junto con el estado (`Preliminary`, `Final` o `Cancelled`) y la factura asociada, devuelto por una consulta de liquidación.
-- **Ámbito de acceso por actor**: Regla de visibilidad que limita a cada actor externo a ver únicamente las liquidaciones que le corresponden.
+- **Consulta de liquidación**: Solicitud de solo lectura de Módulo 1, Módulo 2 u OTA para obtener la liquidación `Final` de una estancia sin recalcularla. Antes del Check-Out informa explícitamente que no existe liquidación.
+- **Resultado de consulta**: Desglose de hospedaje, canal, comisión OTA, IVA e ingreso neto, junto con la factura definitiva asociada y el estado `Final`. Una liquidación inexistente no se representa con valores en cero.
+- **Ámbito de acceso por actor**: Módulo 1 y Módulo 2 consultan las estancias que gestionan; una OTA solo consulta sus propias reservas, identificadas por canal y código de confirmación externo.
 - **Criterio de búsqueda / Resultado de búsqueda**: Filtros (estancia, cliente, canal, rango de fechas, estado) y resultados que el Administrador usa para localizar facturas ya emitidas, sin crear ni modificar nada.
 - **Detalle de factura consultada**: Vista de solo lectura del desglose completo y la trazabilidad de una factura específica, idéntica a la generada originalmente.
-- **Resumen consolidado**: Agregado de totales de hospedaje, comisión OTA e IVA por canal de origen y por estado (`Final` o `Preliminary`), calculado sobre un rango de fechas, usado por el Administrador para conciliar con cada OTA.
+- **Resumen consolidado**: Agregado de facturas definitivas por canal de origen y rango de fechas, con totales de hospedaje, comisión OTA e IVA, usado por el Administrador para conciliar con cada OTA.
