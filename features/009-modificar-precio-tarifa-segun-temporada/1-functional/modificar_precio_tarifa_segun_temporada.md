@@ -81,7 +81,7 @@ Como Administrador, quiero revisar la regla de ajuste configurada por temporada 
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE permitir al actor `Administrador` modificar el ajuste aplicado a la tarifa base para cada temporada (`alta`, `regular`, `baja`).
+- **FR-001**: El sistema DEBE permitir al actor `Administrador` crear temporadas con nombre y color definidos libremente, eliminarlas excepto `Regular` y modificar el ajuste aplicado a la tarifa base para cada temporada configurada. `Regular` DEBE existir como temporada por defecto y no DEBE poder eliminarse.
 - **FR-002**: El sistema DEBE validar que el porcentaje o factor de ajuste sea numérico y esté dentro de un rango comercial razonable antes de aceptarlo como vigente.
 - **FR-003**: El sistema DEBE mantener una única regla vigente por temporada en cada periodo de validez, sin dejar reglas parcialmente aplicadas o contradictorias.
 - **FR-004**: El sistema DEBE registrar quién modificó la regla, cuándo y cuál era el valor anterior, para fines de trazabilidad y auditoría.
@@ -103,7 +103,7 @@ Como Administrador, quiero revisar la regla de ajuste configurada por temporada 
 - **BR-002**: La regla por temporada modifica el ajuste aplicado sobre la tarifa base, no la tarifa base en sí misma.
 - **BR-003**: Cuando una fecha no figura con clasificación explícita en el calendario anual, el sistema asume temporada regular para el cálculo.
 - **BR-004**: Un cambio en la regla de temporada afecta únicamente a nuevas consultas y cálculos futuros; no retroactiva resultados ya consolidados.
-- **BR-005**: La regla vigente debe ser única por temporada y por período de vigencia; no puede existir una configuración activa contradictoria para el mismo ámbito.
+- **BR-005**: Los períodos de temporadas base no pueden solaparse. Una excepción puntual prevalece sobre la temporada base para su fecha sin modificar el calendario base; si dos excepciones puntuales entran en conflicto para una misma fecha, el sistema debe rechazar la configuración. La regla vigente debe ser única por temporada y por período de vigencia.
 
 ## Requisitos no funcionales
 
