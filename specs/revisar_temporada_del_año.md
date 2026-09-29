@@ -82,7 +82,7 @@ Como Administrador, quiero revisar el calendario de temporadas antes de actualiz
 ### Requisitos funcionales
 
 - **FR-001**: El sistema DEBE permitir al actor `Administrador` revisar la clasificación estacional del año para cada fecha o rango de fechas.
-- **FR-002**: El sistema DEBE representar el calendario anual con la temporada aplicada a cada fecha, distinguiendo los periodos de temporada alta, regular y baja.
+- **FR-002**: El sistema DEBE representar el calendario anual con la temporada aplicada a cada fecha, usando la leyenda y los colores de las temporadas configuradas en `Temporadas y tarifas` en lugar de categorías fijas. Cuando exista una excepción puntual para una fecha, el calendario DEBE mostrarla con prioridad sobre la temporada base aplicable a esa fecha.
 - **FR-003**: El sistema DEBE considerar temporada regular por defecto cuando una fecha no tenga una clasificación explícita configurada.
 - **FR-004**: El sistema DEBE detectar conflictos de solapamiento o duplicidad en la clasificación anual y señalar la inconsistencia antes de usar la información en cálculo de tarifa.
 - **FR-005**: El sistema DEBE restringir la revisión del calendario anual exclusivamente al actor `Administrador`.
@@ -99,7 +99,7 @@ Como Administrador, quiero revisar el calendario de temporadas antes de actualiz
 ### Reglas de negocio
 
 - **BR-001**: Solo el Administrador puede revisar la temporada del año.
-- **BR-002**: La temporada puede ser `alta`, `regular` o `baja`, y cada fecha debe pertenecer a una sola clasificación válida.
+- **BR-002**: Las temporadas válidas y su leyenda y colores son los configurados en `Temporadas y tarifas`; no se limitan a las categorías `alta`, `regular` y `baja`. Para una fecha con una excepción puntual configurada, esta prevalece sobre la temporada base de esa fecha.
 - **BR-003**: Si una fecha no tiene una temporada configurada explícitamente, el sistema la toma como temporada regular para cálculos de tarifa.
 - **BR-004**: La clasificación anual es la fuente oficial de la temporada aplicable a cada fecha; debe ser coherente y no ambigua antes de usarse en la tarifa dinámica.
 - **BR-005**: Un rango de fechas inválido o una superposición de temporadas no puede resolverse implícitamente; debe ser rechazado o identificado como inconsistencia explícita.
