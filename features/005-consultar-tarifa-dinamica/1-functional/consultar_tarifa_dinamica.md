@@ -4,9 +4,9 @@
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
-### Historia de usuario 1 - Módulo 2 obtiene la tarifa dinámica de una noche para calcular el valor de hospedaje (Prioridad: P1)
+### Historia de usuario 1 - Módulo 2 obtiene la tarifa dinámica de una noche cotizada por habitación (Prioridad: P1)
 
-Como Módulo 2 (módulo de reservas), quiero consultar la tarifa dinámica de un tipo de habitación para una fecha específica, para poder calcular el valor de hospedaje que reportaré posteriormente en el evento de check-out a `Generar liquidación`.
+Como Módulo 2 (módulo de reservas), quiero consultar la tarifa dinámica de un tipo de habitación para una fecha específica, para obtener el valor de hospedaje cotizado por habitación que reportaré posteriormente en el evento de check-out a `Generar liquidación`.
 
 **Por qué esta prioridad**: `Generar liquidación` no calcula ni recalcula la tarifa dinámica por su cuenta (FR-002 de `generar_liquidacion.md`); el valor de hospedaje debe llegar ya calculado en el evento de check-out. Sin esta consulta, Módulo 2 no tendría forma de obtener ese valor de forma consistente con las reglas de temporada que administra Módulo 3.
 
@@ -52,7 +52,7 @@ Como Módulo 2, quiero consultar la tarifa dinámica de cada noche dentro de un 
 
 Como OTA (Booking, Airbnb, Expedia), quiero consultar la tarifa dinámica vigente de un tipo de habitación para una fecha o rango de fechas, para mantener actualizado el precio que publico en mi propio canal y evitar discrepancias con la tarifa real del hotel.
 
-**Por qué esta prioridad**: No es indispensable para que Módulo 2 pueda calcular el valor de hospedaje (eso ya lo cubren HU1 y HU2), pero es necesaria para que la OTA mantenga paridad de precios con el hotel sin depender de actualizaciones manuales por parte del Administrador.
+**Por qué esta prioridad**: No es indispensable para que Módulo 2 obtenga el valor de hospedaje cotizado por habitación (eso ya lo cubren HU1 y HU2), pero es necesaria para que la OTA mantenga paridad de precios con el hotel sin depender de actualizaciones manuales por parte del Administrador.
 
 **Prueba independiente**: Se puede configurar una tarifa base y una regla de temporada para una fecha, consultar la tarifa dinámica de esa fecha como OTA, y verificar que el resultado es idéntico al que obtendría Módulo 2 para la misma fecha y tipo de habitación.
 
@@ -88,7 +88,7 @@ Como OTA (Booking, Airbnb, Expedia), quiero consultar la tarifa dinámica vigent
 - **FR-006**: El sistema DEBE rechazar la consulta cuando Módulo 1 no reporte una tarifa base para la habitación o tipo de habitación solicitado, sin devolver una tarifa dinámica basada en un valor supuesto o en cero.
 - **FR-007**: El sistema NO DEBE persistir un valor fijo de "tarifa dinámica" para una fecha; cada consulta refleja la configuración de temporada y la tarifa base vigentes en el momento en que se ejecuta.
 - **FR-008**: El sistema DEBE rechazar una consulta cuyo rango de fechas sea inválido (fecha de fin anterior a la fecha de inicio), sin devolver un resultado parcial.
-- **FR-009**: El resultado de la consulta DEBE identificar, para cada noche, la tarifa base de origen, la temporada aplicada y la tarifa dinámica resultante, para que el actor consultante pueda trazar cómo se compuso ese valor (en el caso de Módulo 2, para el valor de hospedaje que reportará en el check-out).
+- **FR-009**: El resultado de la consulta DEBE identificar, para cada noche, la tarifa base de origen, la temporada aplicada y la tarifa dinámica resultante, para que el actor consultante pueda trazar cómo se compuso ese valor (en el caso de Módulo 2, para el valor de hospedaje cotizado por habitación que reportará en el check-out).
 - **FR-010**: El sistema DEBE restringir el acceso a `Consultar tarifa dinámica` exclusivamente a los actores autorizados (`Módulo 2`, `OTA`).
 - **FR-011**: El sistema NO DEBE aplicar restricciones de visibilidad por actor sobre el resultado de esta consulta; la tarifa dinámica de una fecha y tipo de habitación es la misma para cualquier actor autorizado que la consulte, dado que no es información específica de una reserva ni de un canal en particular.
 
@@ -101,7 +101,7 @@ Como OTA (Booking, Airbnb, Expedia), quiero consultar la tarifa dinámica vigent
 ### Reglas de negocio
 
 - **BR-001**: La tarifa dinámica es siempre una función de la tarifa base vigente en Módulo 1 y la regla de temporada vigente administrada por el Administrador en el momento de la consulta; no es un valor almacenado de forma independiente.
-- **BR-002**: El acceso a `Consultar tarifa dinámica` está reservado a los actores autorizados `Módulo 2` (que la necesita para calcular el valor de hospedaje antes de reportarlo en el evento de check-out) y `OTA` (que la necesita para mantener paridad de precios con su propio canal).
+- **BR-002**: El acceso a `Consultar tarifa dinámica` está reservado a los actores autorizados `Módulo 2` (que la necesita para obtener el valor de hospedaje cotizado por habitación antes de reportarlo en el evento de check-out) y `OTA` (que la necesita para mantener paridad de precios con su propio canal).
 - **BR-003**: Cada noche de una estancia se valora con la temporada que corresponde a esa fecha específica; una estancia que abarca más de una temporada nunca se homogeniza a una sola.
 - **BR-004**: `Consultar tarifa dinámica` es una operación exclusivamente de lectura: no crea ni modifica la tarifa base, la clasificación de temporada, ni ningún registro de liquidación o factura.
 - **BR-005**: A diferencia de `Consultar liquidación`, este caso de uso no segmenta el resultado por actor: la tarifa dinámica de una fecha y tipo de habitación es pública entre los actores autorizados, no un dato privado de una reserva o canal.
