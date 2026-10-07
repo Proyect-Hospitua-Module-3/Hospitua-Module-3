@@ -31,7 +31,11 @@ features/008-gestionar-facturacion/
 ├── 1-functional/
 │   └── gestionar_facturacion.md   # Spec funcional (fuente de verdad de negocio)
 └── 2-technical/
-    └── plan.md                    # Este archivo
+    ├── plan.md                    # Este archivo
+    └── contracts/                 # Contratos REST detallados (petición, reglas, respuesta, errores)
+        ├── GET-invoices.md            # HU1 Buscar facturas
+        ├── GET-invoices-id.md         # HU2 Detalle de factura
+        └── GET-invoices-summary.md    # HU3 Resumen por canal
 ```
 
 ### Source Code (repository root)
@@ -119,6 +123,7 @@ Todos con `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles('Administrador')` a n
 | `GET /invoices/summary` | `issuedFrom`, `issuedTo` (obligatorios) | `200` con `{ range, timezone, channels: [{ channel, otaId?, invoiceCount, totalLodging, totalOtaCommission, totalVat, totalInvoiced }] }` | HU3 — FR-011, 012, 013, 014 |
 | `GET /invoices/{invoiceId}` | `invoiceId` (UUID) | `200` con detalle completo; `404` si no existe | HU2 — FR-004, 005 |
 
+- El contrato completo de cada endpoint (headers, parámetros, reglas de procesamiento, campos de respuesta con ejemplos JSON y tabla de errores) está en [`contracts/`](contracts/): [GET-invoices.md](contracts/GET-invoices.md), [GET-invoices-id.md](contracts/GET-invoices-id.md) y [GET-invoices-summary.md](contracts/GET-invoices-summary.md).
 - La ruta `/invoices/summary` se declara antes de `/invoices/:invoiceId` en el controller para que no sea capturada como id.
 - No se declaran `POST`, `PUT`, `PATCH` ni `DELETE` sobre `/invoices*`; Nest devuelve `404`/`405` y una prueba de contrato lo verifica (FR-006, caso límite de modificación).
 
@@ -282,7 +287,7 @@ Sobre la tabla `invoice` creada por la feature 006. Los índices B-tree se decla
 - [ ] T033 Prueba de auditoría de solo lectura: snapshot de `invoice` y `settlement` antes y después de ejecutar las tres operaciones; deben ser idénticos (NFR-004, SC-004)
 - [ ] T034 Prueba de contrato: `POST`/`PUT`/`PATCH`/`DELETE` sobre `/invoices*` no están disponibles (FR-006)
 - [ ] T035 Medir con `EXPLAIN ANALYZE` las consultas de búsqueda y resumen sobre un volumen sembrado (~1M filas) y confirmar uso de índices (NFR-001, NFR-005)
-- [ ] T036 Documentar los tres endpoints en OpenAPI (`@nestjs/swagger`) con ejemplos y códigos de error
+- [ ] T036 Documentar los tres endpoints en OpenAPI (`@nestjs/swagger`) a partir de los contratos de `contracts/`, con los mismos ejemplos y códigos de error
 - [ ] T037 Logging estructurado de cada consulta (usuario, criterios usados, número de resultados), sin registrar datos personales del cliente
 
 ---
