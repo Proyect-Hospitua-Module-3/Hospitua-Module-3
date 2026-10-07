@@ -46,6 +46,11 @@ Como Módulo 2, quiero consultar la tarifa dinámica de cada noche dentro de un 
    - **Cuando** Módulo 2 ejecuta la consulta
    - **Entonces** el sistema rechaza la consulta y no devuelve ningún resultado parcial
 
+3. **Escenario**: Cotización al extender una estancia en curso
+   - **Dado** que una estancia en curso ya tiene una cotización previa identificada por su propio identificador
+   - **Cuando** Módulo 2 consulta la tarifa dinámica de las noches adicionales de una extensión, incluyendo el identificador de la cotización que extiende (`extendsQuoteId`)
+   - **Entonces** el sistema calcula la tarifa dinámica de esas noches adicionales de la misma forma que cualquier otra consulta, y vincula el resultado con la cotización original mediante `extendsQuoteId`, sin heredar ni recalcular los valores de esa cotización previa
+
 ---
 
 ### Historia de usuario 3 - La OTA verifica la tarifa dinámica vigente para mantener paridad de precios (Prioridad: P2)
@@ -72,7 +77,7 @@ Como OTA (Booking, Airbnb, Expedia), quiero consultar la tarifa dinámica vigent
 
 - La habitación o tipo de habitación consultado no tiene tarifa base registrada en Módulo 1: el sistema rechaza la consulta; no debe devolver una tarifa dinámica calculada sobre una tarifa base en cero o supuesta.
 - Módulo 1 no responde o no está disponible al consultar la tarifa base: la consulta de tarifa dinámica falla de forma explícita, sin devolver un resultado parcial ni estimado.
-- La regla de temporada o la tarifa base cambian después de que Módulo 2 ya utilizó una consulta anterior para construir parte del valor de hospedaje de una estancia en curso: `Consultar tarifa dinámica` siempre refleja la configuración vigente en el momento exacto de cada consulta; no re-evalúa ni corrige consultas anteriores ya realizadas.
+- La regla de temporada o la tarifa base cambian después de que Módulo 2 ya utilizó una consulta anterior para construir parte del valor de hospedaje de una estancia en curso: `Consultar tarifa dinámica` siempre refleja la configuración vigente en el momento exacto de cada consulta; no re-evalúa ni corrige consultas anteriores ya realizadas. Esto incluye la extensión de una estancia: la cotización de las noches adicionales (identificada mediante `extendsQuoteId`) se calcula con la configuración vigente al momento de esa nueva consulta, sin heredar ni recalcular la cotización original que extiende.
 - Consulta repetida para la misma habitación y fecha sin cambios de configuración: debe devolver siempre el mismo resultado.
 - Rango de fechas de una sola noche: se trata igual que cualquier rango, devolviendo el resultado de esa única noche.
 
@@ -91,11 +96,12 @@ Como OTA (Booking, Airbnb, Expedia), quiero consultar la tarifa dinámica vigent
 - **FR-009**: El resultado de la consulta DEBE identificar, para cada noche, la tarifa base de origen, la temporada aplicada y la tarifa dinámica resultante, para que el actor consultante pueda trazar cómo se compuso ese valor (en el caso de Módulo 2, para el valor de hospedaje cotizado por habitación que reportará en el check-out).
 - **FR-010**: El sistema DEBE restringir el acceso a `Consultar tarifa dinámica` exclusivamente a los actores autorizados (`Módulo 2`, `OTA`).
 - **FR-011**: El sistema NO DEBE aplicar restricciones de visibilidad por actor sobre el resultado de esta consulta; la tarifa dinámica de una fecha y tipo de habitación es la misma para cualquier actor autorizado que la consulte, dado que no es información específica de una reserva ni de un canal en particular.
+- **FR-012**: El sistema DEBE aceptar, de forma opcional, un identificador de cotización previa (`extendsQuoteId`) cuando la consulta corresponda a la extensión de una estancia en curso, para vincular la nueva cotización con la original; esta vinculación es exclusivamente de trazabilidad y no altera el cálculo de la tarifa dinámica de las noches adicionales.
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
 - **Tarifa dinámica**: Valor resultante de ajustar la tarifa base según la temporada aplicable a una noche específica; se calcula en el momento de la consulta, no se almacena como valor independiente.
-- **Consulta de tarifa**: Solicitud de un actor autorizado (`Módulo 2`, `OTA`) identificando el tipo de habitación y una fecha o rango de fechas.
+- **Consulta de tarifa**: Solicitud de un actor autorizado (`Módulo 2`, `OTA`) identificando el tipo de habitación y una fecha o rango de fechas; cuando la solicitud corresponde a la extensión de una estancia en curso, incluye opcionalmente el identificador de la cotización original (`extendsQuoteId`) para vincular ambas cotizaciones.
 - **Resultado por noche**: Tarifa base de origen, temporada aplicada y tarifa dinámica resultante para una noche específica dentro del rango consultado.
 
 ### Reglas de negocio
@@ -105,6 +111,7 @@ Como OTA (Booking, Airbnb, Expedia), quiero consultar la tarifa dinámica vigent
 - **BR-003**: Cada noche de una estancia se valora con la temporada que corresponde a esa fecha específica; una estancia que abarca más de una temporada nunca se homogeniza a una sola.
 - **BR-004**: `Consultar tarifa dinámica` es una operación exclusivamente de lectura: no crea ni modifica la tarifa base, la clasificación de temporada, ni ningún registro de liquidación o factura.
 - **BR-005**: A diferencia de `Consultar liquidación`, este caso de uso no segmenta el resultado por actor: la tarifa dinámica de una fecha y tipo de habitación es pública entre los actores autorizados, no un dato privado de una reserva o canal.
+- **BR-006**: Una consulta que extiende una estancia en curso (identificada mediante `extendsQuoteId`) se calcula de forma independiente, con la configuración vigente al momento de esa consulta; `extendsQuoteId` solo vincula ambas cotizaciones para fines de trazabilidad y nunca hace que una dependa del valor de la otra.
 
 ## Requisitos no funcionales
 
@@ -123,3 +130,4 @@ Como OTA (Booking, Airbnb, Expedia), quiero consultar la tarifa dinámica vigent
 - **SC-004**: El 100% de las consultas con un rango de fechas inválido son rechazadas sin devolver un resultado parcial.
 - **SC-005**: El 100% de los accesos a `Consultar tarifa dinámica` quedan restringidos a los actores autorizados (`Módulo 2`, `OTA`).
 - **SC-006**: El 100% de las consultas idénticas (misma fecha, mismo tipo de habitación, misma configuración vigente) devuelven el mismo resultado sin importar cuál actor autorizado las ejecute.
+- **SC-007**: El 100% de las consultas de extensión que incluyen `extendsQuoteId` calculan la tarifa dinámica de las noches adicionales con la configuración vigente, sin heredar ni recalcular los valores de la cotización original.
