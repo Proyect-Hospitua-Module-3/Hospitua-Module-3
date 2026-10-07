@@ -8,7 +8,7 @@
 
 Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consultar la tarifa base vigente de un tipo de habitación para una fecha específica, para usarla como valor inicial del precio de hospedaje.
 
-**Por qué esta prioridad**: La tarifa base es el punto de partida de todo cálculo de hospedaje. Sin una consulta confiable a esta información (propiedad del Módulo 1), ningún cálculo de tarifa dinámica puede completarse.
+**Por qué esta prioridad**: La tarifa base es el punto de partida de todo cálculo de hospedaje. Sin una consulta confiable a esta información (propiedad del Módulo 1), ningún cálculo de tarifa dinámica ni cotización de hospedaje puede completarse.
 
 **Prueba independiente**: Se puede invocar la consulta con un tipo de habitación y una fecha válidos, y verificar de forma independiente que el resultado incluya el valor de la tarifa y el período de vigencia que la respalda.
 
@@ -41,11 +41,12 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consul
 - **FR-001**: El sistema DEBE consultar la tarifa base vigente para un tipo de habitación y una fecha específica, obteniendo el valor y el período de vigencia gestionados por `Módulo 1`.
 - **FR-002**: El sistema NO DEBE almacenar una copia persistente e independiente de la configuración de tarifa base; cada consulta DEBE reflejar el estado vigente al momento de la invocación.
 - **FR-003**: El sistema DEBE resolver la tarifa base de forma independiente para cada fecha consultada, de modo que una estancia que cruce un cambio de valor de tarifa base use el valor vigente de cada noche.
-- **FR-004**: El sistema DEBE rechazar la consulta y no devolver un valor sustituto cuando el tipo de habitación no tenga ninguna tarifa base configurada, o cuando exista tarifa base configurada pero ninguna vigente para la fecha solicitada.
+- **FR-004**: El sistema DEBE rechazar la consulta y no devolver un valor sustituto cuando el tipo de habitación no tenga ninguna tarifa base configurada, o cuando exista tarifa base configurada pero ninguna vigente para la fecha solicitada, informando cuál de los dos casos ocurre.
 - **FR-005**: El sistema DEBE rechazar la consulta cuando se detecten períodos de vigencia solapados para el mismo tipo de habitación y fecha, sin resolver la ambigüedad de forma arbitraria.
 - **FR-006**: El sistema DEBE rechazar la consulta cuando el valor de la tarifa base reportado sea inválido (negativo, cero, o no numérico).
 - **FR-007**: El sistema NO DEBE modificar, corregir ni completar la configuración de tarifa base en `Módulo 1`; esta consulta es de solo lectura.
 - **FR-008**: El sistema DEBE distinguir entre la ausencia de una tarifa base (Módulo 1 responde que no existe) y una falla de comunicación con Módulo 1 (no se obtiene respuesta); en ambos casos DEBE detener el cálculo que invoca la consulta, pero sin tratar una falla técnica como si fuera una configuración faltante.
+- **FR-009**: El sistema DEBE rechazar la consulta cuando el identificador de tipo de habitación no corresponda a ningún tipo conocido, sin asumir un tipo por defecto.
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
@@ -59,6 +60,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consul
 - **BR-001**: Frontera arquitectónica: la tarifa base es propiedad y responsabilidad de `Módulo 1`. El Módulo 3 únicamente la consulta como insumo interno de su propio cálculo de precio; no la configura, corrige ni almacena de forma independiente.
 - **BR-002**: Unicidad por fecha: cada tipo de habitación debe tener, como máximo, una tarifa base vigente por fecha; una consulta que detecte más de una debe rechazarse en vez de elegir una arbitrariamente.
 - **BR-003**: Ausencia de valores por defecto: la falta de una tarifa base vigente detiene el cálculo que la invoca; el sistema no sustituye el valor faltante por cero ni por un valor supuesto.
+- **BR-004**: No retroactividad: un cambio de la tarifa base en `Módulo 1` solo afecta consultas posteriores al cambio; no altera cálculos ya realizados con el valor consultado previamente.
 
 ## Requisitos no funcionales
 
@@ -74,3 +76,6 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consul
 - **SC-002**: El 100% de las consultas sin tarifa base configurada o sin vigencia para la fecha solicitada se rechazan sin devolver un valor sustituto.
 - **SC-003**: El 100% de las consultas con períodos de vigencia solapados se rechazan por ambigüedad, sin resolución arbitraria.
 - **SC-004**: El 0% de las consultas modifica o corrige la configuración de tarifa base en `Módulo 1`.
+- **SC-005**: El 100% de las consultas con un valor de tarifa base inválido (negativo, cero o no numérico) se rechazan sin propagar el valor.
+- **SC-006**: El 100% de las fallas de comunicación con `Módulo 1` detienen el cálculo invocante y se distinguen de una tarifa inexistente.
+- **SC-007**: El 100% de las estancias que cruzan un cambio de tarifa base usan el valor vigente de cada noche.
