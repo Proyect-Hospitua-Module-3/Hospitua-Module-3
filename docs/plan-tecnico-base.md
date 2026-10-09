@@ -206,7 +206,7 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 Toda excepción o rechazo funcional se traduce a un cuerpo JSON estandarizado:
 ```json
 {
-  "errorCode": "INVALID_VAT_RATE | OVERLAPPING_SEASON | MISSING_COMMISSION | SETTLEMENT_NOT_FOUND | INVOICE_NOT_FOUND | BASE_RATE_NOT_FOUND | MODULE1_UNAVAILABLE | RESERVATION_NOT_FOUND | QUOTE_NOT_FOUND | MODULE2_UNAVAILABLE | INVALID_COMMISSION | SETTLEMENT_ALREADY_EXISTS | MISSING_SEARCH_CRITERIA | INVALID_DATE_RANGE | INVALID_QUERY_PARAMS | UNAUTHENTICATED | FORBIDDEN | DATABASE_UNAVAILABLE",
+  "errorCode": "INVALID_VAT_RATE | OVERLAPPING_SEASON | MISSING_COMMISSION | SETTLEMENT_NOT_FOUND | INVOICE_NOT_FOUND | BASE_RATE_NOT_FOUND | MODULE1_UNAVAILABLE | RESERVATION_NOT_FOUND | QUOTE_NOT_FOUND | MODULE2_UNAVAILABLE | INVALID_COMMISSION | SETTLEMENT_ALREADY_EXISTS | MISSING_SEARCH_CRITERIA | INVALID_DATE_RANGE | INVALID_QUERY_PARAMS | UNAUTHENTICATED | FORBIDDEN | UNEXPECTED_ERROR",
   "message": "Descripción legible y accionable de la regla violada o contingencia.",
   "timestamp": "2026-09-28T10:30:00Z",
   "path": "/admin/vat-rate"
@@ -217,8 +217,8 @@ Toda excepción o rechazo funcional se traduce a un cuerpo JSON estandarizado:
 - **HTTP 401 / 403**: JWT ausente o inválido en un endpoint que lo exige / rol no autorizado para el endpoint o para el recurso (p. ej. una OTA consultando una reserva que no intermedió).
 - **HTTP 404**: Recurso inexistente (liquidación aún no generada, factura no encontrada, tarifa base no encontrada en Módulo 1).
 - **HTTP 409**: Conflicto con el estado actual (p. ej. temporadas solapadas).
-- **HTTP 503**: Falla de comunicación con Módulo 1 o Módulo 2 (timeout/5xx o circuito abierto), distinta de la ausencia del dato (FR-008 de `consultar_tarifa_base.md`).
-- **HTTP 500 no controlado PROHIBIDO**: todo error inesperado es capturado por el `ExceptionFilter` global, registrado con identificador de correlación en logs y devuelto con un código de error controlado.
+- **HTTP 424 (Failed Dependency)**: Falla de comunicación con Módulo 1 o Módulo 2 (timeout/5xx de ellos o circuito abierto), distinta de la ausencia del dato (FR-008 de `consultar_tarifa_base.md`). El `ApiError` lleva `errorCode` `MODULE1_UNAVAILABLE` o `MODULE2_UNAVAILABLE` e indica que es reintentable. Ninguna respuesta de Módulo 3 usa códigos 5xx.
+- **Sin respuestas 5xx**: no se diseña ni se documenta ningún 5xx en los endpoints. Todo error inesperado es capturado por el `ExceptionFilter` global, registrado con identificador de correlación en logs y devuelto como **HTTP 422** con `errorCode` `UNEXPECTED_ERROR` y un mensaje que incluye el identificador de correlación para que soporte pueda rastrearlo.
 - Todo motivo de rechazo devuelto al actor debe ser específico y accionable (NFR-005 de `generar_liquidacion.md`), nunca un error genérico.
 
 ---
