@@ -101,7 +101,7 @@ Regla arquitectónica de Módulo 3:
       "stayId": "UUID",
       "reservationRef": "RES-000123",
       "roomId": "UUID",
-      "roomType": "DOBLE",
+      "categoryRoom": "DOBLE",
       "checkInDate": "2026-09-25",
       "checkOutDate": "2026-09-28",
       "billingCustomer": {
@@ -112,8 +112,8 @@ Regla arquitectónica de Módulo 3:
   }
   ```
   - El evento es **por habitación**: una reserva con varias habitaciones genera un check-out (y una liquidación) por cada una.
-  - Campos obligatorios del `payload`: `stayId`, `reservationRef`, `roomId`, `roomType`, `checkInDate` y `checkOutDate` reales (`checkOutDate` posterior a `checkInDate`, FR-003 de `registrar_checkout.md`).
-  - `roomType` (confirmado por Módulo 1) permite elegir la cotización de esa habitación entre los `quoteIds` de la reserva.
+  - Campos obligatorios del `payload`: `stayId`, `reservationRef`, `roomId`, `categoryRoom`, `checkInDate` y `checkOutDate` reales (`checkOutDate` posterior a `checkInDate`, FR-003 de `registrar_checkout.md`).
+  - `categoryRoom` (tipo de habitación, nombre que usa Módulo 1; equivale al `roomType` de `pricing`) permite elegir la cotización de esa habitación entre los `quoteIds` de la reserva.
   - El evento no trae `channel`, `lodgingAmount` ni datos de la OTA: el canal y los datos OTA se consultan a Módulo 2 y el hospedaje se toma de la cotización guardada (ver [regla 5](#reglas-transversales-de-arquitectura)).
   - `billingCustomer` es opcional: si llega, se entrega a `Generar liquidación`, pero su ausencia no invalida el evento (FR-002).
   - El `payload` nunca incluye datos migratorios ni SIRE (FR-007, NFR-003).
@@ -137,7 +137,7 @@ Regla arquitectónica de Módulo 3:
 | `POST /auth/login` | Administrador, OTA | — | Login propio de Módulo 3: emite el JWT de usuario |
 | `GET /pricing/dynamic-rate` | Módulo 2, OTA | 005 | Tarifa dinámica por noche (tarifa base + regla de temporada) |
 | `POST /pricing/quotes` | Módulo 2 | 005 | Cotización del hospedaje de una habitación al crear una reserva o al extenderla: calcula y guarda la tarifa dinámica de cada noche y el total |
-| `GET /api/settlements?reservationRef={ref}&checkInDate={in}&checkOutDate={out}&source={src}&roomId={room}&roomType={type}` | Módulo 1, OTA | 002 | Desglose de la liquidación de una habitación (ruta y parámetros definidos por Módulo 1) |
+| `GET /api/settlements?reservationRef={ref}&checkInDate={in}&checkOutDate={out}&source={src}&roomId={room}&categoryRoom={type}` | Módulo 1, OTA | 002 | Desglose de la liquidación de una habitación (ruta y parámetros definidos por Módulo 1) |
 | `GET /ota-commission/{otaId}` | Módulo 2, OTA | 003 | Último porcentaje de comisión aplicado a una OTA (referencial) |
 | `GET /invoices` | Administrador | 008 | Búsqueda de facturas por criterios |
 | `GET /invoices/{id}` | Administrador | 008 | Detalle de solo lectura de una factura |
@@ -168,7 +168,7 @@ Módulo 3 calcula el valor del hospedaje en el momento de la reserva, para que e
 - **Salida anticipada**: no genera una nueva cotización; se liquida lo cotizado, porque es lo que el cliente aceptó al confirmar (no es una penalización).
 - `GET /api/reservations/{reservationRef}` devuelve `reservationRef`, `quoteIds: ["UUID", ...]`, `channel` y, si `channel = OTA`, `otaId`, `otaConfirmationCode` y `otaCommissionPercentage`. Si la reserva no existe, Módulo 2 responde 404.
 - Módulo 3 llama a Módulo 2 sin token, por la red interna (ver [Autenticación](#autenticación)).
-- Para liquidar una habitación, `settlement` elige entre los `quoteIds` de la reserva la cotización cuyo `roomType` coincide con el `roomType` que envía Módulo 1 (en el evento y en la consulta de liquidación). Si hay varias del mismo tipo, son equivalentes (mismo tipo y mismas fechas reservadas) y se usa cualquiera. Si ninguna coincide, se rechaza con `QUOTE_NOT_FOUND` (el evento va a dead-letter).
+- Para liquidar una habitación, `settlement` elige entre los `quoteIds` de la reserva la cotización cuyo `roomType` coincide con el `categoryRoom` que envía Módulo 1 (en el evento y en la consulta de liquidación). Si hay varias del mismo tipo, son equivalentes (mismo tipo y mismas fechas reservadas) y se usa cualquiera. Si ninguna coincide, se rechaza con `QUOTE_NOT_FOUND` (el evento va a dead-letter).
 
 #### Consulta de liquidación desde Módulo 1
 
@@ -177,7 +177,7 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 - Si ya existe la liquidación `Final` de esa habitación, la devuelve.
 - Si todavía no existe, la calcula con la misma lógica de `Generar liquidación` (reserva de Módulo 2 + cotización guardada), **sin persistirla**, y la devuelve como informativa. Como el cálculo es determinista, coincide con la liquidación `Final` que se genera al recibir el evento.
 - Debe responder en menos de 800 ms (objetivo de rendimiento de Módulo 1).
-- `roomType` es obligatorio: con él se elige la cotización de la habitación.
+- `categoryRoom` es obligatorio: con él se elige la cotización de la habitación.
 - El parámetro `source` (Directo / OTA) es informativo; la fuente de verdad del canal sigue siendo la reserva de Módulo 2.
 - `GET /pricing/dynamic-rate` se mantiene para consultas de tarifa por noche (Módulo 2, OTA).
 
@@ -206,7 +206,7 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 Toda excepción o rechazo funcional se traduce a un cuerpo JSON estandarizado:
 ```json
 {
-  "errorCode": "INVALID_VAT_RATE | OVERLAPPING_SEASON | MISSING_COMMISSION | SETTLEMENT_NOT_FOUND | INVOICE_NOT_FOUND | BASE_RATE_NOT_FOUND | MODULE1_UNAVAILABLE | RESERVATION_NOT_FOUND | QUOTE_NOT_FOUND | MODULE2_UNAVAILABLE",
+  "errorCode": "INVALID_VAT_RATE | OVERLAPPING_SEASON | MISSING_COMMISSION | SETTLEMENT_NOT_FOUND | INVOICE_NOT_FOUND | BASE_RATE_NOT_FOUND | MODULE1_UNAVAILABLE | RESERVATION_NOT_FOUND | QUOTE_NOT_FOUND | MODULE2_UNAVAILABLE | INVALID_COMMISSION | SETTLEMENT_ALREADY_EXISTS | MISSING_SEARCH_CRITERIA | INVALID_DATE_RANGE | INVALID_QUERY_PARAMS | UNAUTHENTICATED | FORBIDDEN | UNEXPECTED_ERROR",
   "message": "Descripción legible y accionable de la regla violada o contingencia.",
   "timestamp": "2026-09-28T10:30:00Z",
   "path": "/admin/vat-rate"
@@ -217,8 +217,8 @@ Toda excepción o rechazo funcional se traduce a un cuerpo JSON estandarizado:
 - **HTTP 401 / 403**: JWT ausente o inválido en un endpoint que lo exige / rol no autorizado para el endpoint o para el recurso (p. ej. una OTA consultando una reserva que no intermedió).
 - **HTTP 404**: Recurso inexistente (liquidación aún no generada, factura no encontrada, tarifa base no encontrada en Módulo 1).
 - **HTTP 409**: Conflicto con el estado actual (p. ej. temporadas solapadas).
-- **HTTP 503**: Falla de comunicación con Módulo 1 o Módulo 2 (timeout/5xx o circuito abierto), distinta de la ausencia del dato (FR-008 de `consultar_tarifa_base.md`).
-- **HTTP 500 no controlado PROHIBIDO**: todo error inesperado es capturado por el `ExceptionFilter` global, registrado con identificador de correlación en logs y devuelto con un código de error controlado.
+- **HTTP 424 (Failed Dependency)**: Falla de comunicación con Módulo 1 o Módulo 2 (timeout/5xx de ellos o circuito abierto), distinta de la ausencia del dato (FR-008 de `consultar_tarifa_base.md`). El `ApiError` lleva `errorCode` `MODULE1_UNAVAILABLE` o `MODULE2_UNAVAILABLE` e indica que es reintentable. Ninguna respuesta de Módulo 3 usa códigos 5xx.
+- **Sin respuestas 5xx**: no se diseña ni se documenta ningún 5xx en los endpoints. Todo error inesperado es capturado por el `ExceptionFilter` global, registrado con identificador de correlación en logs y devuelto como **HTTP 422** con `errorCode` `UNEXPECTED_ERROR` y un mensaje que incluye el identificador de correlación para que soporte pueda rastrearlo.
 - Todo motivo de rechazo devuelto al actor debe ser específico y accionable (NFR-005 de `generar_liquidacion.md`), nunca un error genérico.
 
 ---
@@ -521,7 +521,7 @@ Orden interno recomendado:
 Orden interno (depende de la cotización de T016):
 
 - [ ] T017 007 Generar liquidación (caso de uso núcleo) — ver `features/007-generar-liquidacion/2-technical/plan.md`
-- [ ] T018 010 Registrar Check-out (adaptador RabbitMQ que lo invoca) — ver `features/010-registrar-checkout/2-technical/plan.md`
+- [ ] T018 010 Registrar Check-out (adaptador RabbitMQ que lo invoca) — ver `features/010-registrar-checkout/2-technical/plan.md`. Invoca también a 006 (Phase 5), por lo que su prueba de punta a punta requiere 006
 - [ ] T019 002 Consultar liquidación (lectura) — ver `features/002-consultar-liquidacion/2-technical/plan.md`
 
 ---
