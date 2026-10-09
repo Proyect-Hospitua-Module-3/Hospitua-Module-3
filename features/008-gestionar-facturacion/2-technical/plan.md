@@ -120,7 +120,7 @@ Todos con `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles('Administrador')` a n
 | Método y ruta | Query / params | Respuesta | HU / FR |
 |---|---|---|---|
 | `GET /invoices` | `stayId?`, `reservationRef?`, `customerName?`, `customerMatch?=EXACT\|PARTIAL` (default `EXACT`), `customerTaxId?`, `channel?=DIRECT\|OTA`, `otaId?`, `issuedFrom?`, `issuedTo?` (`YYYY-MM-DD`), `page?=1`, `pageSize?=20` (máx. 100), `asOf?` (ISO 8601; si no llega, se fija a la hora actual) | `200` con `{ items[], page, pageSize, totalItems, totalPages, asOf, resultStatus: "MATCHES"\|"NO_MATCHES", customerMatchMode }` | HU1 — FR-001, 002, 003, 007, 008, 013 |
-| `GET /invoices/summary` | `issuedFrom`, `issuedTo` (obligatorios) | `200` con `{ range, timezone, channels: [{ channel, otaId?, invoiceCount, totalLodging, totalOtaCommission, totalVat, totalInvoiced }] }` | HU3 — FR-011, 012, 013, 014 |
+| `GET /invoices/summary` | `issuedFrom`, `issuedTo` (obligatorios) | `200` con `{ range, timezone, currency, channels: [{ channel, otaId?, invoiceCount, totalLodging, totalOtaCommission, totalVat, totalInvoiced }] }` | HU3 — FR-011, 012, 013, 014 |
 | `GET /invoices/{invoiceId}` | `invoiceId` (UUID) | `200` con detalle completo; `404` si no existe | HU2 — FR-004, 005 |
 
 - El contrato completo de cada endpoint (headers, parámetros, reglas de procesamiento, campos de respuesta con ejemplos JSON y tabla de errores) está en [`contracts/`](contracts/): [GET-invoices.md](contracts/GET-invoices.md), [GET-invoices-id.md](contracts/GET-invoices-id.md) y [GET-invoices-summary.md](contracts/GET-invoices-summary.md).
@@ -134,7 +134,7 @@ Todos con `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles('Administrador')` a n
 - `otaId` solo es válido con `channel=OTA`.
 - No se expone filtro por estado: aunque el título de HU1 menciona "estado", ningún FR lo define como criterio (FR-001) y toda factura emitida por 006 tiene un único estado, `Emitida` (inmutable, BR-003 de `generar_factura_final.md`). El estado sí se muestra en el detalle (`status: "ISSUED"`).
 - `customerName` con `customerMatch=PARTIAL` requiere al menos 3 caracteres. La respuesta siempre informa el `customerMatchMode` aplicado (caso límite de coincidencia parcial).
-- Errores mapeados en el `ExceptionFilter` global del plan base (`infrastructure/adapters/in/http/domain-exception.filter.ts`), con el formato `ApiError`: `MissingSearchCriteriaError` → 400 `MISSING_SEARCH_CRITERIA`, `InvalidDateRangeError` → 400 `INVALID_DATE_RANGE`, `InvoiceNotFoundError` → 404 `INVOICE_NOT_FOUND`, todos con mensaje específico (no genérico).
+- Errores mapeados en el `ExceptionFilter` global del plan base (`infrastructure/adapters/in/http/domain-exception.filter.ts`), con el formato `ApiError`: `MissingSearchCriteriaError` → 400 `MISSING_SEARCH_CRITERIA`, `InvalidDateRangeError` → 400 `INVALID_DATE_RANGE`, `InvoiceNotFoundError` → 404 `INVOICE_NOT_FOUND`, todos con mensaje específico (no genérico). Los contratos usan además `INVALID_QUERY_PARAMS` (400, formato inválido de UUID, fecha, `pageSize`, `asOf` futuro, `otaId` sin `channel=OTA` o `PARTIAL` con menos de 3 caracteres), `UNAUTHENTICATED` (401), `FORBIDDEN` (403) y `DATABASE_UNAVAILABLE` (503, reintentable).
 
 ### Puertos
 

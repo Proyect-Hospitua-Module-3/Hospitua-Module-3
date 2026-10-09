@@ -31,7 +31,10 @@ features/007-generar-liquidacion/
 ├── 1-functional/
 │   └── generar_liquidacion.md   # Spec funcional (fuente de verdad de negocio)
 └── 2-technical/
-    └── plan.md                  # Este archivo
+    ├── plan.md                  # Este archivo
+    └── contracts/
+        ├── UC-generate-settlement.md   # Contrato del caso de uso (lo consumen 010 y 006)
+        └── CLIENT-get-reservation.md   # Contrato del cliente saliente hacia Módulo 2
 ```
 
 ### Source Code (repository root)
@@ -156,6 +159,9 @@ export interface LodgingQuoteQueryPort {
 export interface SettlementRepositoryPort {
   findByStayId(stayId: string): Promise<Settlement | null>;
   insert(settlement: Settlement): Promise<Settlement | 'STAY_ALREADY_SETTLED'>; // conflicto controlado si viola UNIQUE(stay_id)
+  // Solo lectura, para 002 y 003 (no las usa GenerateSettlementService):
+  findByReservationAndRoom(reservationRef: string, roomId: string): Promise<Settlement | null>; // 002 consulta sin stayId
+  findLatestByOtaId(otaId: string): Promise<Settlement | null>;                                 // 003: la Final más reciente de una OTA
 }
 ```
 
@@ -214,6 +220,8 @@ Ejemplo: cotización de 750.000 COP, canal OTA con 15 % → comisión 112.500 y 
 | `source_event_id` | uuid | Evento que la generó [NFR-003] |
 | `generated_at` | timestamptz | Hora de la base de datos [NFR-003] |
 
+Índices de lectura para las features que consultan la tabla: `(reservation_ref, room_id)` para 002, que identifica la habitación por reserva y habitación y no conoce el `stayId`, y `(ota_id, generated_at DESC)` para 003 [FR-017]. 007 solo los crea; la lógica de esas consultas es de 002 y 003.
+
 La tabla no tiene `UPDATE` en ningún camino de código: la liquidación es inmutable una vez creada [FR-009, FR-017].
 
 ### Cliente de Módulo 2
@@ -243,7 +251,8 @@ Cada mensaje dice qué falló y con qué dato (reserva, tipo de habitación, OTA
 
 - **010** llama a `generate` después de validar el evento y, con el resultado, a `Generar factura final` (006). El evento solo se confirma cuando ambos terminaron. Si 006 falla después de que 007 guardó, la reentrega llega a 007, que devuelve la liquidación existente (paso 1) y 006 se reintenta. La idempotencia evita tener que envolver a 007 y 006 en una sola transacción.
 - **006** también puede llamar a `generate` (FR-019); por la idempotencia siempre obtiene la misma liquidación `Final`.
-- **002** reutiliza `SettlementCalculator` y los mismos puertos para calcular la liquidación informativa sin guardarla, antes del check-out.
+- **003** lee la liquidación `Final` más reciente de una OTA con `findLatestByOtaId`; `GenerateSettlementService` nunca lo llama, porque el porcentaje sale solo de la reserva de Módulo 2 (FR-003 de `consultar_porcentaje_comision_ota.md`).
+- **002** también consulta por `findByReservationAndRoom`, y reutiliza `SettlementCalculator` y los mismos puertos para calcular la liquidación informativa sin guardarla, antes del check-out.
 
 ## Phase 1: Setup (Shared Infrastructure)
 
@@ -267,7 +276,7 @@ Cada mensaje dice qué falló y con qué dato (reserva, tipo de habitación, OTA
 - [ ] T007 Implementar la entidad `Settlement` (estado siempre `Final`, sin métodos de modificación) en `src/domain/model/settlement/settlement.ts`
 - [ ] T008 Definir `GenerateSettlementUseCase`, `ReservationClientPort` y `SettlementRepositoryPort` con sus tokens en `src/domain/ports/`
 - [ ] T009 Agregar el modelo `Settlement` a `prisma/schema.prisma` y crear la migración `<timestamp>_create_settlement` con `UNIQUE(stay_id)`
-- [ ] T010 Implementar `PrismaSettlementRepository` y `SettlementMapper` (`findByStayId`, `insert` que traduce la violación de `UNIQUE(stay_id)` a un conflicto controlado)
+- [ ] T010 Implementar `PrismaSettlementRepository` y `SettlementMapper` (`findByStayId`, `insert` que traduce la violación de `UNIQUE(stay_id)` a un conflicto controlado, `findByReservationAndRoom`, `findLatestByOtaId` y los dos índices de lectura)
 - [ ] T011 Implementar `Module2ReservationClient` con timeout de 500 ms y circuit breaker `opossum`
 - [ ] T012 Registrar el binding de los puertos y exportar `GenerateSettlementUseCase` en `src/infrastructure/config/settlement.module.ts`
 
