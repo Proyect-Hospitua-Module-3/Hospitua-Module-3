@@ -245,6 +245,8 @@ La tabla no tiene `UPDATE` en ningún camino de código: la liquidación es inmu
 | `SettlementAlreadyExistsError` | `SETTLEMENT_ALREADY_EXISTS` | No | Dead-letter (datos distintos para una estancia ya liquidada) |
 | `Module2UnavailableError` | `MODULE2_UNAVAILABLE` | Sí | No confirma el evento; RabbitMQ lo reentrega |
 
+007 no devuelve ninguna respuesta HTTP, así que no genera 5xx. Los 5xx que aparecen en este plan son los que *recibimos* de Módulo 2. Si un endpoint que reutilice este cálculo (002) recibe `Module2UnavailableError`, lo responde como 424 con `MODULE2_UNAVAILABLE` (plan base); no es una decisión de 007.
+
 Cada mensaje dice qué falló y con qué dato (reserva, tipo de habitación, OTA), para que recepción o facturación puedan corregirlo [NFR-005].
 
 ### Relación con 010, 006 y 002
