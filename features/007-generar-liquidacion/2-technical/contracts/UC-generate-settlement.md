@@ -151,6 +151,8 @@ Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si s
 | `SettlementAlreadyExistsError` | `SETTLEMENT_ALREADY_EXISTS` | Ya existe liquidación para el `stayId` con datos de check-out distintos | No | Dead-letter | [SPEC FR-010, HU3 escenario 2] [BASE] |
 | `Module2UnavailableError` | `MODULE2_UNAVAILABLE` | Timeout (500 ms), 5xx o circuito abierto al consultar Módulo 2 | **Sí** | No confirma (ack); RabbitMQ reentrega | [SPEC FR-021] [BASE] |
 
+007 no devuelve respuestas HTTP y no genera 5xx. Si un endpoint que reutilice este cálculo (002, informativa) recibe `Module2UnavailableError`, lo traduce a HTTP 424 con `MODULE2_UNAVAILABLE` y reintentable, según el plan base. Los `5xx` mencionados en este contrato son los que Módulo 2 le responde a 007.
+
 Un comando con campos obligatorios faltantes o fechas inconsistentes es un error de programación del llamador (010 ya valida el evento) y se rechaza antes de tocar Módulo 2 ni la base de datos [PLAN] [SPEC BR-007].
 
 ### Ejemplo de error
