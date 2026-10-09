@@ -130,7 +130,7 @@ test/
 | `stayId` | UUID | Sí | Evento — clave de idempotencia |
 | `reservationRef` | string | Sí | Evento — reserva a consultar en Módulo 2 |
 | `roomId` | UUID | Sí | Evento — habitación liquidada (FR-016) |
-| `roomType` | string | Sí | Evento — elige la cotización (FR-020) |
+| `categoryRoom` | string | Sí | Evento — tipo de habitación (nombre de Módulo 1); se compara con el `roomType` de la cotización para elegirla (FR-020) |
 | `checkInDate`, `checkOutDate` | date | Sí | Evento — fechas **reales** (FR-016) |
 | `billingCustomer` | `{ name, taxId }` | No | Evento — se guarda para que 006 emita la factura |
 
@@ -168,12 +168,12 @@ export interface SettlementRepositoryPort {
 ### Flujo de `GenerateSettlementService.generate`
 
 1. **Idempotencia primero**: `findByStayId(stayId)`.
-   - Si existe y los datos del check-out coinciden (`reservationRef`, `roomId`, `roomType`, `checkInDate`, `checkOutDate`) → devuelve la existente sin recalcular ni llamar a Módulo 2 [FR-011, HU1 escenarios 3 y 4].
+   - Si existe y los datos del check-out coinciden (`reservationRef`, `roomId`, `categoryRoom`, `checkInDate`, `checkOutDate`) → devuelve la existente sin recalcular ni llamar a Módulo 2 [FR-011, HU1 escenarios 3 y 4].
    - Si existe con datos distintos → `SettlementAlreadyExistsError` y conserva la original [FR-010, HU3 escenario 2].
 2. **Reserva en Módulo 2**: `getReservation(reservationRef)`.
    - 404 → `ReservationNotFoundError` [FR-014].
    - Timeout (500 ms), 5xx o circuito abierto → `Module2UnavailableError`, reintentable [FR-021].
-3. **Elegir la cotización**: `findByIds(reservation.quoteIds)` y filtrar por `roomType` igual al del check-out [FR-020].
+3. **Elegir la cotización**: `findByIds(reservation.quoteIds)` y quedarse con las de `roomType` igual al `categoryRoom` del check-out (mismo valor, distinto nombre: `categoryRoom` es el nombre de Módulo 1 y `roomType` el de `pricing`) [FR-020].
    - Ninguna coincide → `QuoteNotFoundError` [FR-014].
    - Varias coinciden (mismo tipo y mismo valor) → se toma la de menor `quoteId` para que el resultado sea siempre el mismo [NFR-001, casos límite].
 4. **Canal**: `Channel` a partir de `reservation.channel`; sin canal informado → Directo [FR-003, FR-004].
@@ -207,7 +207,7 @@ Ejemplo: cotización de 750.000 COP, canal OTA con 15 % → comisión 112.500 y 
 | `stay_id` | uuid | `UNIQUE` — una liquidación por estancia [FR-010] |
 | `reservation_ref` | text | [FR-016] |
 | `room_id` | uuid | [FR-016] |
-| `room_type` | text | [FR-016] |
+| `category_room` | text | Tipo de habitación del check-out (nombre de Módulo 1) [FR-016] |
 | `check_in_date`, `check_out_date` | date | Fechas reales del check-out [FR-016] |
 | `quote_id` | uuid | Cotización usada [NFR-003, NFR-007] |
 | `channel` | text | `DIRECT` \| `OTA` |
@@ -293,7 +293,7 @@ Cada mensaje dice qué falló y con qué dato (reserva, tipo de habitación, OTA
 ### Tests for User Story 1
 
 - [ ] T013 [P] [US1] Unit test de `SettlementCalculator` para canal directo (neto = hospedaje, comisión 0, sin IVA) en `test/unit/domain/settlement/settlement-calculator.spec.ts`
-- [ ] T014 [P] [US1] Unit test de `GenerateSettlementService` con puertos mockeados: cotización elegida por `roomType`, varias habitaciones, reenvío idéntico devuelve la existente sin llamar a Módulo 2, reserva inexistente → `ReservationNotFoundError`, sin cotización del tipo → `QuoteNotFoundError`, Módulo 2 caído → `Module2UnavailableError`, varias cotizaciones del mismo tipo → siempre la misma, en `test/unit/application/settlement/generate-settlement.service.spec.ts`
+- [ ] T014 [P] [US1] Unit test de `GenerateSettlementService` con puertos mockeados: cotización elegida por `categoryRoom`, varias habitaciones, reenvío idéntico devuelve la existente sin llamar a Módulo 2, reserva inexistente → `ReservationNotFoundError`, sin cotización del tipo → `QuoteNotFoundError`, Módulo 2 caído → `Module2UnavailableError`, varias cotizaciones del mismo tipo → siempre la misma, en `test/unit/application/settlement/generate-settlement.service.spec.ts`
 - [ ] T015 [P] [US1] Integration test de `Module2ReservationClient` contra un servidor HTTP simulado: 200, 404, timeout de 500 ms, 5xx y circuito abierto, en `test/integration/http/module2-reservation.client.spec.ts`
 - [ ] T016 [P] [US1] Contract test de la respuesta de `GET /api/reservations/{reservationRef}` (campos y tipos acordados con Módulo 2) en `test/contract/settlement/module2-reservation.contract.spec.ts`
 - [ ] T017 [P] [US1] Integration test de `PrismaSettlementRepository` contra Postgres (Testcontainers): `insert`, `findByStayId` y dos `insert` simultáneos del mismo `stayId` que terminan en una sola fila, en `test/integration/persistence/settlement/prisma-settlement.repository.spec.ts`
