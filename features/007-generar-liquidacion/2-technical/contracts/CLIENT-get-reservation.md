@@ -79,7 +79,7 @@ Los campos desconocidos se ignoran. Cualquier `channel` distinto de `OTA` se tra
 | `200` con datos válidos | `ReservationData` | — | [BASE] |
 | `200` con `channel = OTA` sin `otaCommissionPercentage` (ausente o `null`) | `MISSING_COMMISSION` (lo lanza el servicio, no el cliente) | No | [SPEC FR-014] |
 | `200` con `otaCommissionPercentage` < 0 o > 100 | `INVALID_COMMISSION` (lo lanza el servicio) | No | [SPEC casos límite] |
-| `200` con `quoteIds` vacío o sin ninguna del `roomType` | `QUOTE_NOT_FOUND` (lo lanza el servicio) | No | [SPEC FR-014] |
+| `200` con `quoteIds` vacío o sin ninguna cuyo `roomType` coincida con el `categoryRoom` del check-out | `QUOTE_NOT_FOUND` (lo lanza el servicio) | No | [SPEC FR-014] |
 | `200` con cuerpo que no cumple esta forma (falta `reservationRef` o `quoteIds`, tipos incorrectos) | `MODULE2_UNAVAILABLE`; se registra la discrepancia de contrato | Sí | [CONV] |
 | `404` | `RESERVATION_NOT_FOUND` | No | [BASE] [SPEC FR-014] |
 | Timeout (500 ms), `5xx` o fallo de red | `MODULE2_UNAVAILABLE` | Sí | [SPEC FR-021] [BASE] |

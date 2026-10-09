@@ -31,7 +31,7 @@ Solo pueden inyectarlo `checkout-ingestion` (010) y `billing` (006); ningún con
 | `stayId` | UUID | Sí | Estancia (una habitación de la reserva); clave de idempotencia | [BASE] [SPEC FR-010] |
 | `reservationRef` | string | Sí | Reserva que se consulta en Módulo 2, p. ej. `RES-000123` | [BASE] [SPEC FR-005] |
 | `roomId` | UUID | Sí | Habitación liquidada | [SPEC FR-016, FR-020] |
-| `roomType` | string | Sí | Tipo de habitación confirmado por Módulo 1; elige la cotización | [BASE] [SPEC FR-020] |
+| `categoryRoom` | string | Sí | Tipo de habitación confirmado por Módulo 1 (nombre que usa Módulo 1); se compara con el `roomType` de la cotización para elegirla | [BASE] [SPEC FR-020] |
 | `checkInDate` | date `YYYY-MM-DD` | Sí | Fecha **real** de entrada | [SPEC FR-016] |
 | `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha **real** de salida; posterior a `checkInDate` | [SPEC FR-016] |
 | `billingCustomer.name` | string | No | Nombre o razón social para la factura; se guarda tal cual para 006 | [BASE] [PLAN] |
@@ -47,7 +47,7 @@ El comando nunca trae `channel`, `lodgingAmount` ni datos de la OTA: el canal y 
   "stayId": "c3a9e1b2-5f4d-4e6a-8b7c-1d2e3f4a5b6c",
   "reservationRef": "RES-000123",
   "roomId": "5f0e8a47-1b2c-4d3e-9f6a-7b8c9d0e1f23",
-  "roomType": "DOBLE",
+  "categoryRoom": "DOBLE",
   "checkInDate": "2026-12-20",
   "checkOutDate": "2026-12-23",
   "billingCustomer": {
@@ -63,10 +63,10 @@ Se ejecutan en este orden; la primera que falla detiene el proceso y no se guard
 
 1. **Validación del comando**: los campos obligatorios deben venir y `checkOutDate` debe ser posterior a `checkInDate`. 007 revalida las fechas con `DateRange` aunque 010 ya lo haya hecho [PLAN] [SPEC BR-007].
 2. **Idempotencia**: se busca la liquidación por `stayId` [SPEC FR-011] [PLAN].
-   - Existe y `reservationRef`, `roomId`, `roomType`, `checkInDate` y `checkOutDate` coinciden con el comando → devuelve la existente sin llamar a Módulo 2 ni recalcular [SPEC HU1 escenarios 3 y 4].
+   - Existe y `reservationRef`, `roomId`, `categoryRoom`, `checkInDate` y `checkOutDate` coinciden con el comando → devuelve la existente sin llamar a Módulo 2 ni recalcular [SPEC HU1 escenarios 3 y 4].
    - Existe con algún dato distinto → `SETTLEMENT_ALREADY_EXISTS`; la original no cambia [SPEC FR-010, HU3 escenario 2].
 3. **Reserva**: consulta `GET /api/reservations/{reservationRef}` a Módulo 2 (ver [CLIENT-get-reservation.md](CLIENT-get-reservation.md)). 404 → `RESERVATION_NOT_FOUND`; timeout, 5xx o circuito abierto → `MODULE2_UNAVAILABLE` [SPEC FR-014, FR-021].
-4. **Cotización**: lee las cotizaciones de `reservation.quoteIds` y elige la de `roomType` igual al del comando. Ninguna coincide → `QUOTE_NOT_FOUND`. Si varias coinciden se usa la de menor `quoteId`, para que el resultado sea siempre el mismo [SPEC FR-020, NFR-001] [PLAN].
+4. **Cotización**: lee las cotizaciones de `reservation.quoteIds` y elige la de `roomType` igual al `categoryRoom` del comando (mismo valor, distinto nombre). Ninguna coincide → `QUOTE_NOT_FOUND`. Si varias coinciden se usa la de menor `quoteId`, para que el resultado sea siempre el mismo [SPEC FR-020, NFR-001] [PLAN].
 5. **Canal**: `OTA` si la reserva lo informa; `DIRECT` si es otro canal o no informa ninguno [SPEC FR-003, FR-004].
    - `OTA` sin `otaCommissionPercentage` → `MISSING_COMMISSION`.
    - `OTA` con porcentaje menor a 0 o mayor a 100 → `INVALID_COMMISSION`.
@@ -91,7 +91,7 @@ Devuelve la entidad `Settlement`, sea recién creada o la ya existente (el llama
 | `stayId` | UUID | Estancia liquidada | [SPEC FR-016] |
 | `reservationRef` | string | Reserva de la estancia | [SPEC FR-016] |
 | `roomId` | UUID | Habitación | [SPEC FR-016] |
-| `roomType` | string | Tipo de habitación | [SPEC FR-016] |
+| `categoryRoom` | string | Tipo de habitación | [SPEC FR-016] |
 | `checkInDate`, `checkOutDate` | date | Fechas reales de la estancia | [SPEC FR-016] |
 | `quoteId` | UUID | Cotización usada | [SPEC NFR-003, NFR-007] |
 | `channel` | `DIRECT` \| `OTA` | Canal de origen | [SPEC FR-012] |
@@ -117,7 +117,7 @@ Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si s
   "stayId": "c3a9e1b2-5f4d-4e6a-8b7c-1d2e3f4a5b6c",
   "reservationRef": "RES-000123",
   "roomId": "5f0e8a47-1b2c-4d3e-9f6a-7b8c9d0e1f23",
-  "roomType": "DOBLE",
+  "categoryRoom": "DOBLE",
   "checkInDate": "2026-12-20",
   "checkOutDate": "2026-12-23",
   "quoteId": "a1f2c3d4-e5b6-4789-8a9b-0c1d2e3f4a5b",
@@ -145,7 +145,7 @@ Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si s
 | Error de dominio | `errorCode` | Cuándo ocurre | Reintentable | Qué hace 010 con el evento | Origen |
 |---|---|---|---|---|---|
 | `ReservationNotFoundError` | `RESERVATION_NOT_FOUND` | Módulo 2 responde 404 para `reservationRef` | No | Dead-letter | [SPEC FR-014] [BASE] |
-| `QuoteNotFoundError` | `QUOTE_NOT_FOUND` | Ninguna cotización de la reserva coincide con `roomType` | No | Dead-letter | [SPEC FR-014] [BASE] |
+| `QuoteNotFoundError` | `QUOTE_NOT_FOUND` | Ninguna cotización de la reserva coincide con el `categoryRoom` del check-out | No | Dead-letter | [SPEC FR-014] [BASE] |
 | `MissingCommissionError` | `MISSING_COMMISSION` | Canal OTA sin `otaCommissionPercentage` | No | Dead-letter | [SPEC FR-014, HU2 escenario 3] [BASE] |
 | `InvalidCommissionError` | `INVALID_COMMISSION` | Porcentaje menor a 0 o mayor a 100 | No | Dead-letter | [SPEC casos límite] [PLAN] |
 | `SettlementAlreadyExistsError` | `SETTLEMENT_ALREADY_EXISTS` | Ya existe liquidación para el `stayId` con datos de check-out distintos | No | Dead-letter | [SPEC FR-010, HU3 escenario 2] [BASE] |
