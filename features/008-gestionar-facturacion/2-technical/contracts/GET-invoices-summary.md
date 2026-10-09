@@ -120,7 +120,6 @@ Todos los errores usan el formato `ApiError` del plan base: `{ errorCode, messag
 | 400 | `INVALID_QUERY_PARAMS` | Alguna fecha no tiene el formato `YYYY-MM-DD` | No | [CONV] |
 | 401 | `UNAUTHENTICATED` | Falta el token o es inválido o expiró | No | [SPEC FR-010] [BASE] |
 | 403 | `FORBIDDEN` | El token es válido pero el rol no es `Administrador` | No | [SPEC FR-010, BR-002] |
-| 503 | `DATABASE_UNAVAILABLE` | La base de datos no responde | Sí | [BASE] [CONV] |
 
 ### Ejemplo de error
 
