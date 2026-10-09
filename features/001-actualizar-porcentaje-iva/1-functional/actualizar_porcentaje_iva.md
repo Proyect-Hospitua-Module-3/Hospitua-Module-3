@@ -52,7 +52,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero que actualizar el 
 - Actualizaciones concurrentes por más de un Administrador casi al mismo tiempo: el sistema debe garantizar que solo una quede registrada como vigente de forma consistente, sin dejar el porcentaje en un estado ambiguo o corrupto.
 - Actualización a un valor idéntico al porcentaje ya vigente: el sistema la acepta como una operación válida sin efectos inesperados, aunque no cambie el valor efectivo.
 - Intento de actualizar el porcentaje sin dejar registrado quién hizo el cambio o cuándo: el sistema debe rechazar la operación o completarla solo si puede registrar esa trazabilidad.
-- Estado inicial del sistema: el sistema se despliega siempre con un porcentaje de IVA vigente inicial de 19%, por lo que nunca existe un estado sin porcentaje configurado (FR-003, BR-003); el Administrador puede actualizarlo luego con este caso de uso.
+- Estado inicial del sistema sin ningún porcentaje de IVA configurado: esta funcionalidad no define un valor inicial; mientras el Administrador no registre el primer porcentaje, el sistema no debe permitir la generación de facturas.
 - Actor distinto al Administrador intenta actualizar el porcentaje: el sistema debe rechazar la operación.
 - Una liquidación `Final` está en proceso de generar su factura en el instante exacto de una actualización: el sistema debe aplicar de forma consistente uno solo de los dos porcentajes (el anterior o el nuevo), nunca una mezcla ni un valor indeterminado, conforme al principio de un único porcentaje vigente en todo momento (BR-003).
 
@@ -62,7 +62,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero que actualizar el 
 
 - **FR-001**: El sistema DEBE permitir al actor Administrador actualizar el porcentaje de IVA vigente aplicado al hospedaje.
 - **FR-002**: El sistema DEBE validar que el nuevo porcentaje sea un valor numérico dentro del rango de 0% a 100% (ambos inclusive), rechazando la actualización en caso contrario.
-- **FR-003**: El sistema DEBE mantener en todo momento un único porcentaje de IVA vigente; no debe existir un estado operativo sin ningún porcentaje configurado.
+- **FR-003**: El sistema DEBE mantener en todo momento un único porcentaje de IVA vigente una vez configurado; mientras no exista ninguno configurado, el sistema NO DEBE generar facturas ni asumir un valor por defecto.
 - **FR-004**: El sistema NO DEBE recalcular ni modificar ninguna factura ya emitida como efecto de una actualización del porcentaje de IVA, conforme a BR-005 de `generar_factura_final.md`.
 - **FR-005**: El sistema DEBE registrar quién realizó cada actualización del porcentaje de IVA y en qué momento, para fines de trazabilidad y auditoría.
 - **FR-006**: El sistema DEBE restringir la actualización del porcentaje de IVA exclusivamente al actor Administrador.
@@ -77,7 +77,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero que actualizar el 
 
 - **BR-001**: Solo el Administrador puede actualizar el porcentaje de IVA vigente.
 - **BR-002**: Un cambio de porcentaje jamás afecta facturas ya emitidas (conforme a BR-005 de `generar_factura_final.md`).
-- **BR-003**: Debe existir en todo momento exactamente un porcentaje de IVA vigente; el sistema nunca opera con un valor indefinido.
+- **BR-003**: Una vez configurado, debe existir en todo momento exactamente un porcentaje de IVA vigente; el sistema nunca factura con un valor indefinido ni con uno supuesto.
 
 ## Requisitos no funcionales
 
