@@ -143,7 +143,6 @@ Todos los errores usan el formato `ApiError` del plan base: `{ errorCode, messag
 | 400 | `INVALID_QUERY_PARAMS` | Formato inválido: UUID o fecha mal escritos, `pageSize` fuera de 1–100, `asOf` futuro, `otaId` sin `channel=OTA`, `PARTIAL` con menos de 3 caracteres | No | [PLAN] [CONV] |
 | 401 | `UNAUTHENTICATED` | Falta el token o es inválido o expiró | No | [SPEC FR-010] [BASE] |
 | 403 | `FORBIDDEN` | El token es válido pero el rol no es `Administrador` | No | [SPEC FR-010, BR-002] |
-| 503 | `DATABASE_UNAVAILABLE` | La base de datos no responde | Sí | [BASE] [CONV] |
 
 ### Ejemplo de error
 

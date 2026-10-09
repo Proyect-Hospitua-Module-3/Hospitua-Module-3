@@ -112,7 +112,6 @@ Todos los errores usan el formato `ApiError` del plan base: `{ errorCode, messag
 | 401 | `UNAUTHENTICATED` | Falta el token o es inválido o expiró | No | [SPEC FR-010] [BASE] |
 | 403 | `FORBIDDEN` | El token es válido pero el rol no es `Administrador` | No | [SPEC FR-010, BR-002] |
 | 404 | `INVOICE_NOT_FOUND` | No existe una factura con ese id | No | [BASE] [PLAN] |
-| 503 | `DATABASE_UNAVAILABLE` | La base de datos no responde | Sí | [BASE] [CONV] |
 
 ### Ejemplo de error
 
