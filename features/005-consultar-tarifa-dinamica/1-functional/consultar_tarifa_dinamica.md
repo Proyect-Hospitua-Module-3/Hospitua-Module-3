@@ -156,5 +156,5 @@ Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el v
 - **SC-004**: El 100% de las consultas con un rango de fechas inválido son rechazadas sin devolver un resultado parcial.
 - **SC-005**: El 100% de los accesos a `Consultar tarifa dinámica` quedan restringidos a los actores autorizados (`Módulo 2`, `OTA`).
 - **SC-006**: El 100% de las consultas idénticas (misma fecha, mismo tipo de habitación, misma configuración vigente) devuelven el mismo resultado sin importar cuál actor autorizado las ejecute.
-- **SC-008**: El 100% de las cotizaciones guardadas conservan su valor aunque cambien después las reglas de temporada o la tarifa base.
-- **SC-009**: El 100% de las solicitudes de cotización inválidas, sin tarifa base o hechas por un actor distinto a `Módulo 2` son rechazadas sin guardar ninguna cotización.
+- **SC-007**: El 100% de las cotizaciones guardadas conservan su valor aunque cambien después las reglas de temporada o la tarifa base.
+- **SC-008**: El 100% de las solicitudes de cotización inválidas, sin tarifa base o hechas por un actor distinto a `Módulo 2` son rechazadas sin guardar ninguna cotización.

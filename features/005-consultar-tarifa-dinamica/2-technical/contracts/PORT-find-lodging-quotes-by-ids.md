@@ -91,7 +91,7 @@ Los importes y porcentajes son decimales exactos en `string`; el consumidor no l
 ## 4. Reglas de la lectura
 
 - **Solo lectura**: no ejecuta `INSERT`, `UPDATE` ni `DELETE`, y nunca invoca el cálculo de tarifa dinámica ni consulta a Módulo 1, a 009 ni a 011 [SPEC BR-004, FR-013] [PLAN].
-- **Valores tal como se guardaron**: devuelve exactamente lo que se guardó al crear la cotización, sin recalcular, aunque las reglas de temporada o la tarifa base hayan cambiado después [SPEC FR-013, SC-008] [PLAN].
+- **Valores tal como se guardaron**: devuelve exactamente lo que se guardó al crear la cotización, sin recalcular, aunque las reglas de temporada o la tarifa base hayan cambiado después [SPEC FR-013, SC-007] [PLAN].
 - **Un `quoteId` que no existe no produce error**: simplemente no aparece en el resultado. Una lista vacía de `quoteIds` devuelve una lista vacía [CONV]. Decidir qué hacer cuando ninguna cotización coincide con el `categoryRoom` (`QUOTE_NOT_FOUND`) es responsabilidad de 007, no de este puerto [007].
 - **Sin orden garantizado**: el consumidor no debe depender del orden del resultado. Cuando varias cotizaciones coinciden, 007 elige por su cuenta la de menor `quoteId` [007] [CONV].
 - **Fallo de lectura**: si la base de datos no puede responder, el error se propaga al consumidor. Nunca se devuelve una lista vacía ni valores supuestos como reemplazo [CONV].

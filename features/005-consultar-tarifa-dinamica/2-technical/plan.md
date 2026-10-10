@@ -267,7 +267,7 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 
 - [ ] T027 [P] [US4] Unit test de `CreateLodgingQuoteService`: reutiliza el cálculo por noche, el total es la suma exacta de las noches y la cotización se guarda una sola vez (FR-012)
 - [ ] T028 [P] [US4] Unit test de rechazos sin guardar nada: tarifa base no reportada, Módulo 1 no disponible y rango inválido (FR-015)
-- [ ] T029 [US4] Integration test con Testcontainers: guardar una cotización y verificar `lodging_quote` y `lodging_quote_night`; cambiar la regla de temporada y verificar que los valores guardados no cambian (SC-008); verificar que una falla a mitad de la inserción no deja una cotización parcial (transacción)
+- [ ] T029 [US4] Integration test con Testcontainers: guardar una cotización y verificar `lodging_quote` y `lodging_quote_night`; cambiar la regla de temporada y verificar que los valores guardados no cambian (SC-007); verificar que una falla a mitad de la inserción no deja una cotización parcial (transacción)
 - [ ] T030 [US4] Contract test `POST /pricing/quotes`: 200 con `{ quoteId, currency, nightlyRates, lodgingAmount }`; 400, 404 y 424 con el `errorCode` correspondiente; y 403 `FORBIDDEN` cuando la solicitud trae un JWT de OTA o de Administrador (BR-008, FR-016)
 - [ ] T031 [US4] Contract test de `LodgingQuoteQueryPort.findByIds` contra lo que consume el plan de 007: devuelve `roomType`, `lodgingAmount`, la moneda y el `quoteId` de cada cotización
 
