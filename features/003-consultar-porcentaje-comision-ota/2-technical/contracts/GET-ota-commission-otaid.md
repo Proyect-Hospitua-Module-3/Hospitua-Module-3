@@ -87,7 +87,7 @@ Accept: application/json
 2. **Canal directo**: si `otaId` es `DIRECT`, se rechaza con `400 INVALID_QUERY_PARAMS` sin consultar `settlement` [SPEC FR-006] [PLAN].
 3. **Alcance de la OTA**: si el actor es una OTA, `claim.otaId` debe ser igual a `{otaId}`; si no, `403 FORBIDDEN`, sin haber leído nada de `settlement`. Una OTA nunca accede al historial de otra [SPEC FR-009, BR-003, SC-006] [PLAN].
 4. **Lectura**: se busca en `settlement` la liquidación del canal `OTA` con ese `otaId` y el `generated_at` más reciente (ver sección 4) [SPEC FR-001] [PLAN].
-5. **Con liquidación**: responde `200` con `historical: true`, el porcentaje y la fecha de esa liquidación [SPEC HU1 escenario 1].
+5. **Con liquidación**: responde `200` con `historical: true`, el porcentaje y la fecha de esa liquidación [SPEC HU1 escenario 1, SC-001].
 6. **Sin liquidación**: responde `200` con `historical: false`, sin porcentaje ni fecha. "Sin historial" es un resultado válido, no un `404`, para no confundirlo con un recurso inexistente [SPEC FR-004, SC-002] [PLAN].
 7. **La más reciente, sin promediar**: si la OTA tuvo distintos porcentajes en el tiempo, se devuelve el de la liquidación más reciente; nunca un promedio ni uno arbitrario [SPEC casos límite].
 8. **Sin vencimiento por antigüedad**: una OTA cuya única liquidación es muy antigua sigue devolviendo ese dato como su referencia más reciente. No hay caché con vida propia [SPEC casos límite] [PLAN].
