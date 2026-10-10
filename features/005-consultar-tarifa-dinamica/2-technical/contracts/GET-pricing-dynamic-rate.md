@@ -40,7 +40,7 @@ El resultado es **idéntico para cualquier actor autorizado**. El actor solo se 
 | Token con otro rol (por ejemplo `Administrador`) | `Authorization` con `role` distinto de `OTA` | `403 FORBIDDEN` [PLAN] |
 | Token inválido o expirado | `Authorization` presente pero no válido | `401 UNAUTHENTICATED` [PLAN] |
 
-Si llega un token se valida y se aplican las reglas de OTA; si no llega, se trata como llamada interna de un módulo [BASE]. La autorización vive en el Guard del controller; el caso de uso no recibe el actor [PLAN].
+Si llega un token se valida y se aplican las reglas de OTA; si no llega, se trata como llamada interna de un módulo [BASE]. La autorización vive en el Guard del controller; el caso de uso no recibe el actor [PLAN]. Con esto el acceso queda restringido a los actores autorizados `Módulo 2` y `OTA` [SPEC FR-010, BR-002, SC-005].
 
 ### Headers
 
@@ -89,16 +89,16 @@ Accept: application/json
 
 ## 3. Reglas de Procesamiento
 
-1. **Validación del rango primero**: antes de llamar a cualquier otro componente se valida que `checkInDate < checkOutDate`. Si no, `400 INVALID_DATE_RANGE`, sin resultado parcial. Un rango de una noche se pide con `checkOutDate = checkInDate + 1 día`; fin igual al inicio equivale a cero noches y se rechaza [SPEC FR-008, casos límite] [PLAN].
+1. **Validación del rango primero**: antes de llamar a cualquier otro componente se valida que `checkInDate < checkOutDate`. Si no, `400 INVALID_DATE_RANGE`, sin resultado parcial. Un rango de una noche se pide con `checkOutDate = checkInDate + 1 día`; fin igual al inicio equivale a cero noches y se rechaza [SPEC FR-008, SC-004, casos límite] [PLAN].
 2. **Una instantánea de reglas por consulta**: se captura `asOf` una sola vez, se obtiene un único snapshot del catálogo de temporadas con `GetEffectiveSeasonRulesUseCase.getAll(asOf)` y ese mismo `asOf` se usa para clasificar todas las noches. Un cambio de reglas durante la consulta no se mezcla en ella [009] [011] [PLAN].
 3. **Por cada noche** del rango `[checkInDate, checkOutDate)`:
    - **Tarifa base**: se pide a Módulo 1 mediante `GetBaseRateUseCase` de 004 (`roomType` y fecha de la noche). 005 no calcula, guarda ni asume una tarifa base propia [SPEC FR-005] [004].
    - **Temporada**: se resuelve con el puerto de 011 (`resolve({ date, asOf })`), que devuelve el `seasonId` aplicable. Si no hay clasificación explícita, 011 devuelve la temporada por defecto (`Regular`) [SPEC FR-004] [011].
    - **Ajuste**: se busca ese `seasonId` en el snapshot de 009 y se toma su `adjustmentPercent`, un porcentaje firmado de `-100.00` a `100.00` [009].
-   - **Cálculo**: `dynamicRate = baseRate × (1 + adjustmentPercent / 100)`, con redondeo *half-up* a 2 decimales usando `Money` (decimal exacto, nunca `number`) [SPEC FR-002] [PLAN].
+   - **Cálculo**: `dynamicRate = baseRate × (1 + adjustmentPercent / 100)`, con redondeo *half-up* a 2 decimales usando `Money` (decimal exacto, nunca `number`) [SPEC FR-002, SC-001] [PLAN].
 4. **El ajuste sale solo del valor numérico**: positivo incrementa, negativo decrementa y cero no cambia la tarifa base, sin importar el nombre de la temporada. Aplica igual a `Alta`, `Baja`, `Regular` y a cualquier temporada que el Administrador configure [SPEC BR-007] [PLAN].
 5. **Cada noche usa su propia temporada**: un rango que cruza varias temporadas nunca se promedia ni se homogeniza [SPEC FR-003, BR-003].
-6. **Todo o nada (fail-fast)**: si la tarifa base de **cualquier** noche no se puede obtener, la consulta completa falla. No se devuelven las noches que sí tuvieron éxito [SPEC FR-006, NFR-003] [PLAN].
+6. **Todo o nada (fail-fast)**: si la tarifa base de **cualquier** noche no se puede obtener, la consulta completa falla. No se devuelven las noches que sí tuvieron éxito [SPEC FR-006, NFR-003, SC-003] [PLAN].
 7. **Total**: suma exacta de la `dynamicRate` de todas las noches, calculada con `Money` [PLAN].
 8. **Orden**: las noches se devuelven en orden cronológico ascendente [CONV].
 9. **Determinismo**: la misma consulta bajo la misma configuración vigente devuelve siempre el mismo resultado [SPEC NFR-001].

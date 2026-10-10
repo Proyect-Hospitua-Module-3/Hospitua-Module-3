@@ -78,7 +78,7 @@ X-Correlation-Id: 4d7e1b2a-9c3f-4a58-8e60-1b2c3d4e5f60
 4. **Total**: suma exacta de la tarifa de cada noche, con `Money` (decimal, *half-up* a 2 decimales, moneda `COP`), nunca con `number` [PLAN].
 5. **Identificador**: Módulo 3 genera un `quoteId` (UUID) al guardar la cotización y lo devuelve en la respuesta [PLAN].
 6. **Qué se guarda**: la cotización (`quoteId`, `roomType`, `checkInDate`, `checkOutDate`, `currency`, `lodgingAmount`) y, por cada noche, `night_date`, `base_rate`, `season_name`, `adjustment_percent` y `rate`, para poder reconstruir cómo se compuso cada valor [SPEC FR-009, NFR-004] [PLAN].
-7. **Todo o nada**: la cotización y todas sus noches se guardan en **una sola transacción**. Si falla el cálculo de cualquier noche o la inserción, no queda ninguna cotización parcial [SPEC FR-015] [PLAN].
+7. **Todo o nada**: la cotización y todas sus noches se guardan en **una sola transacción**. Si falla el cálculo de cualquier noche o la inserción, no queda ninguna cotización parcial [SPEC FR-015, SC-008] [PLAN].
 8. **Inmutable por diseño**: las tablas `lodging_quote` y `lodging_quote_night` solo reciben `INSERT`; no existe ningún camino de código que las actualice o borre [SPEC FR-013] [PLAN].
 9. **Sin idempotencia**: dos solicitudes idénticas crean dos cotizaciones con `quoteId` distintos. 007 las trata como equivalentes (mismo tipo y mismas fechas) [PLAN].
 10. **Salida anticipada**: el check-out nunca invoca esta operación; se liquida el valor de la cotización guardada [SPEC FR-014] [PLAN].
@@ -125,7 +125,7 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 |---|---|---|---|---|
 | **400** | `INVALID_QUERY_PARAMS` | Faltan campos del cuerpo, tienen formato inválido o la fecha no es válida. (El código es el mismo que usa el plan base para parámetros inválidos.) | No | [PLAN] [CONV] |
 | **400** | `INVALID_DATE_RANGE` | `checkOutDate` anterior o igual a `checkInDate`. | No | [SPEC FR-015] [PLAN] |
-| **403** | `FORBIDDEN` | La solicitud trae un JWT (de OTA o de Administrador). | No | [SPEC FR-016, BR-008] [PLAN] |
+| **403** | `FORBIDDEN` | La solicitud trae un JWT (de OTA o de Administrador). | No | [SPEC FR-016, BR-008, SC-008] [PLAN] |
 | **404** | `BASE_RATE_NOT_FOUND` | Módulo 1 no reporta tarifa base para alguna noche. | No | [SPEC FR-015] [BASE] |
 | **424** | `MODULE1_UNAVAILABLE` | Módulo 1 no responde, hay timeout o el circuito está abierto. | Sí | [SPEC NFR-003] [BASE] |
 | **422** | `UNEXPECTED_ERROR` | El calendario de 011 referencia una temporada que no está en el catálogo de 009, no se pueden leer las reglas o el calendario, falla la inserción, o hay cualquier otro error inesperado. | No (ver nota) | [PLAN] |
