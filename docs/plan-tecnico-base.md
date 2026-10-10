@@ -434,16 +434,188 @@ Basado en las entidades clave de `docs/diccionario.md` y de cada spec:
 
 | Tabla | Bounded context | Descripción y Atributos Clave |
 |---|---|---|
-| `vat_rate` (+ `vat_rate_history`) | `billing` | Porcentaje de IVA vigente único y su historial (BR-003 de `actualizar_porcentaje_iva.md`). |
-| `season_calendar_entry` | `pricing` | Rangos de fecha clasificados como alta/baja/regular, sin solapamientos (BR-005 de `revisar_temporada_del_año.md`). |
-| `season_rule` (+ historial) | `pricing` | Ajuste vigente por temporada (BR-005 de `modificar_precio_tarifa_segun_temporada.md`). |
-| `lodging_quote` (+ `lodging_quote_night`) | `pricing` | Cotización del hospedaje de una habitación, solicitada por Módulo 2 al crear la reserva: tipo de habitación, fechas reservadas, moneda, tarifa por noche y total. Inmutable una vez creada. |
+| `vat_rate` | `billing` | Porcentaje de IVA vigente único, en una fila única (BR-003 de `actualizar_porcentaje_iva.md`). |
+| `vat_rate_history` | `billing` | Historial de cambios del IVA: valor anterior (nulo al primer registro), valor nuevo, responsable y fecha (FR-005 de `actualizar_porcentaje_iva.md`). |
+| `season` | `pricing` | Catálogo de temporadas: nombre único, color e indicador de temporada por defecto (`Regular`, solo una) (FR-001 de `modificar_precio_tarifa_segun_temporada.md`). |
+| `season_rule` | `pricing` | Versiones del ajuste porcentual de cada temporada, con vigencia `valid_from`/`valid_to` (nulo en la vigente) (BR-005 de `modificar_precio_tarifa_segun_temporada.md`). |
+| `season_rule_history` | `pricing` | Auditoría de cada cambio de regla: ajuste anterior (nulo al crear), ajuste nuevo, responsable y fecha (FR-004 de `modificar_precio_tarifa_segun_temporada.md`). |
+| `season_calendar_revision` | `pricing` | Revisión anual del calendario: `UNIQUE(year, revision)`, una sola activa por año, con vigencia y responsable (FR-008 de `revisar_temporada_del_año.md`). |
+| `season_calendar_entry` | `pricing` | Períodos base y excepciones puntuales de una revisión, que referencian una temporada del catálogo; sin solapamientos entre períodos base (BR-005 de `revisar_temporada_del_año.md`). |
+| `lodging_quote` | `pricing` | Cotización del hospedaje de una habitación, solicitada por Módulo 2 al crear la reserva: tipo de habitación, fechas reservadas, moneda y total. Inmutable una vez creada. |
+| `lodging_quote_night` | `pricing` | Detalle por noche de la cotización: tarifa base, temporada y ajuste aplicados y tarifa resultante; `UNIQUE(quote_id, night_date)`. |
 | `settlement` | `settlement` | Liquidación: una fila por estancia, `UNIQUE(stay_id)`, estado siempre `Final` (BR-006/FR-010 de `generar_liquidacion.md`). |
 | `invoice` | `billing` | Factura: `UNIQUE(settlement_id)`, número de una secuencia PostgreSQL dedicada para la numeración consecutiva oficial (FR-011 de `generar_factura_final.md`). |
 | `app_user` | auth (transversal) | Usuarios del login propio: `username` único, `password_hash` (bcrypt), `role` (`Administrador` / `OTA`), `ota_id` (obligatorio si es OTA), `active`. Se crean por seed. |
 | `checkout_event_log` | `checkout-ingestion` | Registro de cada evento de check-out recibido, para trazabilidad y para resolver idempotencia de forma explícita (NFR-004 de `registrar_checkout.md`). |
 
 La numeración consecutiva oficial usa una **secuencia nativa de PostgreSQL** (no un contador en tabla de aplicación) para que la asignación sea atómica incluso ante reintentos concurrentes del cierre de check-out (FR-011, NFR-003 de `generar_factura_final.md`).
+
+### Diagrama entidad-relación
+
+El modelo se divide en cuatro diagramas pequeños, uno por área, para que se lean y se puedan ampliar sin perder detalle. Las líneas punteadas son relaciones entre contextos sin clave foránea entre las tablas; las continuas son claves foráneas.
+
+#### 1. Temporadas y calendario (`pricing`)
+
+```mermaid
+erDiagram
+    SEASON ||--o{ SEASON_RULE : "tiene versiones"
+    SEASON ||--o{ SEASON_RULE_HISTORY : "audita"
+    SEASON ||--o{ SEASON_CALENDAR_ENTRY : "clasifica"
+    SEASON_CALENDAR_REVISION ||--|{ SEASON_CALENDAR_ENTRY : "contiene"
+
+    SEASON {
+        uuid id PK
+        text name UK "Regular es el default"
+        text color "Formato RRGGBB"
+        bool is_default "Solo una verdadera"
+        uuid created_by
+        datetime updated_at
+    }
+    SEASON_RULE {
+        uuid id PK
+        uuid season_id FK
+        decimal adjustment_percent
+        datetime valid_from
+        datetime valid_to "Nulo en la vigente"
+        uuid created_by
+    }
+    SEASON_RULE_HISTORY {
+        uuid id PK
+        uuid season_id FK
+        uuid previous_rule_id
+        uuid new_rule_id
+        decimal previous_adjustment "Nulo al crear"
+        decimal new_adjustment
+        uuid changed_by
+        datetime changed_at
+    }
+    SEASON_CALENDAR_REVISION {
+        uuid id PK
+        int year
+        int revision "UNIQUE con year"
+        datetime effective_at
+        bool is_active "Una por año"
+        uuid changed_by
+    }
+    SEASON_CALENDAR_ENTRY {
+        uuid id PK
+        uuid revision_id FK
+        uuid season_id FK
+        text kind "BASE o EXCEPTION"
+        date start_date
+        date end_date
+    }
+```
+
+#### 2. Cotización, check-out, liquidación y factura
+
+```mermaid
+erDiagram
+    LODGING_QUOTE ||--|{ LODGING_QUOTE_NIGHT : "detalla"
+    LODGING_QUOTE ||..o{ SETTLEMENT : "es base de"
+    CHECKOUT_EVENT_LOG ||..o| SETTLEMENT : "origina"
+    SETTLEMENT ||--o| INVOICE : "se factura en"
+
+    LODGING_QUOTE {
+        uuid id PK "quoteId"
+        text room_type
+        date check_in_date
+        date check_out_date
+        char currency "COP"
+        decimal lodging_amount
+        datetime created_at
+    }
+    LODGING_QUOTE_NIGHT {
+        uuid quote_id FK
+        date night_date "UNIQUE con quote_id"
+        decimal base_rate
+        text season_name
+        decimal adjustment_percent
+        decimal rate
+    }
+    CHECKOUT_EVENT_LOG {
+        uuid id PK
+        uuid event_id UK "Deduplica entregas"
+        uuid stay_id
+        text status "PENDING PROCESSED REJECTED DEAD_LETTER"
+        text error_code
+        json payload "Sin datos tributarios"
+        datetime processed_at
+        datetime created_at
+    }
+    SETTLEMENT {
+        uuid id PK
+        uuid stay_id UK "Una por estancia"
+        text reservation_ref
+        uuid room_id
+        text category_room
+        date check_in_date
+        date check_out_date
+        uuid quote_id FK
+        text channel "DIRECT u OTA"
+        text ota_id "Solo OTA"
+        decimal ota_commission_percentage "Solo OTA"
+        decimal lodging_amount
+        decimal ota_commission_amount
+        decimal net_income
+        text status "Siempre FINAL"
+        uuid source_event_id
+        datetime generated_at
+    }
+    INVOICE {
+        uuid id PK
+        bigint invoice_number UK "Consecutivo oficial"
+        uuid settlement_id FK
+        uuid stay_id UK
+        text reservation_ref
+        text channel
+        text ota_id
+        text customer_name
+        text customer_tax_id
+        decimal lodging_amount
+        decimal vat_rate_applied "Copia, no es FK"
+        decimal vat_amount
+        decimal total_amount
+        datetime issued_at
+    }
+```
+
+#### 3. Porcentaje de IVA (`billing`)
+
+`invoice.vat_rate_applied` es una copia del valor vigente al emitir la factura, no una referencia a `vat_rate`.
+
+```mermaid
+erDiagram
+    VAT_RATE ||..o{ VAT_RATE_HISTORY : "audita"
+
+    VAT_RATE {
+        int id PK "Fila unica"
+        decimal value "Entre 0 y 100"
+        uuid updated_by
+        datetime updated_at
+    }
+    VAT_RATE_HISTORY {
+        uuid id PK
+        decimal value_before "Nulo al primer registro"
+        decimal value_after
+        uuid changed_by
+        datetime changed_at
+    }
+```
+
+#### 4. Usuarios del login propio (transversal)
+
+```mermaid
+erDiagram
+    APP_USER {
+        uuid id PK
+        text username UK
+        text password_hash
+        text role "Administrador u OTA"
+        text ota_id "Obligatorio si es OTA"
+        bool active
+    }
+```
 
 ### Reglas Transversales de Arquitectura
 
