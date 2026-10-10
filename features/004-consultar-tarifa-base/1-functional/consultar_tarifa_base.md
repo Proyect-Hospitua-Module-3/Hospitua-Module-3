@@ -4,78 +4,103 @@
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
-### Historia de usuario 1 - Obtener la tarifa base vigente para un tipo de habitación (Prioridad: P1)
+### Historia de usuario 1 - Consultar la tarifa base para una fecha (Prioridad: P1)
 
-Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consultar la tarifa base vigente de un tipo de habitación para una fecha específica, para usarla como valor inicial del precio de hospedaje.
+Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consultar a Módulo 1 la tarifa base de un tipo de habitación para una fecha específica, para usarla como valor inicial del precio de hospedaje.
 
-**Por qué esta prioridad**: La tarifa base es el punto de partida de todo cálculo de hospedaje. Sin una consulta confiable a esta información (propiedad del Módulo 1), ningún cálculo de tarifa dinámica ni cotización de hospedaje puede completarse.
+**Por qué esta prioridad**: La tarifa base es el punto de partida del cálculo del precio de hospedaje; Módulo 1 administra este dato y Módulo 3 lo consulta cuando lo necesita. `Consultar tarifa dinámica` obtiene la tarifa base para calcular el precio por noche y `Cotizar hospedaje` la usa como insumo de su cálculo (FR-002, FR-005 y FR-012 de `consultar_tarifa_dinamica.md`).
 
-**Prueba independiente**: Se puede invocar la consulta con un tipo de habitación y una fecha válidos, y verificar de forma independiente que el resultado incluya el valor de la tarifa y el período de vigencia que la respalda.
+**Prueba independiente**: Se puede solicitar la tarifa base para un tipo de habitación y una fecha, y comprobar el importe devuelto o el resultado funcional correspondiente.
 
 **Escenarios de aceptación**:
 
-1. **Escenario**: Consulta exitosa de tarifa base vigente
-	- **Dado** que el tipo de habitación solicitado tiene una tarifa base configurada en `Módulo 1`, vigente para la fecha consultada
-	- **Cuando** el sistema consulta la tarifa base al actor `Módulo 1`
-	- **Entonces** el sistema devuelve el valor de la tarifa y el período de vigencia correspondiente, sin modificar ni almacenar una copia independiente de esa configuración.
+1. **Escenario**: Consulta exitosa
+   - **Dado** que Módulo 1 tiene una tarifa base para el tipo de habitación y fecha solicitados
+   - **Cuando** Módulo 3 consulta esa tarifa
+   - **Entonces** recibe el importe aplicable sin modificar ni conservar una copia propia de la configuración.
 
-2. **Escenario**: Consulta para una estancia que cruza un cambio de tarifa base
-	- **Dado** que la tarifa base del tipo de habitación cambió de valor durante el rango de fechas de la estancia solicitada
-	- **Cuando** se consulta la tarifa base para cada noche
-	- **Entonces** el sistema devuelve el valor vigente correspondiente a la fecha específica de cada noche, no un único valor para toda la estancia.
+2. **Escenario**: Estancia que cruza un cambio de tarifa
+   - **Dado** que el importe de la tarifa base cambia entre noches de una estancia
+   - **Cuando** Módulo 3 consulta la tarifa para cada noche de la estancia
+   - **Entonces** cada fecha se resuelve de forma independiente con el importe que Módulo 1 devuelve para esa fecha, sin reutilizar el importe de otra fecha ni conservar copias; `Consultar tarifa dinámica` y `Cotizar hospedaje` solicitan la tarifa de cada noche, desde la fecha de entrada inclusiva hasta la fecha de salida exclusiva.
+
+---
+
+### Historia de usuario 2 - El cálculo se detiene cuando no hay tarifa base utilizable (Prioridad: P1)
+
+Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálculo cuando no pueda obtener una tarifa base utilizable, para no producir un importe de hospedaje estimado o parcial.
+
+**Por qué esta prioridad**: Sin una tarifa base válida, `Consultar tarifa dinámica` y `Cotizar hospedaje` no pueden determinar el valor de hospedaje correspondiente.
+
+**Prueba independiente**: Se puede solicitar un cálculo con tarifa inexistente, con Módulo 1 sin respuesta o con un importe inutilizable y verificar que el cálculo se detiene sin producir un valor.
+
+**Escenarios de aceptación**:
+
+1. **Escenario**: No existe tarifa para la noche
+   - **Dado** que Módulo 1 no tiene tarifa base para el tipo de habitación y la noche solicitados
+   - **Cuando** Módulo 3 consulta la tarifa
+   - **Entonces** el cálculo que requiere esa tarifa se detiene y no usa un valor sustituto
+
+2. **Escenario**: Módulo 1 no responde
+   - **Dado** que Módulo 1 no responde a la consulta de tarifa base
+   - **Cuando** Módulo 3 intenta obtener la tarifa
+   - **Entonces** el cálculo que requiere esa tarifa se detiene y no produce un resultado parcial
+
+3. **Escenario**: La respuesta de Módulo 1 es inutilizable
+   - **Dado** que Módulo 1 devuelve un importe no numérico, una respuesta con estructura inválida, datos requeridos ausentes o datos de tipo incorrecto
+   - **Cuando** Módulo 3 interpreta la respuesta
+   - **Entonces** informa una falla de dependencia y detiene el cálculo que requiere esa tarifa, sin devolver valores parciales ni sustitutos
+
+4. **Escenario**: El importe numérico no es positivo
+   - **Dado** que Módulo 1 devuelve un importe numérico igual o menor que cero
+   - **Cuando** Módulo 3 interpreta la respuesta
+   - **Entonces** informa que la tarifa es inválida y detiene el cálculo que la requiere, sin devolver un valor sustituto
 
 ### Casos límite
 
-- **Tipo de habitación sin tarifa base configurada**: Si no existe ninguna tarifa base registrada en `Módulo 1` para el tipo de habitación, el sistema debe informar la ausencia y no devolver un valor en cero ni un valor por defecto.
-- **Tarifa base existente pero no vigente para la fecha solicitada**: Si el tipo de habitación tiene tarifas registradas, pero ninguna cubre la fecha específica consultada, el sistema debe informarlo, distinguiendo este caso de la ausencia total de configuración.
-- **Tipo de habitación inexistente o inválido**: Si el identificador de tipo de habitación no corresponde a ningún registro conocido, el sistema debe rechazar la consulta en vez de asumir un tipo por defecto.
-- **Períodos de vigencia solapados para el mismo tipo de habitación**: Si `Módulo 1` reporta más de una tarifa base vigente simultáneamente para la misma fecha, el sistema debe rechazar la consulta por ambigüedad, sin elegir arbitrariamente una de las dos.
-- **Tarifa base con valor no válido**: Si el valor reportado es negativo, cero, o no numérico, el sistema debe rechazar la consulta en vez de propagarlo al cálculo de tarifa dinámica.
-- **Cambio de tarifa base después de una consulta ya utilizada**: Un cambio posterior en `Módulo 1` no debe alterar retroactivamente un cálculo que ya se haya realizado con el valor previamente consultado; la consulta solo afecta cálculos nuevos a partir del cambio.
-- **Indisponibilidad técnica de Módulo 1 al momento de la consulta**: Si la consulta hacia `Módulo 1` falla por un problema de comunicación (no porque falte la tarifa, sino porque el módulo no responde), el sistema debe detener el cálculo que la invoca sin asumir que la tarifa no existe ni sustituirla por un valor supuesto.
+- Si Módulo 1 no encuentra tarifa para el tipo de habitación y la fecha, el cálculo que la requiere se detiene y se informa la ausencia; no se usa un valor sustituto.
+- Si Módulo 1 no responde, o devuelve una respuesta con estructura inválida, datos requeridos ausentes o de tipo incorrecto, el cálculo se detiene por falla de dependencia; si devuelve un importe numérico no positivo, el cálculo se detiene porque la tarifa es inválida. En ambos casos no se devuelven valores parciales ni sustitutos.
+- Un cambio posterior de tarifa base no altera la cotización de hospedaje ya guardada.
+- Si el tipo de habitación está vacío o la fecha consultada es inválida, Módulo 3 rechaza la consulta sin consultar a Módulo 1.
 
 ## Requisitos *(obligatorio)*
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE consultar la tarifa base vigente para un tipo de habitación y una fecha específica, obteniendo el valor y el período de vigencia gestionados por `Módulo 1`.
-- **FR-002**: El sistema NO DEBE almacenar una copia persistente e independiente de la configuración de tarifa base; cada consulta DEBE reflejar el estado vigente al momento de la invocación.
-- **FR-003**: El sistema DEBE resolver la tarifa base de forma independiente para cada fecha consultada, de modo que una estancia que cruce un cambio de valor de tarifa base use el valor vigente de cada noche.
-- **FR-004**: El sistema DEBE rechazar la consulta y no devolver un valor sustituto cuando el tipo de habitación no tenga ninguna tarifa base configurada, o cuando exista tarifa base configurada pero ninguna vigente para la fecha solicitada, informando cuál de los dos casos ocurre.
-- **FR-005**: El sistema DEBE rechazar la consulta cuando se detecten períodos de vigencia solapados para el mismo tipo de habitación y fecha, sin resolver la ambigüedad de forma arbitraria.
-- **FR-006**: El sistema DEBE rechazar la consulta cuando el valor de la tarifa base reportado sea inválido (negativo, cero, o no numérico).
-- **FR-007**: El sistema NO DEBE modificar, corregir ni completar la configuración de tarifa base en `Módulo 1`; esta consulta es de solo lectura.
-- **FR-008**: El sistema DEBE distinguir entre la ausencia de una tarifa base (Módulo 1 responde que no existe) y una falla de comunicación con Módulo 1 (no se obtiene respuesta); en ambos casos DEBE detener el cálculo que invoca la consulta, pero sin tratar una falla técnica como si fuera una configuración faltante.
-- **FR-009**: El sistema DEBE rechazar la consulta cuando el identificador de tipo de habitación no corresponda a ningún tipo conocido, sin asumir un tipo por defecto.
+- **FR-001**: Módulo 3 DEBE consultar a Módulo 1 la tarifa base aplicable a un tipo de habitación y una fecha, y recibir su importe en COP.
+- **FR-002**: Módulo 3 NO DEBE almacenar una copia propia de la tarifa base como fuente de cálculos futuros; cada consulta refleja el dato vigente que proporciona Módulo 1.
+- **FR-003**: Módulo 3 DEBE resolver de forma independiente cada fecha consultada con el importe que Módulo 1 devuelve para esa fecha, sin reutilizar el importe de otra fecha ni conservar copias. `Consultar tarifa dinámica` y `Cotizar hospedaje` DEBEN consultar la tarifa base de cada noche de la estancia, desde la fecha de entrada inclusiva hasta la fecha de salida exclusiva.
+- **FR-004**: Cuando Módulo 1 no tenga tarifa para el tipo de habitación y noche solicitados, Módulo 3 DEBE detener el cálculo invocante e informar la ausencia, sin devolver un valor sustituto.
+- **FR-005**: Módulo 3 NO DEBE modificar, corregir ni completar la configuración de tarifa base de Módulo 1; la consulta es de solo lectura.
+- **FR-006**: Módulo 3 DEBE distinguir la ausencia de tarifa, una tarifa inválida por tener un importe numérico no positivo y una falla de dependencia por falta de respuesta o una respuesta con estructura inválida, datos requeridos ausentes o de tipo incorrecto. En todos esos casos, DEBE detener el cálculo que requiere la tarifa sin devolver valores parciales ni sustitutos.
+- **FR-007**: Módulo 3 DEBE rechazar una consulta con tipo de habitación vacío o fecha inválida sin consultar a Módulo 1.
 
-### Entidades clave *(incluir si la funcionalidad maneja datos)*
+### Entidades clave
 
-- **Tarifa base**: Valor regular de una noche para un tipo de habitación, con período de vigencia, gestionado y mantenido por `Módulo 1`.
-- **Tipo de habitación**: Categoría de alojamiento a la que se asocia la tarifa base consultada.
-- **Período de vigencia**: Rango de fechas durante el cual un valor específico de tarifa base es aplicable.
-- **Resultado de consulta**: Valor de tarifa base y período de vigencia devueltos, o el motivo de rechazo cuando no exista una tarifa aplicable.
+- **Tarifa base**: Importe en COP de una noche para un tipo de habitación, administrado por Módulo 1.
+- **Tipo de habitación**: Categoría de alojamiento para la que se consulta el importe.
+- **Resultado de consulta de tarifa base**: Importe devuelto por Módulo 1 o resultado funcional de ausencia de tarifa, tarifa inválida o falla de dependencia.
 
 ### Reglas de negocio
 
-- **BR-001**: Frontera arquitectónica: la tarifa base es propiedad y responsabilidad de `Módulo 1`. El Módulo 3 únicamente la consulta como insumo interno de su propio cálculo de precio; no la configura, corrige ni almacena de forma independiente.
-- **BR-002**: Unicidad por fecha: cada tipo de habitación debe tener, como máximo, una tarifa base vigente por fecha; una consulta que detecte más de una debe rechazarse en vez de elegir una arbitrariamente.
-- **BR-003**: Ausencia de valores por defecto: la falta de una tarifa base vigente detiene el cálculo que la invoca; el sistema no sustituye el valor faltante por cero ni por un valor supuesto.
-- **BR-004**: No retroactividad: un cambio de la tarifa base en `Módulo 1` solo afecta consultas posteriores al cambio; no altera cálculos ya realizados con el valor consultado previamente.
+- **BR-001**: Módulo 1 es responsable de administrar la tarifa base; Módulo 3 solo la consulta como insumo de su cálculo.
+- **BR-002**: Si no hay tarifa aplicable, Módulo 3 detiene el cálculo y no sustituye el importe por cero ni por un valor predeterminado.
+- **BR-003**: Un cambio de tarifa base afecta las consultas posteriores y no modifica cálculos ya guardados.
+- **BR-004**: La tarifa base se consulta únicamente para `Consultar tarifa dinámica` y `Cotizar hospedaje` (FR-002, FR-005 y FR-012 de `consultar_tarifa_dinamica.md`); `Generar liquidación` usa el valor de hospedaje de la cotización guardada y nunca consulta la tarifa base (FR-002 y BR-004 de `generar_liquidacion.md`).
 
 ## Requisitos no funcionales
 
-- **NFR-001**: Determinismo: para el mismo tipo de habitación, fecha y estado de configuración en `Módulo 1`, la consulta debe devolver siempre el mismo resultado.
-- **NFR-002**: Rendimiento: la consulta debe completarse en un tiempo que no genere demoras perceptibles dentro de los procesos de cálculo de tarifa dinámica que la invocan.
-- **NFR-003**: Actualidad: la consulta debe reflejar siempre el estado más reciente de la configuración en `Módulo 1`, sin depender de una copia cacheada desactualizada.
+- **NFR-001**: Determinismo: para el mismo tipo de habitación, fecha y dato proporcionado por Módulo 1, la consulta produce el mismo resultado.
+- **NFR-002**: Rendimiento: cada consulta a Módulo 1 se completa o falla dentro de 500 ms.
+- **NFR-003**: Actualidad: la consulta refleja el dato proporcionado por Módulo 1 en el momento de la solicitud y no depende de una copia desactualizada.
 
 ## Criterios de éxito *(obligatorio)*
 
 ### Resultados medibles
 
-- **SC-001**: El 100% de las consultas con tarifa base vigente y sin ambigüedad devuelven el valor y el período de vigencia correctos.
-- **SC-002**: El 100% de las consultas sin tarifa base configurada o sin vigencia para la fecha solicitada se rechazan sin devolver un valor sustituto.
-- **SC-003**: El 100% de las consultas con períodos de vigencia solapados se rechazan por ambigüedad, sin resolución arbitraria.
-- **SC-004**: El 0% de las consultas modifica o corrige la configuración de tarifa base en `Módulo 1`.
-- **SC-005**: El 100% de las consultas con un valor de tarifa base inválido (negativo, cero o no numérico) se rechazan sin propagar el valor.
-- **SC-006**: El 100% de las fallas de comunicación con `Módulo 1` detienen el cálculo invocante y se distinguen de una tarifa inexistente.
-- **SC-007**: El 100% de las estancias que cruzan un cambio de tarifa base usan el valor vigente de cada noche.
+- **SC-001**: El 100% de las consultas con tarifa disponible devuelve el importe comunicado por Módulo 1.
+- **SC-002**: El 100% de las consultas sin tarifa disponible detiene el cálculo y no devuelve un importe sustituto.
+- **SC-003**: El 100% de las consultas sin respuesta de Módulo 1, con importes no numéricos o con respuestas de estructura inválida, datos requeridos ausentes o de tipo incorrecto se trata como falla de dependencia; los importes numéricos no positivos se informan como tarifa inválida. En todos los casos, el cálculo se detiene sin propagar el importe ni devolver valores parciales o sustitutos.
+- **SC-004**: El 0% de las consultas persiste una copia propia de la configuración de tarifa base.
+- **SC-005**: El 100% de las fechas consultadas se resuelve de forma independiente con el importe devuelto por Módulo 1 para esa fecha, sin reutilizar el de otra fecha ni conservar copias; `Consultar tarifa dinámica` y `Cotizar hospedaje` consultan cada noche de la estancia desde la fecha de entrada inclusiva hasta la fecha de salida exclusiva.
+- **SC-006**: El 100% de las consultas con tipo de habitación vacío o fecha inválida se rechaza sin consultar a Módulo 1.
