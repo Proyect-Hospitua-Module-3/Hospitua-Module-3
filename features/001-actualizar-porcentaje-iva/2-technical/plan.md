@@ -208,5 +208,6 @@ El valor viaja y se almacena como decimal exacto (`"19.00"`), no como `number` d
 
 - [Story] mapea cada tarea a su historia de usuario para trazabilidad con la spec funcional.
 - La concurrencia (NFR-002) se resuelve con un `pg_advisory_xact_lock` dentro de la transacción, porque con la tabla vacía no hay fila que bloquear en el primer registro; no se introduce locking optimista (versión/ETag) porque el requisito es "una sola queda vigente de forma consistente", no "rechazar la segunda escritura".
-- Decisiones que no vienen de la spec y conviene confirmar: el máximo de 2 decimales (alineado con `numeric(5,2)` y con `vat_rate_applied` de 006) y el uso del `pg_advisory_xact_lock`.
+- Decisión que no viene de la spec y conviene confirmar con el equipo: el **máximo de 2 decimales** (alineado con `numeric(5,2)` y con `vat_rate_applied` de 006); sin un límite, un valor como 19.555 se redondearía en silencio.
+- El `pg_advisory_xact_lock` es un detalle de implementación, no una decisión de negocio: no cambia ningún comportamiento visible de la spec.
 - Cualquier conflicto entre este plan y la spec funcional (`1-functional/actualizar_porcentaje_iva.md`) se resuelve a favor de la spec, conforme a la nota final de `docs/plan-tecnico-base.md`.
