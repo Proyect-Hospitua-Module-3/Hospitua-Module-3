@@ -1,7 +1,7 @@
 # Especificación de funcionalidad: Consultar tarifa dinámica
 
 **Creado**: 2026-09-18  
-**Actualizado**: 2026-10-09 (incluye `Cotizar hospedaje`: Módulo 3 calcula y guarda la cotización del hospedaje al crear o extender una reserva)
+**Actualizado**: 2026-10-09 (incluye `Cotizar hospedaje`: Módulo 3 calcula y guarda la cotización del hospedaje al crear una reserva)
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
@@ -47,7 +47,6 @@ Como Módulo 2, quiero consultar la tarifa dinámica de cada noche dentro de un 
    - **Cuando** Módulo 2 ejecuta la consulta
    - **Entonces** el sistema rechaza la consulta y no devuelve ningún resultado parcial
 
-
 ---
 
 ### Historia de usuario 3 - La OTA verifica la tarifa dinámica vigente para mantener paridad de precios (Prioridad: P2)
@@ -74,7 +73,7 @@ Como OTA (Booking, Airbnb, Expedia), quiero consultar la tarifa dinámica vigent
 
 ### Historia de usuario 4 - Módulo 2 obtiene un valor de hospedaje que no cambia después de reservar (Prioridad: P1)
 
-Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el valor de hospedaje de una habitación cuando se crea o se extiende una reserva, para mostrarle al cliente ese valor antes de confirmar y garantizar que en el check-out se liquide exactamente ese valor.
+Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el valor de hospedaje de una habitación cuando se crea una reserva, para mostrarle al cliente ese valor antes de confirmar y garantizar que en el check-out se liquide exactamente ese valor.
 
 **Por qué esta prioridad**: `Generar liquidación` toma el valor de hospedaje de la cotización guardada y no lo recalcula (FR-002 y BR-004 de `generar_liquidacion.md`). Sin esa cotización no existe un valor confiable para liquidar, y un cambio posterior de temporada o de tarifa base alteraría lo que el cliente aceptó.
 
@@ -87,15 +86,10 @@ Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el v
    - **Cuando** Módulo 3 calcula la tarifa dinámica de cada noche
    - **Entonces** guarda la cotización con el valor de cada noche y su total
 
-2. **Escenario**: Extensión de una estancia
-   - **Dado** que existe una cotización previa de esa habitación
-   - **Cuando** Módulo 2 solicita una nueva cotización con una fecha de salida posterior, indicando la cotización que extiende (`extendsQuoteId`)
-   - **Entonces** la cotización nueva conserva el valor de las noches ya cotizadas y calcula solo las noches nuevas con la tarifa dinámica vigente; la cotización original no se modifica
-
-3. **Escenario**: Salida anticipada
+2. **Escenario**: Salida anticipada
    - **Dado** que el huésped se retira antes de la fecha de salida reservada
    - **Cuando** se registra el check-out
-   - **Entonces** no se genera ninguna cotización nueva; se liquida el valor de la cotización guardada
+   - **Entonces** no se genera ninguna cotización; se liquida el valor de la cotización guardada
 
 ### Casos límite
 
@@ -104,8 +98,6 @@ Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el v
 - La regla de temporada o la tarifa base cambian después de que Módulo 2 ya utilizó una consulta anterior para construir parte del valor de hospedaje de una estancia en curso: `Consultar tarifa dinámica` siempre refleja la configuración vigente en el momento exacto de cada consulta; no re-evalúa ni corrige consultas anteriores ya realizadas. Las cotizaciones ya guardadas (HU4) no se ven afectadas por esos cambios.
 - Consulta repetida para la misma habitación y fecha sin cambios de configuración: debe devolver siempre el mismo resultado.
 - Rango de fechas de una sola noche: la fecha de fin es la fecha de salida (exclusiva, igual que en el valor de hospedaje); una noche se consulta con fecha de fin = fecha de inicio + 1 día, y el sistema devuelve el resultado de esa única noche. Una fecha de fin igual a la de inicio equivale a cero noches y se rechaza.
-- `extendsQuoteId` que no corresponde a ninguna cotización guardada: el sistema rechaza la solicitud de cotización, sin crear una cotización nueva.
-- Fecha de salida de una extensión que no es posterior a la fecha de salida de la cotización que extiende: el sistema rechaza la solicitud, sin crear una cotización nueva.
 - Solicitud de cotización de un actor distinto a Módulo 2: el sistema rechaza la solicitud.
 
 ## Requisitos *(obligatorio)*
@@ -123,17 +115,17 @@ Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el v
 - **FR-009**: El resultado de la consulta DEBE identificar, para cada noche, la tarifa base de origen, la temporada aplicada y la tarifa dinámica resultante, para que el actor consultante pueda trazar cómo se compuso ese valor (en el caso de Módulo 2, para conocer el precio por noche antes de cotizar).
 - **FR-010**: El sistema DEBE restringir el acceso a `Consultar tarifa dinámica` exclusivamente a los actores autorizados (`Módulo 2`, `OTA`).
 - **FR-011**: El sistema NO DEBE aplicar restricciones de visibilidad por actor sobre el resultado de esta consulta; la tarifa dinámica de una fecha y tipo de habitación es la misma para cualquier actor autorizado que la consulte, dado que no es información específica de una reserva ni de un canal en particular.
-- **FR-012**: El sistema DEBE permitir a `Módulo 2` solicitar la cotización del hospedaje de una habitación al crear o extender una reserva, indicando el tipo de habitación, la fecha de entrada, la fecha de salida (exclusiva) y, en una extensión, `extendsQuoteId`; Módulo 3 DEBE calcular el valor de cada noche con la tarifa dinámica (FR-002), guardar la cotización y entregar el valor de cada noche y el total.
+- **FR-012**: El sistema DEBE permitir a `Módulo 2` solicitar la cotización del hospedaje de una habitación al crear una reserva, indicando el tipo de habitación, la fecha de entrada y la fecha de salida (exclusiva); Módulo 3 DEBE calcular el valor de cada noche con la tarifa dinámica (FR-002), guardar la cotización y entregar el valor de cada noche y el total.
 - **FR-013**: El sistema NO DEBE modificar una cotización guardada ni recalcularla, aunque cambien después las reglas de temporada o la tarifa base.
-- **FR-014**: En una extensión, el sistema DEBE crear una cotización nueva que conserve el valor de las noches ya cotizadas y calcule solo las noches nuevas con la tarifa dinámica vigente; la cotización original NO DEBE modificarse. Una salida anticipada NO DEBE generar una cotización nueva.
-- **FR-015**: El sistema DEBE rechazar la solicitud de cotización, sin guardar nada, cuando Módulo 1 no reporte tarifa base para alguna noche, cuando el rango de fechas sea inválido, cuando `extendsQuoteId` no corresponda a una cotización guardada, o cuando la nueva fecha de salida no sea posterior a la de la cotización que extiende.
+- **FR-014**: Una salida anticipada NO DEBE generar una cotización.
+- **FR-015**: El sistema DEBE rechazar la solicitud de cotización, sin guardar nada, cuando Módulo 1 no reporte tarifa base para alguna noche o cuando el rango de fechas sea inválido.
 - **FR-016**: El sistema DEBE restringir la solicitud de cotización exclusivamente al actor `Módulo 2`.
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
 - **Tarifa dinámica**: Valor resultante de ajustar la tarifa base según la temporada aplicable a una noche específica; se calcula en el momento de la consulta, no se almacena como valor independiente.
 - **Consulta de tarifa**: Solicitud de un actor autorizado (`Módulo 2`, `OTA`) identificando el tipo de habitación y una fecha o rango de fechas.
-- **Cotización de hospedaje**: Valor de hospedaje de una habitación (valor de cada noche y total), calculado por Módulo 3 a solicitud de Módulo 2 al crear o extender una reserva; no cambia una vez guardada. Es la fuente del valor de hospedaje que usa `Generar liquidación`.
+- **Cotización de hospedaje**: Valor de hospedaje de una habitación (valor de cada noche y total), calculado por Módulo 3 a solicitud de Módulo 2 al crear una reserva; no cambia una vez guardada. Es la fuente del valor de hospedaje que usa `Generar liquidación`.
 - **Resultado por noche**: Tarifa base de origen, temporada aplicada y tarifa dinámica resultante para una noche específica dentro del rango consultado.
 
 ### Reglas de negocio
@@ -143,14 +135,14 @@ Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el v
 - **BR-003**: Cada noche de una estancia se valora con la temporada que corresponde a esa fecha específica; una estancia que abarca más de una temporada nunca se homogeniza a una sola.
 - **BR-004**: `Consultar tarifa dinámica` es una operación exclusivamente de lectura: no crea ni modifica la tarifa base, la clasificación de temporada, ni ningún registro de liquidación o factura. Crear la cotización de hospedaje (HU4) es una operación distinta, que sí guarda un registro.
 - **BR-005**: A diferencia de `Consultar liquidación`, este caso de uso no segmenta el resultado por actor: la tarifa dinámica de una fecha y tipo de habitación es pública entre los actores autorizados, no un dato privado de una reserva o canal.
-- **BR-006**: Una cotización guardada no cambia. Una extensión de estancia crea una cotización nueva que conserva el valor de las noches ya cotizadas y calcula solo las noches nuevas con la configuración vigente; Módulo 2 reemplaza la cotización anterior en la reserva.
+- **BR-006**: Una cotización guardada no cambia.
 - **BR-007**: El ajuste aplicado a cada noche depende únicamente del valor numérico (positivo, negativo o cero) configurado para la temporada vigente de esa fecha, nunca del nombre o la etiqueta de la temporada; esto rige por igual para las temporadas predeterminadas (`Alta`, `Baja`, `Regular`) y para cualquier temporada adicional que el Administrador configure en `Modificar precio tarifa según temporada`.
-- **BR-008**: Solo `Módulo 2` puede solicitar cotizaciones, y únicamente como parte de la creación o la extensión de una reserva.
+- **BR-008**: Solo `Módulo 2` puede solicitar cotizaciones, y únicamente como parte de la creación de una reserva.
 
 ## Requisitos no funcionales
 
 - **NFR-001**: Determinismo: el mismo tipo de habitación, la misma fecha y la misma configuración vigente deben producir siempre el mismo resultado.
-- **NFR-002**: Rendimiento: la consulta debe responder en un tiempo adecuado para no bloquear operaciones de front-desk en Módulo 2 (cotización, check-in, cálculo de extensiones).
+- **NFR-002**: Rendimiento: la consulta debe responder en un tiempo adecuado para no bloquear operaciones de front-desk en Módulo 2 (cotización, check-in).
 - **NFR-003**: Consistencia entre módulos: si Módulo 1 no está disponible o no devuelve una tarifa base válida, la consulta debe fallar de forma explícita, nunca con un resultado parcial o estimado.
 - **NFR-004**: Trazabilidad: el resultado debe permitir reconstruir, para cada noche, cómo se llegó a la tarifa dinámica final a partir de la tarifa base y la temporada aplicada.
 
@@ -164,6 +156,5 @@ Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el v
 - **SC-004**: El 100% de las consultas con un rango de fechas inválido son rechazadas sin devolver un resultado parcial.
 - **SC-005**: El 100% de los accesos a `Consultar tarifa dinámica` quedan restringidos a los actores autorizados (`Módulo 2`, `OTA`).
 - **SC-006**: El 100% de las consultas idénticas (misma fecha, mismo tipo de habitación, misma configuración vigente) devuelven el mismo resultado sin importar cuál actor autorizado las ejecute.
-- **SC-007**: El 100% de las cotizaciones de extensión conservan el valor de las noches ya cotizadas y calculan solo las noches nuevas con la configuración vigente.
 - **SC-008**: El 100% de las cotizaciones guardadas conservan su valor aunque cambien después las reglas de temporada o la tarifa base.
-- **SC-009**: El 100% de las solicitudes de cotización inválidas, sin tarifa base, con `extendsQuoteId` inexistente o hechas por un actor distinto a `Módulo 2` son rechazadas sin guardar ninguna cotización.
+- **SC-009**: El 100% de las solicitudes de cotización inválidas, sin tarifa base o hechas por un actor distinto a `Módulo 2` son rechazadas sin guardar ninguna cotización.
