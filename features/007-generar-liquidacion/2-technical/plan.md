@@ -197,7 +197,7 @@ Servicio de dominio puro, sin puertos ni I/O:
 
 Ejemplo: cotización de 750.000 COP, canal OTA con 15 % → comisión 112.500 y neto 637.500.
 
-**Salida anticipada o extensión**: el valor es siempre el de la cotización vigente de la reserva. Una extensión ya llega como una nueva cotización que Módulo 2 dejó en `quoteIds` en lugar de la anterior; la liquidación solo registra las fechas reales [casos límite, BR-004].
+**Salida anticipada**: el valor es siempre el de la cotización de la reserva; la liquidación solo registra las fechas reales [casos límite, BR-004].
 
 ### Modelo de datos (`settlement`)
 

@@ -39,7 +39,7 @@ X-Correlation-Id: 9b1f6d3e-2c4a-4f7b-8e5d-3a1c0b9d8e72
 | Campo | Tipo | Obligatorio | Descripción | Origen |
 |---|---|---|---|---|
 | `reservationRef` | string | Sí | Debe coincidir con el solicitado | [BASE] |
-| `quoteIds` | UUID[] | Sí | Una cotización por habitación de la reserva; en una extensión, la vigente | [BASE] [SPEC casos límite] |
+| `quoteIds` | UUID[] | Sí | Una cotización por habitación de la reserva | [BASE] |
 | `channel` | string | No | `OTA` o un canal directo (recepción, teléfono, portal propio). Ausente o `null` → directo | [BASE] [SPEC FR-004] |
 | `otaId` | string | Si `channel = OTA` | Identificador de la OTA | [BASE] |
 | `otaConfirmationCode` | string | Si `channel = OTA` | Código de confirmación de la OTA | [BASE] |
@@ -92,7 +92,7 @@ Un `404` no cuenta como fallo para el circuit breaker; timeout, `5xx` y errores 
 
 - **Sin datos personales**: de la respuesta solo se usan los campos de la tabla; el resto se descarta y no se registra en logs [SPEC NFR-006].
 - **Solo lectura**: la consulta no modifica nada en Módulo 2 [CONV].
-- **Sin caché**: cada generación consulta la reserva, porque una extensión puede haber reemplazado un `quoteId` y el canal o la comisión pueden corregirse hasta el check-out [PLAN] [SPEC casos límite].
+- **Sin caché**: cada generación consulta la reserva, porque el canal o la comisión pueden corregirse hasta el check-out [PLAN] [SPEC casos límite].
 - **Configuración**: `MODULE2_BASE_URL` y `MODULE2_TIMEOUT_MS=500` en `.env` [PLAN].
 
 ## 6. Contract test

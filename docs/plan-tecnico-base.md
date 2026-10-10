@@ -136,7 +136,7 @@ Regla arquitectónica de Módulo 3:
 |---|---|---|---|
 | `POST /auth/login` | Administrador, OTA | — | Login propio de Módulo 3: emite el JWT de usuario |
 | `GET /pricing/dynamic-rate` | Módulo 2, OTA | 005 | Tarifa dinámica por noche (tarifa base + regla de temporada) |
-| `POST /pricing/quotes` | Módulo 2 | 005 | Cotización del hospedaje de una habitación al crear una reserva o al extenderla: calcula y guarda la tarifa dinámica de cada noche y el total |
+| `POST /pricing/quotes` | Módulo 2 | 005 | Cotización del hospedaje de una habitación al crear una reserva: calcula y guarda la tarifa dinámica de cada noche y el total |
 | `GET /api/settlements?reservationRef={ref}&checkInDate={in}&checkOutDate={out}&source={src}&roomId={room}&categoryRoom={type}` | Módulo 1, OTA | 002 | Desglose de la liquidación de una habitación (ruta y parámetros definidos por Módulo 1) |
 | `GET /ota-commission/{otaId}` | Módulo 2, OTA | 003 | Último porcentaje de comisión aplicado a una OTA (referencial) |
 | `GET /invoices` | Administrador | 008 | Búsqueda de facturas por criterios |
@@ -161,10 +161,9 @@ Ambos contratos están acordados con Módulo 1 y Módulo 2.
 
 Módulo 3 calcula el valor del hospedaje en el momento de la reserva, para que el cliente lo vea antes de confirmar y en el check-out se cobre exactamente ese valor.
 
-- Módulo 2 solicita la cotización solo como parte de la creación o la extensión de una reserva (no existen cotizaciones sueltas, por lo que no se maneja vigencia).
+- Módulo 2 solicita la cotización solo como parte de la creación de una reserva (no existen cotizaciones sueltas, por lo que no se maneja vigencia).
 - Una cotización corresponde a **una habitación**: si la reserva incluye varias, Módulo 2 pide una cotización por cada una y guarda la lista de `quoteId` en la reserva.
-- `POST /pricing/quotes` recibe `{ roomType, checkInDate, checkOutDate, extendsQuoteId? }` y responde `{ quoteId, currency: "COP", nightlyRates: [{ date, rate }], lodgingAmount }`. Módulo 2 muestra `lodgingAmount` al cliente (la suma de todas, si hay varias habitaciones).
-- **Extensión de estancia**: Módulo 2 la gestiona como un cambio de la reserva y pide una nueva cotización enviando `extendsQuoteId` (la cotización vigente de esa habitación) y la nueva `checkOutDate`. Módulo 3 crea una cotización nueva que **copia** las noches ya cotizadas con su valor original y calcula solo las noches nuevas con la tarifa dinámica vigente. Módulo 2 reemplaza en la reserva el `quoteId` anterior por el nuevo. La cotización original no se modifica.
+- `POST /pricing/quotes` recibe `{ roomType, checkInDate, checkOutDate }` y responde `{ quoteId, currency: "COP", nightlyRates: [{ date, rate }], lodgingAmount }`. Módulo 2 muestra `lodgingAmount` al cliente (la suma de todas, si hay varias habitaciones).
 - **Salida anticipada**: no genera una nueva cotización; se liquida lo cotizado, porque es lo que el cliente aceptó al confirmar (no es una penalización).
 - `GET /api/reservations/{reservationRef}` devuelve `reservationRef`, `quoteIds: ["UUID", ...]`, `channel` y, si `channel = OTA`, `otaId`, `otaConfirmationCode` y `otaCommissionPercentage`. Si la reserva no existe, Módulo 2 responde 404.
 - Módulo 3 llama a Módulo 2 sin token, por la red interna (ver [Autenticación](#autenticación)).
@@ -326,7 +325,7 @@ src/
 │   │   │   ├── modify-season-rule.service.ts
 │   │   │   ├── get-base-rate.service.ts
 │   │   │   ├── get-dynamic-rate.service.ts       # Compone tarifa base + regla de temporada
-│   │   │   └── create-lodging-quote.service.ts   # Tarifa dinámica × noches, guarda la cotización (en extensión copia las noches ya cotizadas)
+│   │   │   └── create-lodging-quote.service.ts   # Tarifa dinámica × noches, guarda la cotización
 │   │   ├── ota-commission/
 │   │   │   └── get-latest-ota-commission.service.ts
 │   │   ├── checkout-ingestion/
@@ -438,7 +437,7 @@ Basado en las entidades clave de `docs/diccionario.md` y de cada spec:
 | `vat_rate` (+ `vat_rate_history`) | `billing` | Porcentaje de IVA vigente único y su historial (BR-003 de `actualizar_porcentaje_iva.md`). |
 | `season_calendar_entry` | `pricing` | Rangos de fecha clasificados como alta/baja/regular, sin solapamientos (BR-005 de `revisar_temporada_del_año.md`). |
 | `season_rule` (+ historial) | `pricing` | Ajuste vigente por temporada (BR-005 de `modificar_precio_tarifa_segun_temporada.md`). |
-| `lodging_quote` (+ `lodging_quote_night`) | `pricing` | Cotización del hospedaje de una habitación, solicitada por Módulo 2 al crear o extender la reserva: tipo de habitación, fechas reservadas, moneda, tarifa por noche, total y `extends_quote_id` (opcional, la cotización que extiende). Inmutable una vez creada. |
+| `lodging_quote` (+ `lodging_quote_night`) | `pricing` | Cotización del hospedaje de una habitación, solicitada por Módulo 2 al crear la reserva: tipo de habitación, fechas reservadas, moneda, tarifa por noche y total. Inmutable una vez creada. |
 | `settlement` | `settlement` | Liquidación: una fila por estancia, `UNIQUE(stay_id)`, estado siempre `Final` (BR-006/FR-010 de `generar_liquidacion.md`). |
 | `invoice` | `billing` | Factura: `UNIQUE(settlement_id)`, número de una secuencia PostgreSQL dedicada para la numeración consecutiva oficial (FR-011 de `generar_factura_final.md`). |
 | `app_user` | auth (transversal) | Usuarios del login propio: `username` único, `password_hash` (bcrypt), `role` (`Administrador` / `OTA`), `ota_id` (obligatorio si es OTA), `active`. Se crean por seed. |
