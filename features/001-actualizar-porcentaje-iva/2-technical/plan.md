@@ -35,7 +35,9 @@ features/001-actualizar-porcentaje-iva/
 ├── 1-functional/
 │   └── actualizar_porcentaje_iva.md   # Spec funcional (fuente de verdad de negocio)
 └── 2-technical/
-    └── plan.md                        # Este archivo
+    ├── plan.md                        # Este archivo
+    └── contracts/
+        └── PUT-admin-vat-rate.md      # Contrato REST de PUT /admin/vat-rate
 ```
 
 El contrato del puerto `GetCurrentVatRateUseCase` que consume 006 ya está documentado en `features/006-generar-factura-final/2-technical/contracts/PORT-get-current-vat-rate.md`; este plan lo implementa sin modificarlo.
