@@ -37,7 +37,11 @@ features/005-consultar-tarifa-dinamica/
 ├── 1-functional/
 │   └── consultar_tarifa_dinamica.md   # Spec funcional (fuente de verdad de negocio)
 └── 2-technical/
-    └── plan.md                        # Este archivo
+    ├── plan.md                        # Este archivo
+    └── contracts/
+        ├── GET-pricing-dynamic-rate.md          # Contrato REST de GET /pricing/dynamic-rate
+        ├── POST-pricing-quotes.md               # Contrato REST de POST /pricing/quotes
+        └── PORT-find-lodging-quotes-by-ids.md   # Puerto de lectura de cotizaciones que consume 007
 ```
 
 ### Source Code (repository root)
@@ -102,9 +106,9 @@ test/
 
 | Puerto | Dueño | Qué usa 005 | Estado |
 |---|---|---|---|
-| `GetBaseRateUseCase` (`get-base-rate.use-case.ts`) | 004 | `getBaseRate(roomType, date)` → tarifa base decimal de Módulo 1, o `BaseRateNotFoundError` / `Module1UnavailableError` | **004 aún no tiene plan técnico**; la firma exacta se acuerda con su responsable |
+| `GetBaseRateUseCase` (`get-base-rate.use-case.ts`) | 004 | `execute({ roomType, date })` → `BaseRate` con `rate` (`Money`, mayor que cero) y `validityPeriod`, o `BaseRateNotFoundError` / `Module1UnavailableError`; consulta una fecha por llamada | Definido en el plan de 004 |
 | `GetEffectiveSeasonRulesUseCase` (`get-effective-season-rules.use-case.ts`) | 009 | `getAll(asOf)` → `{ defaultSeasonId, seasons[{ seasonId, name, adjustmentPercent (decimal firmado -100..100), isDefault }] }`, según `PORT-get-season-rules.md` | Definido |
-| Lectura del calendario (`season-calendar.repository.port.ts`) | 011 | Para cada fecha, el `seasonId` clasificado explícitamente (incluida la prioridad de la excepción puntual sobre la temporada base), o "sin clasificación" | **011 aún no tiene plan técnico**; el método exacto se acuerda con su responsable |
+| `ResolveSeasonByDateUseCase` (`resolve-season-by-date.use-case.ts`) | 011 | `resolve({ date, asOf })` → `SeasonClassification` con el `seasonId` de la fecha y su `source` (`BASE` \| `EXCEPTION` \| `DEFAULT`); la excepción puntual prevalece sobre la base y, sin asignación, devuelve el `defaultSeasonId` de 009 con `source = DEFAULT`. Falla con `SeasonCalendarInconsistentError` o `SeasonCalendarUnavailableError`, según `PORT-resolve-season-by-date.md` | Definido |
 
 ### Cotización de hospedaje: detalles técnicos
 
@@ -169,7 +173,7 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 
 - [ ] T001 Definir `LodgingQuote` y `LodgingQuoteNight` en `prisma/schema.prisma` y crear la migración: `lodging_quote` (`id` uuid PK = `quoteId`, `room_type`, `check_in_date`, `check_out_date`, `currency` char(3), `lodging_amount numeric(14,2)`, `created_at` con la hora de la base de datos) y `lodging_quote_night` (`quote_id` FK, `night_date`, `base_rate`, `season_name`, `adjustment_percent numeric(6,2)`, `rate numeric(14,2)`, `UNIQUE(quote_id, night_date)`). Ninguna de las dos tablas tiene `UPDATE` ni `DELETE` en ningún camino de código
 - [ ] T002 Registrar en `src/infrastructure/config/pricing.module.ts` los tokens `GetDynamicRateUseCase`, `CreateLodgingQuoteUseCase`, `LodgingQuoteRepositoryPort` y `LodgingQuoteQueryPort` hacia `PrismaLodgingQuoteRepository`, e inyectar los puertos de 004, 009 y 011 por token, sin reimplementar sus adaptadores
-- [ ] T003 Confirmar con los responsables de 004 y 011 la firma exacta de `GetBaseRateUseCase` y del puerto de lectura del calendario (ver tabla de puertos consumidos), y confirmar con 007 la firma de `LodgingQuoteQueryPort.findByIds`
+- [ ] T003 Confirmar con 007 la firma de `LodgingQuoteQueryPort.findByIds` (las firmas de `GetBaseRateUseCase` de 004 y de `ResolveSeasonByDateUseCase` de 011 ya están definidas en sus planes y contratos; ver tabla de puertos consumidos)
 
 **Checkpoint**: el módulo puede orquestar los puertos sin acoplarse a sus implementaciones concretas.
 
@@ -199,13 +203,13 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 ### Tests for User Story 1
 
 - [ ] T008 [P] [US1] Unit test de `GetDynamicRateService` para una sola noche, con los tres puertos mockeados: compone `GetBaseRateUseCase` + reglas de 009 + calendario de 011 y devuelve `{ date, baseRate, seasonName, seasonAdjustmentPercent, dynamicRate }` (FR-009)
-- [ ] T009 [P] [US1] Unit test: fecha sin clasificación explícita → se usa `defaultSeasonId` del snapshot de 009 y el resultado es la tarifa base sin ajuste (FR-004)
+- [ ] T009 [P] [US1] Unit test: 011 devuelve `source = DEFAULT` (fecha sin asignación explícita) con el `defaultSeasonId` → se aplica el ajuste de esa temporada en el snapshot de 009 (`Regular`, `0.00`) y el resultado es la tarifa base sin ajuste (FR-004)
 - [ ] T010 [P] [US1] Unit test: un `seasonId` del calendario que no está en el snapshot de 009 lanza `SeasonConfigurationInconsistentError`, sin elegir otra temporada ni usar ajuste cero (contrato de 009)
 - [ ] T011 [US1] Contract test `GET /pricing/dynamic-rate?roomType=&date=`: 200 con el detalle de la noche
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Implementar `GetDynamicRateService` para una noche: captura `asOf` una sola vez, obtiene un único snapshot con `GetEffectiveSeasonRulesUseCase.getAll(asOf)`, resuelve la clasificación de la fecha con el puerto de 011 y calcula con `calculate-dynamic-rate`
+- [ ] T012 [US1] Implementar `GetDynamicRateService` para una noche: captura `asOf` una sola vez, obtiene un único snapshot con `GetEffectiveSeasonRulesUseCase.getAll(asOf)`, resuelve la clasificación de la fecha con `ResolveSeasonByDateUseCase.resolve({ date, asOf })` de 011, usando ese mismo `asOf`, y calcula con `calculate-dynamic-rate`
 - [ ] T013 [US1] Implementar `DynamicRateController` (`GET /pricing/dynamic-rate`) aceptando `roomType` y `date`, con la lectura opcional del token: sin token se trata como llamada interna; con token se exige `role = OTA` mediante `RolesGuard`
 - [ ] T014 [US1] Mapear `BaseRateNotFoundError` → 404 `BASE_RATE_NOT_FOUND` y `Module1UnavailableError` → 424 `MODULE1_UNAVAILABLE` en el `ExceptionFilter` global, con mensajes específicos y accionables
 
@@ -338,10 +342,11 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 - La regla más importante de este plan es el **fail-fast sin resultado parcial**, tanto en la consulta como en la cotización (T017, T020, T028, T029).
 - `calculate-dynamic-rate` es deliberadamente **agnóstico al nombre de la temporada**: recibe el `adjustmentPercent` ya configurado en 009 (porcentaje firmado de -100.00 a +100.00) y aplica `baseRate × (1 + adjustmentPercent / 100)`. `Regular` es la única temporada reservada (por defecto, ajuste cero, no eliminable); el Administrador puede crear otras sin cambiar este código (FR-002, BR-007).
 - Un único snapshot de reglas por solicitud (`asOf` capturado una vez): un cambio concurrente de una regla no se mezcla dentro de una misma consulta ni de una misma cotización.
-- Decisiones que no vienen de la spec ni del plan base y conviene confirmar con el equipo:
+- Decisiones de diseño que no vienen de la spec ni del plan base (quedan documentadas aquí y en los contratos, y cambiarlas no altera la spec funcional):
   - **Parámetros del `GET`**: `checkInDate` y `checkOutDate` (iguales a los del `POST`), más `date` para una noche; el plan base no define los parámetros del `GET`.
   - **`POST /pricing/quotes` solo interno**: se rechaza con 403 cualquier solicitud con JWT, porque Módulo 2 va por red interna sin token; el plan base lo dice pero no define cómo se hace cumplir (FR-016).
   - **Calendario inconsistente** (temporada no encontrada en el catálogo) devuelve 422 `UNEXPECTED_ERROR` porque no hay un `errorCode` específico en el plan base; podría agregarse uno.
 - El `POST` no es idempotente: dos solicitudes idénticas crean dos cotizaciones, y 007 las trata como equivalentes (mismo tipo y mismas fechas). No es una decisión a confirmar, solo una consecuencia del diseño.
-- Dependencias de otros equipos: las firmas exactas de los puertos de 004 y 011, que aún no tienen plan técnico, se acuerdan con sus responsables (T003).
+- **Dos errores de calendario, a propósito**: `SeasonConfigurationInconsistentError` es la comprobación propia de 005 en el límite con 011 y 009 (el `seasonId` que devuelve `ResolveSeasonByDateUseCase` no está en el snapshot de `GetEffectiveSeasonRulesUseCase`), que exigen los contratos de ambos. Es distinto de `SeasonCalendarInconsistentError` y `SeasonCalendarUnavailableError`, que lanza el propio puerto de 011. En los endpoints de 005 los tres terminan en `422 UNEXPECTED_ERROR`, porque 011 no les define un código HTTP y el plan base no tiene uno específico.
+- Dependencias de otros equipos: 004 y 011 ya definen sus puertos (`GetBaseRateUseCase.execute` y `ResolveSeasonByDateUseCase.resolve`); solo falta confirmar con 007 la firma de `LodgingQuoteQueryPort.findByIds` (T003).
 - Cualquier conflicto entre este plan y la spec funcional (`1-functional/consultar_tarifa_dinamica.md`) se resuelve a favor de la spec, conforme a la nota final de `docs/plan-tecnico-base.md`.
