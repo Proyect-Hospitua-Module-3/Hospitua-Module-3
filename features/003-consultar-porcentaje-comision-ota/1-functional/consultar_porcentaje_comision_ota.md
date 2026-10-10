@@ -4,11 +4,11 @@
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
-### Historia de usuario 1 - Módulo 2 revisa el porcentaje histórico antes de suministrar el porcentaje de un nuevo check-out (Prioridad: P1)
+### Historia de usuario 1 - Módulo 2 revisa el porcentaje histórico antes de informar el porcentaje de una nueva reserva (Prioridad: P1)
 
-Como Módulo 2 (módulo de reservas), quiero consultar el porcentaje de comisión que quedó registrado en la liquidación `Final` más reciente de una OTA determinada, para tener una referencia histórica antes de suministrar a Módulo 1 el porcentaje de esa misma OTA para un nuevo evento de check-out.
+Como Módulo 2 (módulo de reservas), quiero consultar el porcentaje de comisión que quedó registrado en la liquidación `Final` más reciente de una OTA determinada, para tener una referencia histórica antes de informar el porcentaje de esa misma OTA en una nueva reserva.
 
-**Por qué esta prioridad**: `Generar liquidación` obtiene el porcentaje de comisión exclusivamente del evento de check-out que dispara Módulo 1 con el dato suministrado por Módulo 2, sin mantener una tabla propia de convenios ni invocar una consulta independiente para obtenerlo (FR-005 y BR-010 de `generar_liquidacion.md`). El dato pactado sigue siendo propiedad de Módulo 2; esta consulta solo ofrece una referencia histórica de lo ya liquidado, útil para que Módulo 2 detecte inconsistencias antes de suministrar el porcentaje para un nuevo check-out.
+**Por qué esta prioridad**: `Generar liquidación` obtiene el porcentaje de comisión exclusivamente de la reserva que Módulo 3 consulta a Módulo 2 al procesar el check-out, sin mantener una tabla propia de convenios ni invocar una consulta independiente para obtenerlo (FR-005 y BR-010 de `generar_liquidacion.md`). El dato pactado sigue siendo propiedad de Módulo 2; esta consulta solo ofrece una referencia histórica de lo ya liquidado, útil para que Módulo 2 detecte inconsistencias antes de informar el porcentaje en una nueva reserva.
 
 **Prueba independiente**: Se puede generar la liquidación `Final` de una reserva OTA con un porcentaje de comisión conocido y, luego, consultar esa misma OTA para verificar que el resultado muestra ese porcentaje y la fecha de la liquidación de la que proviene.
 
@@ -28,23 +28,23 @@ Como Módulo 2 (módulo de reservas), quiero consultar el porcentaje de comisió
 
 ### Historia de usuario 2 - La consulta nunca se convierte en la fuente del dato usado por `Generar liquidación` (Prioridad: P2)
 
-Como sistema de gestión hotelera, quiero garantizar que `Consultar porcentaje de comisión OTA` sea exclusivamente informativa y de lectura, para que `Generar liquidación` continúe basándose únicamente en el porcentaje reportado en el evento de check-out, sin crear una dependencia oculta entre ambos casos de uso.
+Como sistema de gestión hotelera, quiero garantizar que `Consultar porcentaje de comisión OTA` sea exclusivamente informativa y de lectura, para que `Generar liquidación` continúe basándose únicamente en el porcentaje que Módulo 2 informa en la reserva, sin crear una dependencia oculta entre ambos casos de uso.
 
 **Por qué esta prioridad**: Complementa a HU1 protegiendo una regla de diseño ya establecida en `generar_liquidacion.md` (FR-005, BR-010); no es la vía principal de valor de este caso de uso, pero previene que una futura implementación introduzca un acoplamiento que contradiga esa spec.
 
-**Prueba independiente**: Se puede generar una liquidación `Final` para una OTA cuyo porcentaje histórico consultado sea distinto al reportado en un nuevo evento de check-out, y verificar que la nueva liquidación usa el porcentaje del evento de check-out, no el de la consulta histórica.
+**Prueba independiente**: Se puede generar una liquidación `Final` para una OTA cuyo porcentaje histórico consultado sea distinto al informado por Módulo 2 en la reserva de un nuevo check-out, y verificar que la nueva liquidación usa el porcentaje de la reserva, no el de la consulta histórica.
 
 **Escenarios de aceptación**:
 
-1. **Escenario**: El porcentaje histórico difiere del reportado en un nuevo check-out
-   - **Dado** que el porcentaje histórico más reciente de una OTA es distinto al porcentaje que Módulo 2 suministra para un nuevo evento de check-out de esa misma OTA
+1. **Escenario**: El porcentaje histórico difiere del informado en la reserva de un nuevo check-out
+   - **Dado** que el porcentaje histórico más reciente de una OTA es distinto al porcentaje que Módulo 2 informa en la reserva de un nuevo check-out de esa misma OTA
    - **Cuando** `Generar liquidación` procesa ese evento
-   - **Entonces** la liquidación resultante aplica el porcentaje del evento de check-out, sin ser corregida ni sobrescrita por el valor histórico consultado
+   - **Entonces** la liquidación resultante aplica el porcentaje de la reserva informado por Módulo 2, sin ser corregida ni sobrescrita por el valor histórico consultado
 
 2. **Escenario**: Intento de usar la consulta como origen del cálculo
    - **Dado** que se intenta invocar `Consultar porcentaje de comisión OTA` como parte del flujo interno de `Generar liquidación`
    - **Cuando** se revisa el diseño del sistema
-   - **Entonces** esa invocación no existe; `Generar liquidación` obtiene el porcentaje únicamente del evento de check-out
+   - **Entonces** esa invocación no existe; `Generar liquidación` obtiene el porcentaje únicamente de la reserva consultada a Módulo 2
 
 ---
 
@@ -83,13 +83,13 @@ Como OTA (Booking, Airbnb, Expedia), quiero consultar el porcentaje de comisión
 
 - **FR-001**: El sistema DEBE permitir a los actores autorizados (`Módulo 2`, `OTA`) consultar el porcentaje de comisión registrado en la liquidación `Final` más reciente generada para una OTA o canal específico.
 - **FR-002**: El resultado de la consulta DEBE indicar explícitamente que el dato devuelto es histórico y referencial, y que no constituye una tarifa contractual gestionada o garantizada por Módulo 3.
-- **FR-003**: El sistema NO DEBE invocar `Consultar porcentaje de comisión OTA` desde `Generar liquidación`; este último continúa obteniendo el porcentaje de comisión exclusivamente del evento de check-out, conforme a FR-005 de `generar_liquidacion.md`.
+- **FR-003**: El sistema NO DEBE invocar `Consultar porcentaje de comisión OTA` desde `Generar liquidación`; este último continúa obteniendo el porcentaje de comisión exclusivamente de la reserva consultada a Módulo 2, conforme a FR-005 de `generar_liquidacion.md`.
 - **FR-004**: El sistema DEBE informar de manera explícita cuando no exista ninguna liquidación `Final` previa para la OTA consultada, sin devolver un porcentaje por defecto ni en cero.
 - **FR-005**: El sistema NO DEBE permitir actualizar, corregir ni fijar el porcentaje de comisión de una OTA a través de esta consulta; es una operación exclusivamente de lectura.
 - **FR-006**: El sistema DEBE rechazar o marcar como no aplicable una consulta cuyo canal sea el canal directo (no es una OTA), sin devolver 0% como si fuera un resultado válido de comisión OTA.
 - **FR-007**: El sistema DEBE restringir el acceso a `Consultar porcentaje de comisión OTA` a los actores autorizados (`Módulo 2`, `OTA`).
 - **FR-008**: El sistema DEBE devolver siempre el mismo resultado ante consultas repetidas sobre la misma OTA cuando no existan liquidaciones nuevas, garantizando que la consulta no tenga efectos secundarios.
-- **FR-009**: El sistema DEBE restringir a una OTA la consulta de este caso de uso exclusivamente al porcentaje registrado en sus propias liquidaciones `Final`, identificadas por su canal, de la misma forma en que `Consultar liquidación` restringe a cada OTA a sus propias reservas (FR-006 de `consultar_liquidacion.md`).
+- **FR-009**: El sistema DEBE restringir a una OTA la consulta de este caso de uso exclusivamente al porcentaje registrado en sus propias liquidaciones `Final`, identificadas por el identificador de la OTA (`otaId`), de la misma forma en que `Consultar liquidación` restringe a cada OTA a sus propias reservas (FR-006 de `consultar_liquidacion.md`).
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
