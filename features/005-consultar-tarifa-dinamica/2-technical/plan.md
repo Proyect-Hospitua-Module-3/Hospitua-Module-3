@@ -106,7 +106,7 @@ test/
 
 | Puerto | Dueño | Qué usa 005 | Estado |
 |---|---|---|---|
-| `GetBaseRateUseCase` (`get-base-rate.use-case.ts`) | 004 | `execute({ roomType, date })` → `BaseRate` con `rate` (`Money`, mayor que cero) y `validityPeriod`, o `BaseRateNotFoundError` / `Module1UnavailableError`; consulta una fecha por llamada | Definido en el plan de 004 |
+| `GetBaseRateUseCase` (`get-base-rate.use-case.ts`) | 004 | `execute(roomType, date)` → `BaseRate` con el importe como `Money` (COP, mayor que cero), o `BaseRateNotFoundError` / `Module1UnavailableError`; consulta una fecha por llamada | Definido en el plan de 004 |
 | `GetEffectiveSeasonRulesUseCase` (`get-effective-season-rules.use-case.ts`) | 009 | `getAll(asOf)` → `{ defaultSeasonId, seasons[{ seasonId, name, adjustmentPercent (decimal firmado -100..100), isDefault }] }`, según `PORT-get-season-rules.md` | Definido |
 | `ResolveSeasonByDateUseCase` (`resolve-season-by-date.use-case.ts`) | 011 | `resolve({ date, asOf })` → `SeasonClassification` con el `seasonId` de la fecha y su `source` (`BASE` \| `EXCEPTION` \| `DEFAULT`); la excepción puntual prevalece sobre la base y, sin asignación, devuelve el `defaultSeasonId` de 009 con `source = DEFAULT`. Falla con `SeasonCalendarInconsistentError` o `SeasonCalendarUnavailableError`, según `PORT-resolve-season-by-date.md` | Definido |
 
