@@ -105,7 +105,6 @@ Como sistema de gestión hotelera, quiero garantizar que ninguna estancia tenga 
 - Se intenta generar más de una liquidación `Final` para la misma estancia con datos distintos al check-out original: el sistema debe impedirlo y conservar la liquidación `Final` original.
 - Cambiaron las reglas de temporada o la tarifa base después de la reserva: la liquidación usa el valor de hospedaje guardado en la cotización (el que el cliente vio al reservar) y no lo recalcula.
 - Salida anticipada (la fecha real de salida es anterior a la reservada): la liquidación registra las fechas reales informadas por Módulo 1, pero el valor de hospedaje es el de la cotización guardada, porque es lo que el cliente aceptó al confirmar la reserva. No es una penalización: simplemente no se recalcula.
-- Extensión de estancia: se gestiona como un cambio de la reserva en Módulo 2, que solicita a Módulo 3 la cotización de la estancia extendida. Esa cotización conserva el valor de las noches ya cotizadas y agrega las noches nuevas con la tarifa dinámica vigente, y reemplaza a la anterior en la reserva. La liquidación usa la cotización vigente de la reserva y nunca recalcula por su cuenta.
 
 ## Requisitos *(obligatorio)*
 
@@ -150,7 +149,7 @@ Como sistema de gestión hotelera, quiero garantizar que ninguna estancia tenga 
 - **BR-001**: La liquidación `Final` solo puede generarse a partir del registro del check-out; no se guarda ninguna liquidación (ni siquiera parcial o estimada) para una estancia que aún no ha tenido check-out.
 - **BR-002**: El ingreso neto de la liquidación es igual al valor de hospedaje de la cotización guardada, menos la comisión OTA cuando la reserva proviene de un intermediario.
 - **BR-003**: La comisión OTA solo se descuenta cuando el canal de la reserva es un intermediario y Módulo 2 suministra un porcentaje válido; en canal directo, o sin canal registrado, la comisión es siempre cero.
-- **BR-004**: El valor de hospedaje usado en la liquidación es el de la cotización guardada al reservar, que es el valor que el cliente vio antes de confirmar; la liquidación no recalcula la tarifa dinámica por su cuenta, aunque hayan cambiado las reglas de temporada o la tarifa base. Una salida anticipada no cambia ese valor; una extensión de estancia solo lo cambia mediante una nueva cotización solicitada por Módulo 2 al modificar la reserva.
+- **BR-004**: El valor de hospedaje usado en la liquidación es el de la cotización guardada al reservar, que es el valor que el cliente vio antes de confirmar; la liquidación no recalcula la tarifa dinámica por su cuenta, aunque hayan cambiado las reglas de temporada o la tarifa base. Una salida anticipada no cambia ese valor.
 - **BR-005**: El Impuesto al Valor Agregado y otros impuestos no forman parte del ingreso neto de la liquidación; se gestionan en la generación de la factura final.
 - **BR-006**: Debe existir una única liquidación `Final` por estancia; el sistema no genera una segunda liquidación para la misma estancia.
 - **BR-007**: Un dato obligatorio faltante o inconsistente en el evento de check-out, o una reserva o cotización inexistente, debe detener la generación de la liquidación, sin producir un ingreso neto estimado o parcial.
