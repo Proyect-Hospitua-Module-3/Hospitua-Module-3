@@ -35,7 +35,9 @@ features/001-actualizar-porcentaje-iva/
 ├── 1-functional/
 │   └── actualizar_porcentaje_iva.md   # Spec funcional (fuente de verdad de negocio)
 └── 2-technical/
-    └── plan.md                        # Este archivo
+    ├── plan.md                        # Este archivo
+    └── contracts/
+        └── PUT-admin-vat-rate.md      # Contrato REST de PUT /admin/vat-rate
 ```
 
 El contrato del puerto `GetCurrentVatRateUseCase` que consume 006 ya está documentado en `features/006-generar-factura-final/2-technical/contracts/PORT-get-current-vat-rate.md`; este plan lo implementa sin modificarlo.
@@ -208,6 +210,6 @@ El valor viaja y se almacena como decimal exacto (`"19.00"`), no como `number` d
 
 - [Story] mapea cada tarea a su historia de usuario para trazabilidad con la spec funcional.
 - La concurrencia (NFR-002) se resuelve con un `pg_advisory_xact_lock` dentro de la transacción, porque con la tabla vacía no hay fila que bloquear en el primer registro; no se introduce locking optimista (versión/ETag) porque el requisito es "una sola queda vigente de forma consistente", no "rechazar la segunda escritura".
-- Decisión que no viene de la spec y conviene confirmar con el equipo: el **máximo de 2 decimales** (alineado con `numeric(5,2)` y con `vat_rate_applied` de 006); sin un límite, un valor como 19.555 se redondearía en silencio.
+- Decisión de diseño que no viene de la spec (queda documentada aquí y en el contrato `PUT-admin-vat-rate.md`; cambiarla no altera la spec funcional): el **máximo de 2 decimales** (alineado con `numeric(5,2)` y con `vat_rate_applied` de 006); sin un límite, un valor como 19.555 se redondearía en silencio.
 - El `pg_advisory_xact_lock` es un detalle de implementación, no una decisión de negocio: no cambia ningún comportamiento visible de la spec.
 - Cualquier conflicto entre este plan y la spec funcional (`1-functional/actualizar_porcentaje_iva.md`) se resuelve a favor de la spec, conforme a la nota final de `docs/plan-tecnico-base.md`.
