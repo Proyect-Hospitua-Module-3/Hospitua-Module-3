@@ -270,7 +270,7 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 
 - [ ] T027 [P] [US4] Unit test de `CreateLodgingQuoteService` (cotización nueva): reutiliza el cálculo por noche, el total es la suma exacta de las noches y la cotización se guarda una sola vez (FR-012)
 - [ ] T028 [P] [US4] Unit test de extensión: con `extendsQuoteId`, copia las noches ya cotizadas con su valor original sin consultar de nuevo la tarifa base ni las reglas para esas noches, y calcula solo las noches nuevas; la cotización original no se modifica (FR-014, BR-006)
-- [ ] T029 [P] [US4] Unit test de rechazos sin guardar nada: tarifa base no reportada, Módulo 1 no disponible, rango inválido, `extendsQuoteId` inexistente, salida de extensión no posterior, y extensión cuyo `roomType` o `checkInDate` no coincide con la cotización extendida (FR-015)
+- [ ] T029 [P] [US4] Unit test de rechazos sin guardar nada: tarifa base no reportada, Módulo 1 no disponible, rango inválido, `extendsQuoteId` inexistente y salida de extensión no posterior (FR-015)
 - [ ] T030 [US4] Integration test con Testcontainers: guardar una cotización y verificar `lodging_quote` y `lodging_quote_night`; cambiar la regla de temporada y verificar que los valores guardados no cambian (SC-008); verificar que una falla a mitad de la inserción no deja una cotización parcial (transacción)
 - [ ] T031 [US4] Contract test `POST /pricing/quotes`: 200 con `{ quoteId, currency, nightlyRates, lodgingAmount }`; 400, 404 y 424 con el `errorCode` correspondiente; y 403 `FORBIDDEN` cuando la solicitud trae un JWT de OTA o de Administrador (BR-008, FR-016)
 - [ ] T032 [US4] Contract test de `LodgingQuoteQueryPort.findByIds` contra lo que consume el plan de 007: devuelve `roomType`, `lodgingAmount`, la moneda y el `quoteId` de cada cotización
@@ -278,7 +278,7 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 ### Implementation for User Story 4
 
 - [ ] T033 [US4] Implementar `CreateLodgingQuoteService`: valida el rango, calcula las noches (reutilizando el cálculo de US1 y US2), calcula el total con `Money` y guarda la cotización con sus noches en **una sola transacción**
-- [ ] T034 [US4] Implementar la extensión: leer la cotización extendida (`QuoteNotFoundError` si no existe), validar que `roomType` y `checkInDate` coinciden y que la nueva `checkOutDate` es posterior a la de la cotización extendida, copiar sus noches y calcular solo las del tramo nuevo
+- [ ] T034 [US4] Implementar la extensión: leer la cotización extendida (`QuoteNotFoundError` si no existe), validar que la nueva `checkOutDate` es posterior a la de la cotización extendida, tomar de ella el `roomType` y la fecha de entrada, copiar sus noches y calcular solo las del tramo nuevo
 - [ ] T035 [US4] Implementar `PrismaLodgingQuoteRepository` (insert de cotización y noches en transacción; `findById`; `findByIds` como consulta de solo lectura que implementa `LodgingQuoteQueryPort`); sin `UPDATE` ni `DELETE`
 - [ ] T036 [US4] Implementar `LodgingQuoteController` (`POST /pricing/quotes`) que rechaza con 403 `FORBIDDEN` cualquier solicitud que traiga JWT, y mapear `QuoteNotFoundError` → 404 `QUOTE_NOT_FOUND`
 - [ ] T037 [US4] Regla de `dependency-cruiser`: `settlement` puede importar `LodgingQuoteQueryPort` y el modelo `LodgingQuote`, pero nunca `GetDynamicRateService` ni `CreateLodgingQuoteService`, conforme a la regla 5 del plan base; con esto una salida anticipada o cualquier check-out nunca genera una cotización nueva (FR-014)
@@ -345,9 +345,9 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 - Un único snapshot de reglas por solicitud (`asOf` capturado una vez): un cambio concurrente de una regla no se mezcla dentro de una misma consulta ni de una misma cotización.
 - Decisiones que no vienen de la spec ni del plan base y conviene confirmar con el equipo:
   - **Parámetros del `GET`**: `checkInDate` y `checkOutDate` (iguales a los del `POST`), más `date` para una noche; el plan base no define los parámetros del `GET`.
-  - **`POST /pricing/quotes` solo interno**: se rechaza con 403 cualquier solicitud con JWT, porque Módulo 2 va por red interna sin token; el plan base lo dice pero no define cómo se hace cumplir.
-  - **Extensión**: se valida que `roomType` y `checkInDate` coincidan con la cotización extendida, regla que no está en la spec.
-  - **Sin idempotencia en `POST`**: dos solicitudes idénticas crean dos cotizaciones; 007 las trata como equivalentes (mismo tipo y mismas fechas).
+  - **`POST /pricing/quotes` solo interno**: se rechaza con 403 cualquier solicitud con JWT, porque Módulo 2 va por red interna sin token; el plan base lo dice pero no define cómo se hace cumplir (FR-016).
   - **Calendario inconsistente** (temporada no encontrada en el catálogo) devuelve 422 `UNEXPECTED_ERROR` porque no hay un `errorCode` específico en el plan base; podría agregarse uno.
-  - **Firmas por confirmar** de los puertos de 004 y 011, que aún no tienen plan técnico.
+- En una extensión, el `roomType` y la fecha de entrada se toman de la cotización extendida; el plan no agrega validaciones que la spec no pide.
+- El `POST` no es idempotente: dos solicitudes idénticas crean dos cotizaciones, y 007 las trata como equivalentes (mismo tipo y mismas fechas). No es una decisión a confirmar, solo una consecuencia del diseño.
+- Dependencias de otros equipos: las firmas exactas de los puertos de 004 y 011, que aún no tienen plan técnico, se acuerdan con sus responsables (T003).
 - Cualquier conflicto entre este plan y la spec funcional (`1-functional/consultar_tarifa_dinamica.md`) se resuelve a favor de la spec, conforme a la nota final de `docs/plan-tecnico-base.md`.
