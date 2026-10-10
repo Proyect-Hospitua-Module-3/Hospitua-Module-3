@@ -239,6 +239,6 @@ El plan base ubica `ota-commission` en la Phase 6 (T023), después de `settlemen
 
 - [Story] mapea cada tarea a su historia de usuario para trazabilidad con la spec funcional.
 - La asimetría de dependencia (`ota-commission` lee de `settlement`, nunca al revés) es la decisión de diseño más importante y está protegida por una regla de CI (T003 y T004), no solo por documentación.
-- Decisión que no viene de la spec y conviene confirmar con el equipo: **cómo se reconoce el canal directo** en `{otaId}`. Este plan usa el valor reservado `DIRECT` (el mismo del campo `channel` de `settlement`), porque sin él FR-006 no se puede implementar.
+- Decisión de diseño que no viene de la spec (queda documentada aquí y en el contrato `GET-ota-commission-otaid.md`; cambiarla no altera la spec funcional): **cómo se reconoce el canal directo** en `{otaId}`. Este plan usa el valor reservado `DIRECT` (el mismo del campo `channel` de `settlement`), porque sin él FR-006 no se puede implementar.
 - El **puerto propio** de lectura (`ota-commission-query.port.ts`) lo define el plan base y no es una decisión de esta feature; 007 ya no expone una consulta equivalente y solo crea las columnas y el índice que este puerto lee (ver la nota de coordinación en Structure Decision).
 - Cualquier conflicto entre este plan y la spec funcional (`1-functional/consultar_porcentaje_comision_ota.md`) se resuelve a favor de la spec, conforme a la nota final de `docs/plan-tecnico-base.md`.
