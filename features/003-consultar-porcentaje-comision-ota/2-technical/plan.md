@@ -34,7 +34,9 @@ features/003-consultar-porcentaje-comision-ota/
 ├── 1-functional/
 │   └── consultar_porcentaje_comision_ota.md   # Spec funcional (fuente de verdad de negocio)
 └── 2-technical/
-    └── plan.md                                 # Este archivo
+    ├── plan.md                                 # Este archivo
+    └── contracts/
+        └── GET-ota-commission-otaid.md         # Contrato REST de GET /ota-commission/{otaId}
 ```
 
 ### Source Code (repository root)
@@ -75,7 +77,7 @@ test/
 
 **Structure Decision**: `ota-commission` es un contexto propio cuyo único adaptador saliente lee, sin escribir, la tabla `settlement` del contexto `settlement`, aceptando el acoplamiento de lectura típico de un monolito modular con una única base de datos. La dependencia es **asimétrica**: `ota-commission` puede leer de `settlement`, pero `settlement` nunca puede importar nada de `ota-commission` (BR-004). Se protege con una regla de `dependency-cruiser` ejecutada en CI (Phase 2).
 
-**Nota de coordinación con 007**: el plan de 007 expone `SettlementRepositoryPort.findLatestByOtaId(otaId)` "para 003", mientras que el plan base define para esta feature un puerto y un adaptador propios (`ota-commission-query.port.ts`, `prisma-ota-commission-query.adapter.ts`). Este plan sigue el plan base: `ota-commission` tiene su propio puerto de lectura y no depende del repositorio de `settlement`. Ambos ejecutan la misma consulta, y 007 puede dejar de exponer `findLatestByOtaId`; hay que acordarlo con su responsable.
+**Nota de coordinación con 007**: el plan base define para esta feature un puerto y un adaptador propios (`ota-commission-query.port.ts`, `prisma-ota-commission-query.adapter.ts`), y este plan los sigue: `ota-commission` lee `settlement` con su propio puerto de lectura y no depende del repositorio de `settlement`. 007 ya no expone `findLatestByOtaId`; solo crea las columnas y el índice `(ota_id, generated_at DESC)` que 003 lee (T002).
 
 ## Contrato HTTP
 
@@ -238,5 +240,5 @@ El plan base ubica `ota-commission` en la Phase 6 (T023), después de `settlemen
 - [Story] mapea cada tarea a su historia de usuario para trazabilidad con la spec funcional.
 - La asimetría de dependencia (`ota-commission` lee de `settlement`, nunca al revés) es la decisión de diseño más importante y está protegida por una regla de CI (T003 y T004), no solo por documentación.
 - Decisión que no viene de la spec y conviene confirmar con el equipo: **cómo se reconoce el canal directo** en `{otaId}`. Este plan usa el valor reservado `DIRECT` (el mismo del campo `channel` de `settlement`), porque sin él FR-006 no se puede implementar.
-- El **puerto propio** de lectura (`ota-commission-query.port.ts`) lo define el plan base y no es una decisión de esta feature; solo queda coordinar con 007, que expone una consulta equivalente (ver la nota de coordinación en Structure Decision).
+- El **puerto propio** de lectura (`ota-commission-query.port.ts`) lo define el plan base y no es una decisión de esta feature; 007 ya no expone una consulta equivalente y solo crea las columnas y el índice que este puerto lee (ver la nota de coordinación en Structure Decision).
 - Cualquier conflicto entre este plan y la spec funcional (`1-functional/consultar_porcentaje_comision_ota.md`) se resuelve a favor de la spec, conforme a la nota final de `docs/plan-tecnico-base.md`.
