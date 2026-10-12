@@ -26,13 +26,13 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consul
 
 ---
 
-### Historia de usuario 2 - El cálculo se detiene cuando no hay tarifa base utilizable (Prioridad: P1)
+### Historia de usuario 2 - El cálculo se detiene cuando no hay tarifa base utilizable o la consulta es inválida (Prioridad: P1)
 
 Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálculo cuando no pueda obtener una tarifa base utilizable, para no producir un importe de hospedaje estimado o parcial.
 
 **Por qué esta prioridad**: Sin una tarifa base válida, no se puede calcular la tarifa dinámica ni cotizar el hospedaje.
 
-**Prueba independiente**: Se puede solicitar un cálculo con tarifa inexistente, con Módulo 1 sin respuesta o con un importe inutilizable y verificar que el cálculo se detiene sin producir un valor.
+**Prueba independiente**: Se puede solicitar un cálculo con tarifa inexistente, con Módulo 1 sin respuesta, con un importe inutilizable o con datos de entrada inválidos y verificar que el cálculo se detiene sin producir un valor.
 
 **Escenarios de aceptación**:
 
@@ -56,12 +56,14 @@ Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálcul
    - **Cuando** Módulo 3 interpreta la respuesta
    - **Entonces** informa que la tarifa es inválida y detiene el cálculo que la requiere, sin devolver un valor sustituto
 
+5. **Escenario**: Consulta con datos de entrada inválidos
+   - **Dado** que la consulta llega con el tipo de habitación vacío o con una fecha inválida
+   - **Cuando** Módulo 3 valida la solicitud
+   - **Entonces** rechaza la consulta sin consultar a Módulo 1 y el cálculo que requiere esa tarifa se detiene, sin usar un valor sustituto
+
 ### Casos límite
 
-- Si Módulo 1 no encuentra tarifa para el tipo de habitación y la fecha, el cálculo que la requiere se detiene y se informa la ausencia; no se usa un valor sustituto.
-- Si Módulo 1 no responde, o devuelve una respuesta con estructura inválida, datos requeridos ausentes o de tipo incorrecto, el cálculo se detiene por falla de dependencia; si devuelve un importe numérico no positivo, el cálculo se detiene porque la tarifa es inválida. En ambos casos no se devuelven valores parciales ni sustitutos.
 - Un cambio posterior de tarifa base no altera la cotización de hospedaje ya guardada.
-- Si el tipo de habitación está vacío o la fecha consultada es inválida, Módulo 3 rechaza la consulta sin consultar a Módulo 1.
 
 ## Requisitos *(obligatorio)*
 
