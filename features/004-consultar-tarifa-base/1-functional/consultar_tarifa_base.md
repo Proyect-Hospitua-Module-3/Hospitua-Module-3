@@ -8,7 +8,7 @@
 
 Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consultar a Módulo 1 la tarifa base de un tipo de habitación para una fecha específica, para usarla como valor inicial del precio de hospedaje.
 
-**Por qué esta prioridad**: La tarifa base es el punto de partida del cálculo del precio de hospedaje; Módulo 1 administra este dato y Módulo 3 lo consulta cuando lo necesita. `Consultar tarifa dinámica` obtiene la tarifa base para calcular el precio por noche y `Cotizar hospedaje` la usa como insumo de su cálculo (FR-002, FR-005 y FR-012 de `consultar_tarifa_dinamica.md`).
+**Por qué esta prioridad**: La tarifa base es el punto de partida del cálculo del precio de hospedaje; Módulo 1 administra este dato y Módulo 3 lo consulta cuando lo necesita. La tarifa base se usa para calcular el precio por noche de la tarifa dinámica y como insumo de las cotizaciones de hospedaje.
 
 **Prueba independiente**: Se puede solicitar la tarifa base para un tipo de habitación y una fecha, y comprobar el importe devuelto o el resultado funcional correspondiente.
 
@@ -22,7 +22,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consul
 2. **Escenario**: Estancia que cruza un cambio de tarifa
    - **Dado** que el importe de la tarifa base cambia entre noches de una estancia
    - **Cuando** Módulo 3 consulta la tarifa para cada noche de la estancia
-   - **Entonces** cada fecha se resuelve de forma independiente con el importe que Módulo 1 devuelve para esa fecha, sin reutilizar el importe de otra fecha ni conservar copias; `Consultar tarifa dinámica` y `Cotizar hospedaje` solicitan la tarifa de cada noche, desde la fecha de entrada inclusiva hasta la fecha de salida exclusiva.
+   - **Entonces** cada fecha se resuelve de forma independiente con el importe que Módulo 1 devuelve para esa fecha, sin reutilizar el importe de otra fecha ni conservar copias; el cálculo de la tarifa dinámica y las cotizaciones solicitan la tarifa de cada noche, desde la fecha de entrada inclusiva hasta la fecha de salida exclusiva.
 
 ---
 
@@ -30,7 +30,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero consul
 
 Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálculo cuando no pueda obtener una tarifa base utilizable, para no producir un importe de hospedaje estimado o parcial.
 
-**Por qué esta prioridad**: Sin una tarifa base válida, `Consultar tarifa dinámica` y `Cotizar hospedaje` no pueden determinar el valor de hospedaje correspondiente.
+**Por qué esta prioridad**: Sin una tarifa base válida, no se puede calcular la tarifa dinámica ni cotizar el hospedaje.
 
 **Prueba independiente**: Se puede solicitar un cálculo con tarifa inexistente, con Módulo 1 sin respuesta o con un importe inutilizable y verificar que el cálculo se detiene sin producir un valor.
 
@@ -69,7 +69,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálcul
 
 - **FR-001**: Módulo 3 DEBE consultar a Módulo 1 la tarifa base aplicable a un tipo de habitación y una fecha, y recibir su importe en COP.
 - **FR-002**: Módulo 3 NO DEBE almacenar una copia propia de la tarifa base como fuente de cálculos futuros; cada consulta refleja el dato vigente que proporciona Módulo 1.
-- **FR-003**: Módulo 3 DEBE resolver de forma independiente cada fecha consultada con el importe que Módulo 1 devuelve para esa fecha, sin reutilizar el importe de otra fecha ni conservar copias. `Consultar tarifa dinámica` y `Cotizar hospedaje` DEBEN consultar la tarifa base de cada noche de la estancia, desde la fecha de entrada inclusiva hasta la fecha de salida exclusiva.
+- **FR-003**: Módulo 3 DEBE resolver de forma independiente cada fecha consultada con el importe que Módulo 1 devuelve para esa fecha, sin reutilizar el importe de otra fecha ni conservar copias. El cálculo de la tarifa dinámica y las cotizaciones DEBEN consultar la tarifa base de cada noche de la estancia, desde la fecha de entrada inclusiva hasta la fecha de salida exclusiva.
 - **FR-004**: Cuando Módulo 1 no tenga tarifa para el tipo de habitación y noche solicitados, Módulo 3 DEBE detener el cálculo invocante e informar la ausencia, sin devolver un valor sustituto.
 - **FR-005**: Módulo 3 NO DEBE modificar, corregir ni completar la configuración de tarifa base de Módulo 1; la consulta es de solo lectura.
 - **FR-006**: Módulo 3 DEBE distinguir la ausencia de tarifa, una tarifa inválida por tener un importe numérico no positivo y una falla de dependencia por falta de respuesta o una respuesta con estructura inválida, datos requeridos ausentes o de tipo incorrecto. En todos esos casos, DEBE detener el cálculo que requiere la tarifa sin devolver valores parciales ni sustitutos.
@@ -86,7 +86,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálcul
 - **BR-001**: Módulo 1 es responsable de administrar la tarifa base; Módulo 3 solo la consulta como insumo de su cálculo.
 - **BR-002**: Si no hay tarifa aplicable, Módulo 3 detiene el cálculo y no sustituye el importe por cero ni por un valor predeterminado.
 - **BR-003**: Un cambio de tarifa base afecta las consultas posteriores y no modifica cálculos ya guardados.
-- **BR-004**: La tarifa base se consulta únicamente para `Consultar tarifa dinámica` y `Cotizar hospedaje` (FR-002, FR-005 y FR-012 de `consultar_tarifa_dinamica.md`); `Generar liquidación` usa el valor de hospedaje de la cotización guardada y nunca consulta la tarifa base (FR-002 y BR-004 de `generar_liquidacion.md`).
+- **BR-004**: La tarifa base se consulta únicamente para calcular la tarifa dinámica y para las cotizaciones de hospedaje; la liquidación usa el valor de hospedaje de la cotización guardada y nunca consulta la tarifa base.
 
 ## Requisitos no funcionales
 
@@ -102,5 +102,5 @@ Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálcul
 - **SC-002**: El 100% de las consultas sin tarifa disponible detiene el cálculo y no devuelve un importe sustituto.
 - **SC-003**: El 100% de las consultas sin respuesta de Módulo 1, con importes no numéricos o con respuestas de estructura inválida, datos requeridos ausentes o de tipo incorrecto se trata como falla de dependencia; los importes numéricos no positivos se informan como tarifa inválida. En todos los casos, el cálculo se detiene sin propagar el importe ni devolver valores parciales o sustitutos.
 - **SC-004**: El 0% de las consultas persiste una copia propia de la configuración de tarifa base.
-- **SC-005**: El 100% de las fechas consultadas se resuelve de forma independiente con el importe devuelto por Módulo 1 para esa fecha, sin reutilizar el de otra fecha ni conservar copias; `Consultar tarifa dinámica` y `Cotizar hospedaje` consultan cada noche de la estancia desde la fecha de entrada inclusiva hasta la fecha de salida exclusiva.
+- **SC-005**: El 100% de las fechas consultadas se resuelve de forma independiente con el importe devuelto por Módulo 1 para esa fecha, sin reutilizar el de otra fecha ni conservar copias; el cálculo de la tarifa dinámica y las cotizaciones consultan cada noche de la estancia desde la fecha de entrada inclusiva hasta la fecha de salida exclusiva.
 - **SC-006**: El 100% de las consultas con tipo de habitación vacío o fecha inválida se rechaza sin consultar a Módulo 1.
