@@ -18,7 +18,7 @@ El contexto `checkout-ingestion` consume `habitacion.checkout`, valida el sobre 
 **Target Platform**: Servicio backend Linux en contenedor Docker, dentro del monolito modular del Módulo 3.
 **Project Type**: Consumer asíncrono de RabbitMQ con auditoría y orquestación de servicios internos.
 **Performance Goals**: Validación local sin llamadas externas; la generación de la liquidación se mantiene dentro de 800 ms, conforme al objetivo de 007.
-**Constraints**: `stayId` UUID obligatorio e idempotencia por estancia; lista blanca sin valores de `billingCustomer`; `GenerateSettlementUseCase` precede a `GenerateFinalInvoiceUseCase`; errores terminales a DLQ y fallas transitorias con hasta 5 reentregas separadas por 30 s.
+**Constraints**: `stayId` UUID obligatorio e idempotencia por estancia; lista blanca sin valores de `billingCustomer`; `GenerateSettlementUseCase` precede a `GenerateFinalInvoiceUseCase`; errores terminales a DLQ y fallas transitorias con hasta 5 reintentos separados por 30 s mediante `x-retry-count`; publicaciones persistentes a retry o DLQ mediante el exchange por defecto, con `mandatory` y confirmación antes del ack; una devolución `basic.return` o una publicación no confirmada causa nack con reencolado.
 **Scale/Scope**: Un evento por habitación, un consumer, una cola principal, una cola de reintento y una DLQ.
 
 ## Project Structure
@@ -95,7 +95,9 @@ test/
 
 El `payload` de auditoría excluye `billingCustomer.name` y `billingCustomer.taxId`; conserva únicamente `has_billing_customer: boolean` para indicar si el evento los recibió. Los valores tributarios se usan en memoria para la cadena 007/006 y no se registran.
 
-`registerIfAbsent(...)` crea atómicamente el registro `PENDING` o devuelve el existente. Un mensaje existente en `PENDING` reanuda el procesamiento; `PROCESSED`, `REJECTED` o `DEAD_LETTER` se confirma sin reprocesar. Los eventos con JSON inválido o sobre no reconocible se registran con `event_id` y `payload` nulos, estado `REJECTED`, código `INVALID_CHECKOUT_EVENT` y motivo.
+`registerIfAbsent(...)` crea atómicamente el registro `PENDING` o devuelve el existente. Un mensaje existente en `PENDING` reanuda el procesamiento; `PROCESSED`, `REJECTED` o `DEAD_LETTER` se confirma sin reprocesar.
+
+Los eventos con JSON inválido o sobre no reconocible se publican persistentemente a `modulo3.checkout.dlq` por el exchange por defecto con `mandatory`; tras confirmación y sin `basic.return`, se registran con `event_id` y `payload` nulos, estado `REJECTED`, código `INVALID_CHECKOUT_EVENT` y motivo, sin guardar el cuerpo crudo, y se hace ack. Si la publicación falla, se devuelve con `basic.return` o no se confirma, se hace nack con reencolado y no se crea el registro `REJECTED`.
 
 ### Clave e idempotencia
 
@@ -106,14 +108,14 @@ El `payload` de auditoría excluye `billingCustomer.name` y `billingCustomer.tax
 | Resultado | Estado de auditoría | Mensaje |
 |---|---|---|
 | Éxito con factura o sin emisión por datos tributarios | `PROCESSED` | ack |
-| Payload inválido | `REJECTED` | nack sin reencolar a DLQ |
-| Error de negocio no recuperable (`RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION`, `SETTLEMENT_ALREADY_EXISTS`) | `DEAD_LETTER` | nack sin reencolar a DLQ |
-| Dependencia transitoria (`MODULE2_UNAVAILABLE`, `VAT_RATE_UNAVAILABLE`, `DATABASE_UNAVAILABLE`) | `PENDING` | nack con reencolado diferido; máximo 5 reentregas cada 30 s |
-| `FINAL_SETTLEMENT_NOT_FOUND` | `DEAD_LETTER` | nack sin reencolar a DLQ |
-| Error no tipado | `DEAD_LETTER`, `UNEXPECTED_ERROR` | nack sin reencolar a DLQ |
+| Payload inválido | `REJECTED` después de confirmar la publicación a DLQ | Publicación persistente con `mandatory` al exchange por defecto; sin `basic.return`, registrar y hacer ack; si falla, nack con reencolado |
+| Error de negocio no recuperable (`RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION`, `SETTLEMENT_ALREADY_EXISTS`) | `DEAD_LETTER` después de confirmar la publicación a DLQ | Publicación persistente con `mandatory` al exchange por defecto; sin `basic.return`, escribir `error_code` y estado y hacer ack; si falla, conservar `PENDING` y hacer nack con reencolado |
+| Dependencia transitoria (`MODULE2_UNAVAILABLE`, `VAT_RATE_UNAVAILABLE`, `DATABASE_UNAVAILABLE`) con `x-retry-count < 5` | `PENDING` | Publicar persistentemente a retry con contador incrementado y `mandatory`; sin `basic.return`, hacer ack; si falla, nack con reencolado |
+| Dependencia transitoria con `x-retry-count >= 5` | `DEAD_LETTER` después de confirmar la publicación a DLQ | Publicar persistentemente a DLQ con `mandatory`; sin `basic.return`, conservar el último `error_code`, escribir estado y hacer ack; si falla, conservar `PENDING` y hacer nack con reencolado |
+| `FINAL_SETTLEMENT_NOT_FOUND` o error no tipado | `DEAD_LETTER` después de confirmar la publicación a DLQ | Publicar persistentemente a DLQ con `mandatory`; registrar `UNEXPECTED_ERROR` en `error_code` para error no tipado; sin `basic.return`, escribir estado y hacer ack; si falla, conservar `PENDING` y hacer nack con reencolado |
 | Duplicado en estado final (`PROCESSED`, `REJECTED`, `DEAD_LETTER`) | Sin cambio | ack inmediato |
 
-Las fallas transitorias se envían a `modulo3.checkout.retry.30s`, cola con TTL de 30 s vinculada al exchange `hospitua.events` y a la routing key `habitacion.checkout`; el vencimiento devuelve el evento a `modulo3.checkout`. El metadato `x-death` del broker cuenta las reentregas. Tras 5 reentregas, el siguiente fallo deja el registro en `DEAD_LETTER` con el código del último error y enruta el mensaje a `modulo3.checkout.dlq`.
+Las fallas transitorias con `x-retry-count` menor que 5 se publican persistentemente a `modulo3.checkout.retry.30s` mediante el exchange por defecto, con el contador incrementado, `mandatory` activado y confirmación del broker antes del ack del original. La cola retry es durable, no tiene binding a `hospitua.events` y usa `x-message-ttl: 30000`, `x-dead-letter-exchange: ""` y `x-dead-letter-routing-key: modulo3.checkout`. Si `x-retry-count` está ausente, se interpreta como 0. El broker puede agregar `x-death` al devolver el mensaje por TTL, pero `x-death` no determina el límite de reintentos. Cuando el contador es 5, el siguiente fallo publica persistentemente a `modulo3.checkout.dlq` mediante el exchange por defecto con `mandatory`; tras confirmación y ausencia de `basic.return`, se conserva el último código y se registra `DEAD_LETTER`. Los errores terminales y payloads inválidos se publican persistentemente a la DLQ mediante el exchange por defecto con `mandatory`. La DLQ es durable y no tiene binding a `hospitua.events`; no se declara `hospitua.events.dlx`. Una publicación devuelta con `basic.return` o no confirmada se trata como fallida y causa nack con reencolado del mensaje original. La recuperación manual publica el mensaje a `modulo3.checkout` mediante el exchange por defecto.
 
 La lista de códigos de auditoría y acciones se define en [EVENT-habitacion-checkout.md](contracts/EVENT-habitacion-checkout.md). `INVALID_CHECKOUT_EVENT` es código de auditoría y no un error HTTP.
 
@@ -131,7 +133,7 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 - [ ] **T002** Definir `CheckoutEventLog`, sus estados y `CheckoutEventLogRepositoryPort`. Agregar el modelo `CheckoutEventLog` a `prisma/schema.prisma` con la migración correspondiente y `UNIQUE` parcial sobre `event_id`.
 - [ ] **T003** Implementar `registerIfAbsent(...)` con deduplicación atómica por `eventId`.
-- [ ] **T004** Configurar la topología RabbitMQ y el manejo de ack manual conforme al Plan Base.
+- [ ] **T004** Configurar la topología RabbitMQ y el manejo de ack manual conforme al Plan Base. Declarar `modulo3.checkout.retry.30s` durable, sin binding a `hospitua.events`, con `x-message-ttl: 30000`, `x-dead-letter-exchange: ""` y `x-dead-letter-routing-key: modulo3.checkout`; declarar `modulo3.checkout.dlq` durable y sin binding a `hospitua.events`; no declarar `hospitua.events.dlx`; mantener la cola principal sin argumentos nuevos. Configurar publicaciones persistentes por el exchange por defecto con `mandatory` activado; hacer ack del original solo tras publisher confirm y ausencia de `basic.return`, y hacer nack con reencolado si la publicación falla, es devuelta o no se confirma.
 
 ### User Story 1 — Procesar check-out
 
@@ -139,7 +141,7 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 - [ ] **T005** Pruebas unitarias de validación del sobre, lista blanca y fechas; validar `occurredAt` con `Z` y `-05:00`, y rechazar valores sin offset o con formato inválido.
 - [ ] **T006** Pruebas unitarias de orquestación: generación de liquidación y factura, datos tributarios incompletos, reuso idempotente y contradicción de estancia.
-- [ ] **T007** Pruebas de integración con Testcontainers para PostgreSQL y RabbitMQ: auditoría atómica, deduplicación, ack, nack terminal, `DATABASE_UNAVAILABLE`, `FINAL_SETTLEMENT_NOT_FOUND` y `UNEXPECTED_ERROR`.
+- [ ] **T007** Pruebas de integración con Testcontainers para PostgreSQL y RabbitMQ: auditoría atómica, deduplicación, ack, nack terminal, `DATABASE_UNAVAILABLE`, `FINAL_SETTLEMENT_NOT_FOUND` y `UNEXPECTED_ERROR`. Verificar publicaciones persistentes a retry y DLQ con `mandatory`, publisher confirm y `basic.return`; una publicación devuelta, fallida o no confirmada debe causar nack con reencolado del original.
 - [ ] **T008** Contract test del evento, campos de lista blanca, ejemplos y matriz de resultados del contrato; aceptar ambos formatos de `occurredAt` (`Z` y offset `-05:00`).
 - [ ] **T009** Pruebas e2e del flujo de check-out completo y del flujo sin factura por datos tributarios incompletos.
 
@@ -148,14 +150,14 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 - [ ] **T010** Implementar validación del `EventEnvelope` y reconstrucción de payload por lista blanca.
 - [ ] **T011** Implementar el registro inicial y transiciones de auditoría mediante `registerIfAbsent(...)`.
 - [ ] **T012** Implementar `RegisterCheckoutService` (puerto `RegisterCheckoutUseCase`) con la secuencia 007 y 006, incluyendo la respuesta normal sin emisión de factura.
-- [ ] **T013** Implementar el consumer adaptador con ack/nack según el resultado tipado.
+- [ ] **T013** Implementar el consumer adaptador con ack/nack según el resultado tipado. Publicar directamente a retry o DLQ por el exchange por defecto, con `mandatory` y mensajes persistentes; conservar cuerpo y headers e incrementar `x-retry-count` para retry. Hacer ack solo tras publisher confirm y ausencia de `basic.return`; ante fallo, devolución o falta de confirmación, hacer nack con reencolado.
 
 ### Polish
 
-- [ ] **T014** Documentar la recuperación manual desde DLQ: corregir la causa, cambiar `DEAD_LETTER` a `PENDING` y mover el mensaje a la cola principal.
+- [ ] **T014** Documentar la recuperación manual desde DLQ: corregir la causa, cambiar `DEAD_LETTER` a `PENDING` y mover el mensaje a la cola principal. Publicarlo a `modulo3.checkout` mediante el exchange por defecto, con `mandatory`, y esperar confirmación y ausencia de `basic.return` antes de finalizar la recuperación.
 - [ ] **T015** Verificar privacidad: `checkout_event_log.payload` no contiene `billingCustomer.name` ni `billingCustomer.taxId` y conserva solamente `has_billing_customer`; comprobar además la unicidad por estancia y ausencia de duplicados.
-- [ ] **T016** Probar la cola `modulo3.checkout.retry.30s`, su TTL de 30 s y la reentrega con `x-death` para fallas transitorias.
-- [ ] **T017** Probar el límite de 5 reentregas y que el fallo siguiente preserve el último código en auditoría y enrute el evento a DLQ.
+- [ ] **T016** Probar la cola `modulo3.checkout.retry.30s`, su TTL de 30 s y la reentrega con `x-death` para fallas transitorias. Verificar que eventos nuevos de `hospitua.events` no llegan a retry; que al vencer el TTL el mensaje vuelve solo a `modulo3.checkout`; que `x-retry-count` gobierna el límite y `x-death` no lo determina; y que las publicaciones directas persistentes usan `mandatory`, publisher confirm y manejo de `basic.return`.
+- [ ] **T017** Probar el límite de 5 reentregas y que el fallo siguiente preserve el último código en auditoría y enrute el evento a DLQ. Verificar que cada publicación a retry incrementa `x-retry-count`; al llegar a 5, la falla siguiente publica a DLQ, registra `DEAD_LETTER` y conserva el último `error_code` solo después de confirmación; si la publicación falla, se conserva `PENDING` y se hace nack con reencolado.
 
 ## Dependencies & Execution Order
 

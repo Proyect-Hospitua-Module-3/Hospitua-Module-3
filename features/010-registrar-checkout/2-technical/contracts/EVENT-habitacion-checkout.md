@@ -18,10 +18,9 @@ Módulo 1 publica `habitacion.checkout` al confirmar el check-out físico. Módu
 | Exchange | `hospitua.events` (topic) [BASE] |
 | Routing key | `habitacion.checkout` [BASE] |
 | Cola de Módulo 3 | `modulo3.checkout` [BASE] |
-| Cola de reintento | `modulo3.checkout.retry.30s`, TTL de 30 s, vinculada a `hospitua.events` con routing key `habitacion.checkout` [PLAN] |
-| Dead-letter exchange | `hospitua.events.dlx` [PLAN] |
-| Cola dead-letter | `modulo3.checkout.dlq` [PLAN] |
-| Confirmación | Manual, ack/nack según la política de esta interfaz [BASE] |
+| Cola de reintento | `modulo3.checkout.retry.30s`, durable, sin binding a `hospitua.events`; `x-message-ttl: 30000`, `x-dead-letter-exchange: ""` y `x-dead-letter-routing-key: modulo3.checkout` [PLAN] |
+| Cola dead-letter | `modulo3.checkout.dlq`, durable y sin binding a `hospitua.events` [PLAN] |
+| Confirmación | Manual [BASE]. Las publicaciones directas a retry o DLQ son persistentes y usan `mandatory`; el consumer espera publisher confirm y comprueba que no haya `basic.return` antes de hacer ack. Si falla la publicación, hay `basic.return` o no llega la confirmación, hace nack con reencolado [PLAN] |
 
 Módulo 3 lee directamente el `EventEnvelope` definido en el Plan Base.
 
@@ -53,7 +52,7 @@ La lista blanca del evento incluye los campos definidos en las tablas del sobre 
 
 ## 3. Reglas de procesamiento
 
-1. Se registra el mensaje con estado `PENDING` mediante `registerIfAbsent(...)`. Si el sobre no es JSON válido o no es reconocible, se registra `event_id` y `payload` nulos, `status = REJECTED`, `error_code = INVALID_CHECKOUT_EVENT` y el motivo; el cuerpo crudo no se guarda.
+1. Si el sobre no es JSON válido o no es reconocible, se publica el mensaje persistente a `modulo3.checkout.dlq` mediante el exchange por defecto con `mandatory`. Si el broker devuelve el mensaje con `basic.return` o no confirma la publicación, se hace nack con reencolado. Después de una publicación confirmada y sin devolución, se registra `event_id` y `payload` nulos, `status = REJECTED`, `error_code = INVALID_CHECKOUT_EVENT` y el motivo, sin guardar el cuerpo crudo, y se hace ack.
 2. Se validan el sobre, los campos obligatorios y que `checkInDate < checkOutDate`. `occurredAt` se valida como fecha-hora ISO 8601 con cualquier offset válido; un valor sin offset o con formato inválido hace que el evento se rechace con `INVALID_CHECKOUT_EVENT`. La categoría debe ser string no vacío. La ausencia o incompletitud de datos tributarios no invalida el evento.
 3. Con el evento válido, 010 invoca `GenerateSettlementUseCase` de 007 y luego `GenerateFinalInvoiceUseCase` de 006. 006 vuelve a invocar 007 internamente; la idempotencia por `stayId` permite devolver la liquidación existente sin duplicarla. `stayId` es UUID obligatorio y clave de idempotencia de negocio; 007 mantiene la unicidad de liquidación por estancia.
 4. Un nuevo evento con la misma estancia y los mismos datos de check-out obtiene la liquidación existente sin recalcular. Si los datos de check-out contradicen la liquidación existente, se rechaza con `SETTLEMENT_ALREADY_EXISTS` y se conserva la liquidación original.
@@ -67,13 +66,14 @@ La lista blanca del evento incluye los campos definidos en las tablas del sobre 
 | Liquidación y factura procesadas, o liquidación procesada sin factura por datos tributarios incompletos | `ack` | `PROCESSED` |
 | Reentrega con `eventId` ya `PROCESSED`, `REJECTED` o `DEAD_LETTER` | `ack` inmediato, sin reprocesar | Sin cambio |
 | Evento con el mismo `eventId` en `PENDING` | Reanudar procesamiento sobre el registro existente | Según resultado final |
-| JSON inválido o sobre irreconocible | `nack` sin reencolar; DLX a `modulo3.checkout.dlq` | `REJECTED` |
-| Error de negocio no recuperable: `RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION` o `SETTLEMENT_ALREADY_EXISTS` | `nack` sin reencolar; DLX a `modulo3.checkout.dlq` | `DEAD_LETTER` |
-| Falla transitoria `MODULE2_UNAVAILABLE`, `VAT_RATE_UNAVAILABLE` o `DATABASE_UNAVAILABLE` | `nack` con reencolado diferido por la cola TTL de 30 s; máximo 5 reentregas | `PENDING` |
-| `FINAL_SETTLEMENT_NOT_FOUND` | `nack` sin reencolar; DLX a `modulo3.checkout.dlq` | `DEAD_LETTER` |
-| Error no tipado | `nack` sin reencolar; se registra `UNEXPECTED_ERROR` y se enruta a DLQ | `DEAD_LETTER` |
+| JSON inválido o sobre irreconocible | Publicar persistentemente a `modulo3.checkout.dlq` con `mandatory`; tras confirmación y sin `basic.return`, registrar y hacer ack | `REJECTED` |
+| Error de negocio no recuperable: `RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION` o `SETTLEMENT_ALREADY_EXISTS` | Publicar persistentemente a `modulo3.checkout.dlq` con `mandatory`; tras confirmación y sin `basic.return`, escribir `error_code` y estado, y hacer ack | `DEAD_LETTER` |
+| Falla transitoria `MODULE2_UNAVAILABLE`, `VAT_RATE_UNAVAILABLE` o `DATABASE_UNAVAILABLE` con `x-retry-count < 5` | Publicar persistentemente a retry con `x-retry-count` incrementado y `mandatory`; tras confirmación y sin `basic.return`, hacer ack | `PENDING` |
+| Falla transitoria con `x-retry-count >= 5` | Publicar persistentemente a `modulo3.checkout.dlq` con `mandatory`; tras confirmación y sin `basic.return`, conservar el último código en `error_code`, escribir el estado y hacer ack | `DEAD_LETTER` |
+| `FINAL_SETTLEMENT_NOT_FOUND` o error no tipado | Publicar persistentemente a `modulo3.checkout.dlq` con `mandatory`; tras confirmación y sin `basic.return`, escribir `error_code` (`UNEXPECTED_ERROR` para error no tipado) y estado, y hacer ack | `DEAD_LETTER` |
+| Publicación a retry o DLQ fallida, devuelta con `basic.return` o no confirmada | `nack` con reencolado del mensaje original; para eventos con `eventId`, el registro permanece en `PENDING` | Sin estado terminal |
 
-Las fallas transitorias se enrutan a `modulo3.checkout.retry.30s` y regresan a la cola principal al vencer el TTL. `x-death` cuenta las reentregas; tras 5, el fallo siguiente conserva su código en `error_code`, cambia el registro a `DEAD_LETTER` y enruta el mensaje a `modulo3.checkout.dlq`. La recuperación manual desde la DLQ corrige la causa, cambia el registro a `PENDING` y mueve el mensaje a `modulo3.checkout`, para reanudarlo.
+Las fallas transitorias con `x-retry-count` menor que 5 se publican persistentemente a `modulo3.checkout.retry.30s` mediante el exchange por defecto, con el contador incrementado. La cola retry es durable, no tiene binding a `hospitua.events` y usa `x-message-ttl: 30000`, `x-dead-letter-exchange: ""` y `x-dead-letter-routing-key: modulo3.checkout`. Si `x-retry-count` está ausente, se interpreta como 0. El broker puede agregar `x-death` al devolver el mensaje por TTL, pero `x-death` no determina el límite de reintentos. Cuando el contador es 5, el siguiente fallo publica el mensaje a `modulo3.checkout.dlq`; después de confirmación y sin devolución, se conserva el último código en `error_code` y se registra `DEAD_LETTER`. Los errores terminales y payloads inválidos se publican persistentemente a la DLQ mediante el exchange por defecto con `mandatory`. Toda publicación directa usa `mandatory`; una devolución `basic.return` o la falta de confirmación se trata como fallo y causa nack con reencolado. La recuperación manual desde la DLQ corrige la causa, cambia el registro a `PENDING` y publica el mensaje a `modulo3.checkout` mediante el exchange por defecto.
 
 ## 5. Errores
 
@@ -81,16 +81,16 @@ Los códigos siguientes son resultados de procesamiento y auditoría, no respues
 
 | Código | Resultado |
 |---|---|
-| `INVALID_CHECKOUT_EVENT` | Sobre inválido o datos obligatorios ausentes/inválidos; `REJECTED` y DLQ. |
+| `INVALID_CHECKOUT_EVENT` | Sobre inválido o datos obligatorios ausentes/inválidos; publicación a DLQ confirmada y `REJECTED`. |
 | `RESERVATION_NOT_FOUND` | Reserva no encontrada por 007; `DEAD_LETTER`. |
 | `QUOTE_NOT_FOUND` | Cotización aplicable no encontrada por 007; `DEAD_LETTER`. |
 | `MISSING_COMMISSION` | Comisión requerida ausente; `DEAD_LETTER`. |
 | `INVALID_COMMISSION` | Comisión inválida; `DEAD_LETTER`. |
 | `SETTLEMENT_ALREADY_EXISTS` | Datos de check-out contradicen la liquidación existente; `DEAD_LETTER`. |
-| `MODULE2_UNAVAILABLE` | Dependencia transitoria no disponible; redelivery. |
-| `VAT_RATE_UNAVAILABLE` | Tasa de IVA no disponible; redelivery. |
+| `MODULE2_UNAVAILABLE` | Dependencia transitoria no disponible; retry mediante `x-retry-count` mientras sea menor que 5. |
+| `VAT_RATE_UNAVAILABLE` | Tasa de IVA no disponible; retry mediante `x-retry-count` mientras sea menor que 5. |
 | `BILLING_CUSTOMER_DATA_MISSING` | Resultado normal sin emisión de factura; ack y `PROCESSED`. |
-| `DATABASE_UNAVAILABLE` | Falla transitoria de persistencia; reencolado diferido, hasta 5 reentregas. |
+| `DATABASE_UNAVAILABLE` | Falla transitoria de persistencia; retry mediante `x-retry-count` mientras sea menor que 5; si ya es 5, publicación a DLQ conservando el código. |
 | `FINAL_SETTLEMENT_NOT_FOUND` | No existe liquidación final requerida por 006; `DEAD_LETTER`. |
 | `UNEXPECTED_ERROR` | Error no tipado; `DEAD_LETTER`. |
 
