@@ -83,7 +83,7 @@ test/
 | `id` | UUID | Clave primaria. |
 | `event_id` | UUID nullable | Único cuando no es nulo. |
 | `event_type` | string nullable | Tipo del evento reconocido. |
-| `occurred_at` | timestamptz nullable | Fecha de emisión reconocida. |
+| `occurred_at` | timestamptz nullable | Instante de emisión normalizado; el offset original no se conserva. |
 | `payload` | jsonb nullable | Campos de lista blanca y el indicador `has_billing_customer`; nunca guarda `billingCustomer`; nulo si no se reconoce el sobre. |
 | `stay_id` | UUID nullable | Identificador de estancia reconocido. |
 | `status` | string | `PENDING`, `PROCESSED`, `REJECTED` o `DEAD_LETTER`. |
@@ -137,10 +137,10 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 **Pruebas primero**
 
-- [ ] **T005** Pruebas unitarias de validación del sobre, lista blanca y fechas.
+- [ ] **T005** Pruebas unitarias de validación del sobre, lista blanca y fechas; validar `occurredAt` con `Z` y `-05:00`, y rechazar valores sin offset o con formato inválido.
 - [ ] **T006** Pruebas unitarias de orquestación: generación de liquidación y factura, datos tributarios incompletos, reuso idempotente y contradicción de estancia.
 - [ ] **T007** Pruebas de integración con Testcontainers para PostgreSQL y RabbitMQ: auditoría atómica, deduplicación, ack, nack terminal, `DATABASE_UNAVAILABLE`, `FINAL_SETTLEMENT_NOT_FOUND` y `UNEXPECTED_ERROR`.
-- [ ] **T008** Contract test del evento, campos de lista blanca, ejemplos y matriz de resultados del contrato.
+- [ ] **T008** Contract test del evento, campos de lista blanca, ejemplos y matriz de resultados del contrato; aceptar ambos formatos de `occurredAt` (`Z` y offset `-05:00`).
 - [ ] **T009** Pruebas e2e del flujo de check-out completo y del flujo sin factura por datos tributarios incompletos.
 
 **Implementación**

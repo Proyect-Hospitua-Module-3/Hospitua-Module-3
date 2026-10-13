@@ -19,8 +19,8 @@ Módulo 1 publica `habitacion.checkout` al confirmar el check-out físico. Módu
 | Routing key | `habitacion.checkout` [BASE] |
 | Cola de Módulo 3 | `modulo3.checkout` [BASE] |
 | Cola de reintento | `modulo3.checkout.retry.30s`, TTL de 30 s, vinculada a `hospitua.events` con routing key `habitacion.checkout` [PLAN] |
-| Dead-letter exchange | `hospitua.events.dlx` [BASE] |
-| Cola dead-letter | `modulo3.checkout.dlq` [BASE] |
+| Dead-letter exchange | `hospitua.events.dlx` [PLAN] |
+| Cola dead-letter | `modulo3.checkout.dlq` [PLAN] |
 | Confirmación | Manual, ack/nack según la política de esta interfaz [BASE] |
 
 Módulo 3 lee directamente el `EventEnvelope` definido en el Plan Base.
@@ -31,7 +31,7 @@ Módulo 3 lee directamente el `EventEnvelope` definido en el Plan Base.
 |---|---|---|
 | `eventId` | UUID | Obligatorio; identifica el mensaje para deduplicación. |
 | `eventType` | string | Obligatorio; valor `CHECK_OUT`. |
-| `occurredAt` | fecha y hora ISO 8601 UTC | Obligatorio. |
+| `occurredAt` | fecha y hora ISO 8601 con offset de zona (se acepta `Z` o un offset como `-05:00`) | Obligatorio. |
 | `sourceModule` | string | Obligatorio; valor `MODULE_1`. |
 | `payload` | objeto | Obligatorio; datos de la estancia descritos abajo. |
 
@@ -54,7 +54,7 @@ La lista blanca del evento incluye los campos definidos en las tablas del sobre 
 ## 3. Reglas de procesamiento
 
 1. Se registra el mensaje con estado `PENDING` mediante `registerIfAbsent(...)`. Si el sobre no es JSON válido o no es reconocible, se registra `event_id` y `payload` nulos, `status = REJECTED`, `error_code = INVALID_CHECKOUT_EVENT` y el motivo; el cuerpo crudo no se guarda.
-2. Se validan el sobre, los campos obligatorios y que `checkInDate < checkOutDate`. La categoría debe ser string no vacío. La ausencia o incompletitud de datos tributarios no invalida el evento.
+2. Se validan el sobre, los campos obligatorios y que `checkInDate < checkOutDate`. `occurredAt` se valida como fecha-hora ISO 8601 con cualquier offset válido; un valor sin offset o con formato inválido hace que el evento se rechace con `INVALID_CHECKOUT_EVENT`. La categoría debe ser string no vacío. La ausencia o incompletitud de datos tributarios no invalida el evento.
 3. Con el evento válido, 010 invoca `GenerateSettlementUseCase` de 007 y luego `GenerateFinalInvoiceUseCase` de 006. 006 vuelve a invocar 007 internamente; la idempotencia por `stayId` permite devolver la liquidación existente sin duplicarla. `stayId` es UUID obligatorio y clave de idempotencia de negocio; 007 mantiene la unicidad de liquidación por estancia.
 4. Un nuevo evento con la misma estancia y los mismos datos de check-out obtiene la liquidación existente sin recalcular. Si los datos de check-out contradicen la liquidación existente, se rechaza con `SETTLEMENT_ALREADY_EXISTS` y se conserva la liquidación original.
 5. Si 006 recibe datos tributarios ausentes o incompletos, devuelve `BILLING_CUSTOMER_DATA_MISSING`. 010 lo trata como resultado normal: conserva la liquidación, no se asigna número de factura, el evento se confirma y la auditoría queda `PROCESSED` con `result_note = "Factura no emitida: datos tributarios ausentes o incompletos"`. Un nuevo evento (otro `eventId`) con los mismos datos de check-out y datos tributarios completos reutiliza la liquidación y permite emitir la factura sin duplicar registros.
@@ -125,7 +125,7 @@ Los códigos siguientes son resultados de procesamiento y auditoría, no respues
 {
   "eventId": "b7e9c112-4a02-4d33-a11b-8e55d3f82033",
   "eventType": "CHECK_OUT",
-  "occurredAt": "2026-10-08T11:05:00Z",
+  "occurredAt": "2026-10-08T06:05:00-05:00",
   "sourceModule": "MODULE_1",
   "payload": {
     "stayId": "e3f5d8c9-3b66-4f42-9a03-c1b223344556",

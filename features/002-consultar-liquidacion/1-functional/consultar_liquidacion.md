@@ -140,7 +140,7 @@ Como `Módulo 1` o como OTA identificada con su propia identidad, quiero recibir
 
 ## Requisitos no funcionales
 
-- **NFR-001**: Rendimiento: cada consulta responde en menos de 800 ms.
+- **NFR-001**: Rendimiento: el 95% de las consultas responde en menos de 800 ms en condiciones normales.
 - **NFR-002**: Consistencia: una consulta de Módulo 1 concurrente con el procesamiento asíncrono del check-out debe devolver la liquidación informativa o la `Final`, nunca un estado intermedio o un desglose parcial. La informativa debe coincidir con la `Final` cuando no cambien los datos de la reserva ni de la cotización.
 - **NFR-003**: Confidencialidad: ninguna OTA debe acceder a liquidaciones de reservas de canal directo o de otra OTA.
 - **NFR-004**: Privacidad: el resultado no debe exponer información personal del huésped ni datos migratorios que no sean necesarios para el proceso financiero.

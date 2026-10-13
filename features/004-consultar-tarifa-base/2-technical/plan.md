@@ -18,7 +18,7 @@ El servicio interno `GetBaseRateService` (puerto `GetBaseRateUseCase`) del conte
 **Target Platform**: Servicio backend Linux en contenedor Docker, dentro del monolito modular del Módulo 3.
 **Project Type**: Servicio interno saliente en arquitectura hexagonal; no expone controller ni consumer.
 **Performance Goals**: Cada consulta se resuelve o falla en máximo 500 ms.
-**Constraints**: Módulo 1 administra la tarifa base; lectura por tipo de habitación y fecha; respuestas y errores según `CLIENT-get-base-rate.md`; resiliencia según la configuración por cliente del Plan Base.
+**Constraints**: Módulo 1 administra la tarifa base; lectura por tipo de habitación y fecha; respuestas y errores según `CLIENT-get-base-rate.md`; timeout de 500 ms [SPEC NFR-002]; circuit breaker opossum: se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s [PLAN].
 **Scale/Scope**: Un servicio de consulta, un puerto de salida HTTP y un modelo `BaseRate`, exportado para uso interno de la feature 005.
 
 ## Project Structure
@@ -33,6 +33,7 @@ src/
 │   │   ├── base-rate-not-found.error.ts
 │   │   ├── invalid-base-rate.error.ts
 │   │   ├── invalid-base-rate-query.error.ts
+│   │   ├── malformed-base-rate-response.error.ts
 │   │   └── module1-unavailable.error.ts
 │   └── ports/
 │       ├── in/get-base-rate.use-case.ts
@@ -57,15 +58,15 @@ test/
 
 ### Servicio y puerto
 
-`GetBaseRateService` valida que el tipo de habitación no esté vacío y que la fecha sea válida en formato `YYYY-MM-DD` antes de invocar `BaseRateClientPort`. Si la entrada no es válida, lanza `InvalidBaseRateQueryError` con `INVALID_QUERY_PARAMS` (HTTP 400) sin llamar a Módulo 1. El puerto de entrada `GetBaseRateUseCase` expone `execute(roomType, date): Promise<BaseRate>`.
+`GetBaseRateService` valida que `categoryRoom` no esté vacío y que la fecha sea válida en formato `YYYY-MM-DD` antes de invocar `BaseRateClientPort`. Si la entrada no es válida, lanza `InvalidBaseRateQueryError` con `INVALID_QUERY_PARAMS` (HTTP 400) sin llamar a Módulo 1. El puerto de entrada `GetBaseRateUseCase` expone `execute(categoryRoom, date): Promise<BaseRate>`.
 
 ```ts
 interface GetBaseRateUseCase {
-  execute(roomType: string, date: string): Promise<BaseRate>;
+  execute(categoryRoom: string, date: string): Promise<BaseRate>;
 }
 
 interface BaseRateClientPort {
-  getBaseRate(roomType: string, date: string): Promise<BaseRate>;
+  getBaseRate(categoryRoom: string, date: string): Promise<BaseRate>;
 }
 ```
 
@@ -73,7 +74,7 @@ interface BaseRateClientPort {
 
 ### Adaptador HTTP
 
-El adaptador implementa la petición del contrato `CLIENT-get-base-rate.md`. Codifica `roomType` en la URL con `encodeURIComponent` y envía el valor recibido sin transformarlo. Valida los campos presentes, que `baseRate` sea texto decimal estrictamente positivo, que `currency` sea `COP` y que los valores de `roomType` y `date` coincidan con los solicitados antes de construir `BaseRate`. Una respuesta inválida lanza `InvalidBaseRateError`; el circuit breaker la cuenta como fallo y el servicio la traduce a `MODULE1_UNAVAILABLE`. El timeout y el circuit breaker siguen la configuración por cliente del Plan Base. El adaptador no persiste ni cachea datos.
+El adaptador implementa la petición del contrato `CLIENT-get-base-rate.md`. Codifica `categoryRoom` en la URL con `encodeURIComponent` y envía el valor recibido sin transformarlo. Si `baseRate` es texto decimal con valor menor o igual a cero, lanza `InvalidBaseRateError`; este error no cuenta como fallo del circuit breaker y se traduce a `INVALID_BASE_RATE`. La estructura inválida, el cuerpo no JSON, los campos ausentes, el tipo incorrecto, `baseRate` como número JSON o no decimal, la moneda distinta de COP y el eco discordante de `categoryRoom` o `date` lanzan `MalformedBaseRateResponseError`; este error cuenta como fallo del circuit breaker y se traduce a `MODULE1_UNAVAILABLE`. El timeout es de 500 ms y el circuit breaker opossum se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s. El adaptador no persiste ni cachea datos.
 
 ### Errores
 
@@ -83,7 +84,8 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 |---|---|---:|
 | `BaseRateNotFoundError` | `BASE_RATE_NOT_FOUND` | 404 |
 | `InvalidBaseRateQueryError` | `INVALID_QUERY_PARAMS` | 400 |
-| `InvalidBaseRateError` | `MODULE1_UNAVAILABLE` | 424 |
+| `InvalidBaseRateError` | `INVALID_BASE_RATE` | 424 |
+| `MalformedBaseRateResponseError` | `MODULE1_UNAVAILABLE` | 424 |
 | `Module1UnavailableError` | `MODULE1_UNAVAILABLE` | 424 |
 
 ## Fases y tareas
@@ -94,7 +96,7 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 
 ## Phase 2: Foundational
 
-- [ ] T002 [P] Definir `BaseRateClientPort`, el modelo `BaseRate` y los errores de dominio, incluido `InvalidBaseRateQueryError`.
+- [ ] T002 [P] Definir `BaseRateClientPort`, el modelo `BaseRate` y los errores de dominio `InvalidBaseRateQueryError`, `InvalidBaseRateError` y `MalformedBaseRateResponseError`.
 - [ ] T003 Registrar el adaptador HTTP y exportar el puerto `GetBaseRateUseCase` desde `pricing.module.ts`.
 
 ## Phase 3: User Story 1 — Consulta exitosa por tipo y fecha (Priority: P1)
@@ -107,14 +109,14 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 
 - [ ] T004 [P] [US1] Crear pruebas unitarias del modelo `BaseRate` para `Money` positivo y moneda COP [SPEC FR-001, FR-006].
 - [ ] T005 [P] [US1] Crear pruebas unitarias de `GetBaseRateService` para el camino exitoso y consultas independientes por fecha [SPEC FR-001, FR-003].
-- [ ] T006 [P] [US1] Crear prueba de integración del cliente HTTP para una respuesta `200` válida.
+- [ ] T006 [P] [US1] Crear pruebas de integración del cliente HTTP para una respuesta `200` válida, timeout de 500 ms y circuit breaker que se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s.
 - [ ] T007 [P] [US1] Crear contract test del éxito definido en `CLIENT-get-base-rate.md` [SPEC SC-001].
 
 ### Implementation for User Story 1
 
-- [ ] T008 [P] [US1] Implementar el modelo `BaseRate` con `Money` y los errores de dominio.
+- [ ] T008 [P] [US1] Implementar el modelo `BaseRate` con `Money` y los errores de dominio `InvalidBaseRateError` y `MalformedBaseRateResponseError`.
 - [ ] T009 [US1] Implementar `GetBaseRateService` y su puerto de salida.
-- [ ] T010 [US1] Implementar el adaptador HTTP con validación y traducción de respuestas del contrato.
+- [ ] T010 [US1] Implementar el adaptador HTTP con validación y traducción diferenciada: importe decimal no positivo a `InvalidBaseRateError` y respuestas malformadas a `MalformedBaseRateResponseError`.
 - [ ] T011 [US1] Exportar el puerto `GetBaseRateUseCase` para consumo interno desde `pricing.module.ts`.
 
 ## Phase 4: User Story 2 — El cálculo se detiene sin tarifa utilizable (Priority: P1)
@@ -125,8 +127,8 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 
 ### Tests for User Story 2
 
-- [ ] T012 [P] [US2] Crear pruebas de servicio para tipo vacío y fecha inválida, verificando que no invocan el puerto.
-- [ ] T013 [P] [US2] Crear pruebas de integración HTTP para `404` estructurado, `404` sin cuerpo, importe inválido, moneda distinta, tipo o fecha discordantes, `baseRate` numérico, cuerpo no JSON, campos ausentes, timeout, `5xx` y circuito abierto [SPEC FR-004, SC-002, SC-003].
+- [ ] T012 [P] [US2] Crear pruebas de servicio para `categoryRoom` vacío y fecha inválida, verificando que no invocan el puerto.
+- [ ] T013 [P] [US2] Crear pruebas de integración HTTP para `404` estructurado, `404` sin cuerpo, importe decimal no positivo, moneda distinta, `categoryRoom` o fecha discordantes, `baseRate` numérico o no decimal, cuerpo no JSON, campos ausentes, tipo incorrecto, timeout, `5xx` y circuito abierto [SPEC FR-004, SC-002, SC-003]. El importe decimal no positivo debe producir `INVALID_BASE_RATE` y no incrementar el contador ni abrir el circuito; las respuestas malformadas deben producir `MODULE1_UNAVAILABLE` y contar como fallos del circuito.
 
 ### Implementation for User Story 2
 
@@ -134,7 +136,7 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 
 ## Phase 5: Polish & Cross-Cutting Concerns
 
-- [ ] T015 Ejecutar las suites unitarias, de integración y contract test; verificar que cada fecha se consulta independientemente y que no se persiste ni cachea tarifa base [SPEC FR-002, FR-003, FR-005, SC-004, SC-005].
+- [ ] T015 Ejecutar las suites unitarias, de integración y contract test; verificar que cada fecha se consulta independientemente, que no se persiste ni cachea tarifa base, que el timeout es de 500 ms y que el circuit breaker se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s [SPEC FR-002, FR-003, FR-005, SC-004, SC-005].
 
 ## Dependencies & Execution Order
 
