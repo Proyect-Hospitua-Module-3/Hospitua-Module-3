@@ -64,6 +64,12 @@ Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálcul
 ### Casos límite
 
 - Un cambio posterior de tarifa base no altera la cotización de hospedaje ya guardada.
+- Módulo 1 responde después de 500 ms: se trata como falta de respuesta y se
+  informa una falla de dependencia, sin esperar más.
+- Estancia de una sola noche: se consulta únicamente la tarifa de la fecha de entrada.
+- Módulo 1 devuelve una moneda distinta de COP: se trata como falla de dependencia.
+- Módulo 1 responde con un tipo de habitación o una fecha distintos de los consultados:
+  se trata como falla de dependencia.
 
 ## Requisitos *(obligatorio)*
 
