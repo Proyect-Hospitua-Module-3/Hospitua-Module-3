@@ -14,11 +14,11 @@ Define la llamada saliente que realiza el contexto `pricing` de Módulo 3 para o
 
 | Elemento | Valor |
 |---|---|
-| Método y ruta | `GET /rooms/{roomType}/base-rate?date=YYYY-MM-DD` |
+| Método y ruta | `GET /api/rooms/{categoryRoom}/base-rate?date=YYYY-MM-DD` |
 | Autenticación | Sin token, comunicación interna [BASE] |
-| `roomType` | Tipo de habitación en la ruta; Módulo 3 usa `encodeURIComponent` para codificarlo en la URL y envía el valor recibido sin transformarlo [PLAN] |
+| `categoryRoom` | Tipo de habitación en la ruta; Módulo 3 usa `encodeURIComponent` para codificarlo en la URL y envía el valor recibido sin transformarlo [PLAN] |
 | `date` | Fecha consultada, formato `YYYY-MM-DD` |
-| Timeout y circuit breaker | Configuración por cliente definida en el Plan Base [BASE] |
+| Timeout y circuit breaker | Timeout de 500 ms [SPEC NFR-002]; circuit breaker opossum: se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s [PLAN] |
 
 ## 3. Respuesta que Módulo 3 requiere de Módulo 1
 
@@ -26,7 +26,7 @@ Respuesta `200`:
 
 ```json
 {
-  "roomType": "DOBLE",
+  "categoryRoom": "DOBLE",
   "date": "2026-10-08",
   "baseRate": "250000.00",
   "currency": "COP"
@@ -35,7 +35,7 @@ Respuesta `200`:
 
 | Campo | Tipo | Regla |
 |---|---|---|
-| `roomType` | string | Igual al tipo de habitación enviado en la petición [PLAN] |
+| `categoryRoom` | string | Igual al categoryRoom enviado en la petición [PLAN] |
 | `date` | string `YYYY-MM-DD` | Igual a la fecha enviada en la petición [PLAN] |
 | `baseRate` | decimal en texto | Importe decimal estrictamente positivo [SPEC FR-001, FR-006] [PLAN] |
 | `currency` | string | `COP` [BASE] [PLAN] |
@@ -46,22 +46,23 @@ Respuesta `200`:
 |---|---|---|
 | `200` con cuerpo válido | Devuelve `BaseRate` con importe y moneda | No |
 | `200` con `currency` distinta de `COP` | `MODULE1_UNAVAILABLE` | Sí |
-| `200` con `roomType` o `date` distintos de los solicitados | `MODULE1_UNAVAILABLE` | Sí |
+| `200` con `categoryRoom` o `date` distintos de los solicitados | `MODULE1_UNAVAILABLE` | Sí |
 | `200` con `baseRate` como número JSON en vez de texto decimal | `MODULE1_UNAVAILABLE` | Sí |
-| `200` con `baseRate` no decimal, no positivo o cuerpo no JSON/campos ausentes | `MODULE1_UNAVAILABLE` | Sí |
+| `200` con `baseRate` decimal en texto menor o igual a cero | `INVALID_BASE_RATE` | No |
+| `200` con `baseRate` no decimal, cuerpo no JSON, campos ausentes o tipo incorrecto | `MODULE1_UNAVAILABLE` | Sí |
 | `404` con cuerpo estructurado `BASE_RATE_NOT_FOUND` | `BASE_RATE_NOT_FOUND`; detiene el cálculo invocante | No |
 | `404` sin cuerpo estructurado | `MODULE1_UNAVAILABLE` | Sí |
 | Otro `4xx` | `MODULE1_UNAVAILABLE` | Sí |
 | Timeout, `5xx`, error de red o circuito abierto | `MODULE1_UNAVAILABLE` | Sí |
 
-El cuerpo estructurado de error sigue la forma `ApiError` del Plan Base. Módulo 3 no sustituye una respuesta inválida por un importe predeterminado [SPEC FR-004, FR-006]. Una respuesta inválida lanza `InvalidBaseRateError` en el adaptador, cuenta como fallo del circuit breaker y se traduce a `MODULE1_UNAVAILABLE` [PLAN].
+El cuerpo estructurado de error sigue la forma `ApiError` del Plan Base. Módulo 3 no sustituye una respuesta inválida por un importe predeterminado [SPEC FR-004, FR-006]. Una respuesta malformada lanza `MalformedBaseRateResponseError` en el adaptador, cuenta como fallo del circuit breaker y se traduce a `MODULE1_UNAVAILABLE`; un importe decimal en texto menor o igual a cero lanza `InvalidBaseRateError`, no cuenta como fallo del circuit breaker y se traduce a `INVALID_BASE_RATE` [PLAN].
 
 ## 5. Garantías del cliente
 
 - La consulta es de solo lectura y no persiste ni cachea una copia independiente [SPEC FR-002, FR-005].
 - Cada fecha se consulta de forma independiente [SPEC FR-003].
-- La ausencia de tarifa se distingue de una falla de dependencia [SPEC FR-006].
+- La ausencia de tarifa y la tarifa inválida se distinguen de una falla de dependencia [SPEC FR-006].
 
 ## 6. Contract test
 
-El contract test verifica el cuerpo de éxito con `roomType`, `date`, `baseRate` decimal en texto positivo y `currency: COP`; y la interpretación de `BASE_RATE_NOT_FOUND` estructurado. Las respuestas malformadas se clasifican como falla de dependencia [PLAN].
+El contract test verifica el cuerpo de éxito con `categoryRoom`, `date`, `baseRate` decimal en texto positivo y `currency: COP`; la interpretación de `BASE_RATE_NOT_FOUND` estructurado; y un importe decimal en texto menor o igual a cero como `INVALID_BASE_RATE`, sin contabilizarlo como fallo del circuit breaker. Las respuestas malformadas se clasifican como falla de dependencia [PLAN].

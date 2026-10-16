@@ -3,7 +3,7 @@
 **Feature**: 002 Consultar liquidación
 **Spec**: [consultar_liquidacion.md](../../1-functional/consultar_liquidacion.md)
 **Plan**: [plan.md](../plan.md)
-**Plan Base**: [plan-tecnico-base.md](../../../../docs/plan-tecnico-base.md)
+**Proyecto base**: [plan-tecnico-base.md](../../../../docs/plan-tecnico-base.md)
 
 **Etiquetas de origen**: `[SPEC]` requisito funcional; `[PLAN]` diseño técnico de Módulo 3; `[BASE]` plataforma compartida; `[CONV]` convención de respuesta.
 
@@ -15,13 +15,13 @@ Permite a Módulo 1 consultar una liquidación informativa o final de una habita
 
 ### Ruta y autenticación
 
-`GET /api/settlements` [BASE]. Una llamada interna de Módulo 1 no envía token. Una petición autenticada valida el token y requiere `role = OTA` y claim `otaId`; cualquier otro rol recibe `403 FORBIDDEN` [BASE].
+`GET /api/settlements` [BASE]. Una petición sin cabecera `Authorization` es la llamada interna de Módulo 1 y exige `reservationRef`, `roomId` y `categoryRoom`; si falta alguno responde `400 INVALID_QUERY_PARAMS` sin información financiera [SPEC FR-013]. Una petición con cabecera `Authorization` valida el token y requiere `role = OTA` y claim `otaId`; cualquier otro rol recibe `403 FORBIDDEN` [BASE].
 
 ### Parámetros
 
 | Parámetro | Tipo | Módulo 1 | OTA | Descripción |
 |---|---|---|---|---|
-| `reservationRef` | string | Obligatorio | Obligatorio | Referencia opaca de reserva, de 3 a 64 caracteres; no es UUID. |
+| `reservationRef` | string | Obligatorio | Obligatorio | Referencia opaca de reserva; string no vacío, no es UUID. |
 | `roomId` | UUID | Obligatorio | Se ignora si llega | Identificador de habitación solicitado por Módulo 1. |
 | `categoryRoom` | string no vacío | Obligatorio | Se ignora si llega | Tipo de habitación solicitado por Módulo 1. |
 | `checkInDate` | fecha | Opcional, ignorado | Ignorado | No filtra el resultado. |
@@ -113,9 +113,9 @@ Devuelve todas las liquidaciones `FINAL` de habitaciones de la reserva que ya tu
 | `roomId` | UUID | Habitación de la reserva. |
 | `categoryRoom` | string | Tipo de habitación. |
 | `channel` | string | `DIRECT` o `OTA`, obtenido de la reserva. |
-| `otaId` | string o null | Identidad de OTA si aplica. |
+| `otaId` | string o null | Identidad de OTA si aplica; `null` cuando `channel = DIRECT`. |
 | `currency` | string | `COP`. |
-| `breakdown` | objeto | `lodgingAmount`, `otaCommissionPercentage`, `otaCommissionAmount`, `netIncome`. Importes decimales en texto; el ingreso neto es hospedaje menos comisión y no incluye IVA. |
+| `breakdown` | objeto | `lodgingAmount`, `otaCommissionPercentage`, `otaCommissionAmount`, `netIncome`. Importes decimales en texto; el ingreso neto es hospedaje menos comisión y no incluye IVA. Con `channel = DIRECT`, `otaCommissionPercentage` es `null`, `otaCommissionAmount` es `"0.00"` y `netIncome` es igual a `lodgingAmount`. |
 | `invoice` | objeto o null | Subconjunto de factura 006/008: `invoiceId`, `invoiceNumber`, `issuedAt`, `vatRateApplied`, `vatAmount`, `totalAmount`, `status`. Nulo si no hay factura emitida o si es informativa. |
 | `generatedAt` | fecha y hora ISO 8601 | Momento del cálculo o generación. |
 
@@ -135,7 +135,7 @@ Los errores siguen la estructura `ApiError` del Plan Base.
 | HTTP | Código | Condición |
 |---:|---|---|
 | 400 | `INVALID_QUERY_PARAMS` | Falta o tiene formato inválido un parámetro obligatorio para el actor. |
-| 401 | `UNAUTHENTICATED` | Token ausente o inválido en una petición autenticada. |
+| 401 | `UNAUTHENTICATED` | Token inválido en una petición autenticada, o token OTA sin claim `otaId`. |
 | 403 | `FORBIDDEN` | Token válido con rol distinto de OTA. |
 | 404 | `SETTLEMENT_NOT_FOUND` | No hay liquidaciones finales para la consulta OTA o la reserva es ajena/directa. |
 | 404 | `RESERVATION_NOT_FOUND` | No existe la reserva consultada para el cálculo informativo. |
