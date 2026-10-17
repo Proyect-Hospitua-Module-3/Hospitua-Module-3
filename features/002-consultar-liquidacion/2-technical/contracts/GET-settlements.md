@@ -15,7 +15,7 @@ Permite a Módulo 1 consultar una liquidación informativa o final de una habita
 
 ### Ruta y autenticación
 
-`GET /api/settlements` [BASE]. Una petición sin cabecera `Authorization` es la llamada interna de Módulo 1 y exige `reservationRef`, `roomId` y `categoryRoom`; si falta alguno responde `400 INVALID_QUERY_PARAMS` sin información financiera [SPEC FR-013]. Una petición con cabecera `Authorization` valida el token y requiere `role = OTA` y claim `otaId`; cualquier otro rol recibe `403 FORBIDDEN` [BASE].
+`GET /api/settlements` [BASE]. Una petición sin cabecera `Authorization` es la llamada interna de Módulo 1 y exige `reservationRef` y `roomId`; si falta alguno de esos dos parámetros responde `400 INVALID_QUERY_PARAMS` sin información financiera [SPEC FR-013]. `categoryRoom` es opcional e informativo para Módulo 1; su ausencia no impide la consulta. Una petición con cabecera `Authorization` valida el token y requiere `role = OTA` y claim `otaId`; cualquier otro rol recibe `403 FORBIDDEN` [BASE].
 
 ### Parámetros
 
@@ -23,7 +23,7 @@ Permite a Módulo 1 consultar una liquidación informativa o final de una habita
 |---|---|---|---|---|
 | `reservationRef` | string | Obligatorio | Obligatorio | Referencia opaca de reserva; string no vacío, no es UUID. |
 | `roomId` | UUID | Obligatorio | Se ignora si llega | Identificador de habitación solicitado por Módulo 1. |
-| `categoryRoom` | string no vacío | Obligatorio | Se ignora si llega | Tipo de habitación solicitado por Módulo 1. |
+| `categoryRoom` | string | Opcional, informativo | Se ignora si llega | Dato informativo de tipo de habitación; no interviene en la selección ni validación de la consulta. |
 | `checkInDate` | fecha | Opcional, ignorado | Ignorado | No filtra el resultado. |
 | `checkOutDate` | fecha | Opcional, ignorado | Ignorado | No filtra el resultado. |
 | `source` | string | Opcional, ignorado | Ignorado | El canal procede de la reserva consultada. |
@@ -33,7 +33,7 @@ Otros parámetros no listados se ignoran [CONV].
 Ejemplos:
 
 ```http
-GET /api/settlements?reservationRef=RES-000123&roomId=f47ac10b-58cc-4372-a567-0e02b2c3d479&categoryRoom=DOBLE
+GET /api/settlements?reservationRef=RES-000123&roomId=f47ac10b-58cc-4372-a567-0e02b2c3d479
 ```
 
 ```http
@@ -45,7 +45,7 @@ Authorization: Bearer <token OTA>
 
 ### Respuesta de Módulo 1
 
-Devuelve un objeto individual con `settlementType` `FINAL` o `INFORMATIVE` y los campos de respuesta descritos a continuación. Si existe una liquidación `FINAL` para `(reservationRef, roomId)`, se devuelve sin comparar `categoryRoom`; este parámetro solo se usa para calcular la informativa. La liquidación informativa solo está disponible para Módulo 1 y lleva `invoice: null` [SPEC FR-003, FR-009, FR-010].
+Devuelve un objeto individual con `settlementType` `FINAL` o `INFORMATIVE` y los campos de respuesta descritos a continuación. La liquidación `FINAL` se consulta mediante `(reservationRef, roomId)` y `categoryRoom` se proyecta desde la liquidación. Si no existe, la liquidación informativa obtiene la cotización mediante `LodgingQuoteQueryPort` y esos mismos identificadores; `categoryRoom` no interviene en la selección ni en la validación y se proyecta desde la cotización. Los valores `baseLodgingAmount` y `dynamicAdjustmentAmount` los provee la cotización y los calcula `SettlementCalculator`; `lodgingAmount` es su suma. La liquidación informativa solo está disponible para Módulo 1 y lleva `invoice: null` [SPEC FR-003, FR-009, FR-010].
 
 ```json
 {
@@ -57,6 +57,8 @@ Devuelve un objeto individual con `settlementType` `FINAL` o `INFORMATIVE` y los
   "otaId": "expedia",
   "currency": "COP",
   "breakdown": {
+    "baseLodgingAmount": "1000000.00",
+    "dynamicAdjustmentAmount": "200000.00",
     "lodgingAmount": "1200000.00",
     "otaCommissionPercentage": "18.00",
     "otaCommissionAmount": "216000.00",
@@ -84,6 +86,8 @@ Devuelve todas las liquidaciones `FINAL` de habitaciones de la reserva que ya tu
       "otaId": "booking",
       "currency": "COP",
       "breakdown": {
+        "baseLodgingAmount": "700000.00",
+        "dynamicAdjustmentAmount": "50000.00",
         "lodgingAmount": "750000.00",
         "otaCommissionPercentage": "15.00",
         "otaCommissionAmount": "112500.00",
@@ -111,11 +115,11 @@ Devuelve todas las liquidaciones `FINAL` de habitaciones de la reserva que ya tu
 | `settlementType` | string | `FINAL` para liquidación definitiva o `INFORMATIVE` para informativa. |
 | `reservationRef` | string | Referencia opaca de reserva. |
 | `roomId` | UUID | Habitación de la reserva. |
-| `categoryRoom` | string | Tipo de habitación. |
+| `categoryRoom` | string | Tipo de habitación informativo, obtenido de la liquidación `FINAL` o de la cotización para la informativa; nunca del parámetro de la petición. |
 | `channel` | string | `DIRECT` o `OTA`, obtenido de la reserva. |
 | `otaId` | string o null | Identidad de OTA si aplica; `null` cuando `channel = DIRECT`. |
 | `currency` | string | `COP`. |
-| `breakdown` | objeto | `lodgingAmount`, `otaCommissionPercentage`, `otaCommissionAmount`, `netIncome`. Importes decimales en texto; el ingreso neto es hospedaje menos comisión y no incluye IVA. Con `channel = DIRECT`, `otaCommissionPercentage` es `null`, `otaCommissionAmount` es `"0.00"` y `netIncome` es igual a `lodgingAmount`. |
+| `breakdown` | objeto | `baseLodgingAmount`, `dynamicAdjustmentAmount`, `lodgingAmount`, `otaCommissionPercentage`, `otaCommissionAmount`, `netIncome`. En una `FINAL`, `baseLodgingAmount` y `dynamicAdjustmentAmount` son datos provistos por la liquidación de 007; en una informativa, los provee la cotización de 005 y los calcula `SettlementCalculator`. Los tres importes son decimales en texto y `lodgingAmount` es la suma de `baseLodgingAmount` y `dynamicAdjustmentAmount`. En canal `DIRECT` también se informan ambos importes y se mantiene la suma; `otaCommissionPercentage` es `null`, `otaCommissionAmount` es `"0.00"` y `netIncome` es igual a `lodgingAmount`. El ingreso neto OTA es hospedaje menos comisión y no incluye IVA. |
 | `invoice` | objeto o null | Subconjunto de factura 006/008: `invoiceId`, `invoiceNumber`, `issuedAt`, `vatRateApplied`, `vatAmount`, `totalAmount`, `status`. Nulo si no hay factura emitida o si es informativa. |
 | `generatedAt` | fecha y hora ISO 8601 | Momento del cálculo o generación. |
 
@@ -127,6 +131,7 @@ Para Módulo 1, una consulta sin liquidación final calcula en memoria una infor
 - `Cache-Control: no-store` evita almacenar respuestas financieras y `X-Correlation-Id` identifica la solicitud [CONV].
 - Las lecturas de persistencia usan una transacción `READ ONLY` [PLAN]. Una lectura concurrente con el check-out entrega `INFORMATIVE` o `FINAL`, nunca un estado intermedio [SPEC NFR-002].
 - Una reserva OTA sin comisión o con comisión inválida durante el cálculo informativo produce el error correspondiente, sin valores parciales [SPEC FR-012].
+- La respuesta contiene únicamente los campos definidos en la tabla «Objeto de liquidación» y no incluye datos migratorios, datos personales del huésped ni `billingCustomer` [SPEC FR-007, NFR-004].
 
 ## 5. Errores
 
