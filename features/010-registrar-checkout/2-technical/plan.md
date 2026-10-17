@@ -154,7 +154,7 @@ Las firmas de los casos de uso proveedores se consumen como están definidas en 
 | `processed_at` | timestamptz nullable | Momento de cierre del procesamiento. |
 | `created_at` | timestamptz | Momento de registro. |
 
-El `payload` de auditoría excluye `billingCustomer.name` y `billingCustomer.taxId`; conserva únicamente `has_billing_customer: boolean`, cuyo valor es `true` cuando el evento incluye el objeto `billingCustomer`, aunque esté incompleto, y `false` cuando no lo incluye. `Generar factura final` determina si los datos bastan para emitir la factura. Los valores tributarios se usan en memoria para la cadena 007/006 y no se registran.
+El `payload` de auditoría excluye `billingCustomer.name` y `billingCustomer.taxId`; conserva únicamente `has_billing_customer: boolean`, cuyo valor es `true` cuando el evento incluye el objeto `billingCustomer`, aunque esté incompleto, y `false` cuando no lo incluye. `Generar factura final` determina si los datos bastan para emitir la factura. Los valores tributarios se usan en memoria para `Generar factura final` (006) y no se registran.
 
 `registerIfAbsent(...)` crea atómicamente el registro `PENDING` o devuelve el existente. Un mensaje existente en `PENDING` reanuda el procesamiento; `PROCESSED`, `REJECTED` o `DEAD_LETTER` se confirma sin reprocesar.
 

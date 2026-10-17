@@ -7,7 +7,7 @@
 
 ## Summary
 
-El servicio interno `GetBaseRateService` (puerto `GetBaseRateUseCase`) del contexto `pricing` consulta a Módulo 1 el importe de tarifa base por tipo de habitación y fecha. No expone controller ni consumer de entrada; `pricing.module.ts` exporta el puerto para los servicios de la feature 005 [FR-001, FR-005].
+El servicio interno `GetBaseRateService` (puerto `GetBaseRateUseCase`) del contexto `pricing` consulta a Módulo 1 el importe de tarifa base por `roomId` y fecha. No expone controller ni consumer de entrada; `pricing.module.ts` exporta el puerto para los servicios de la feature 005 [FR-001, FR-005].
 
 ## Technical Context
 
@@ -18,7 +18,7 @@ El servicio interno `GetBaseRateService` (puerto `GetBaseRateUseCase`) del conte
 **Target Platform**: Servicio backend Linux en contenedor Docker, dentro del monolito modular del Módulo 3.
 **Project Type**: Servicio interno saliente en arquitectura hexagonal; no expone controller ni consumer.
 **Performance Goals**: Cada consulta se resuelve o falla en máximo 500 ms.
-**Constraints**: Módulo 1 administra la tarifa base; lectura por tipo de habitación y fecha; respuestas y errores según `CLIENT-get-base-rate.md`; timeout de 500 ms [SPEC NFR-002]; circuit breaker opossum: se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s [PLAN].
+**Constraints**: Módulo 1 administra la tarifa base; lectura por `roomId` y fecha; respuestas y errores según `CLIENT-get-base-rate.md`; timeout de 500 ms [SPEC NFR-002]; circuit breaker opossum: se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s [PLAN].
 **Scale/Scope**: Un servicio de consulta, un puerto de salida HTTP y un modelo `BaseRate`, exportado para uso interno de la feature 005.
 
 ## Project Structure
@@ -58,15 +58,15 @@ test/
 
 ### Servicio y puerto
 
-`GetBaseRateService` valida que `categoryRoom` no esté vacío y que la fecha sea válida en formato `YYYY-MM-DD` antes de invocar `BaseRateClientPort`. Si la entrada no es válida, lanza `InvalidBaseRateQueryError` con `INVALID_QUERY_PARAMS` (HTTP 400) sin llamar a Módulo 1. El puerto de entrada `GetBaseRateUseCase` expone `execute(categoryRoom, date): Promise<BaseRate>`.
+`GetBaseRateService` valida que `roomId` tenga formato UUID y que la fecha sea válida en formato `YYYY-MM-DD` antes de invocar `BaseRateClientPort`. Si la entrada no es válida, lanza `InvalidBaseRateQueryError` con `INVALID_QUERY_PARAMS` (HTTP 400) sin llamar a Módulo 1. El puerto de entrada `GetBaseRateUseCase` expone `execute(roomId: string, date: string): Promise<BaseRate>`.
 
 ```ts
 interface GetBaseRateUseCase {
-  execute(categoryRoom: string, date: string): Promise<BaseRate>;
+  execute(roomId: string, date: string): Promise<BaseRate>;
 }
 
 interface BaseRateClientPort {
-  getBaseRate(categoryRoom: string, date: string): Promise<BaseRate>;
+  getBaseRate(roomId: string, date: string): Promise<BaseRate>;
 }
 ```
 
@@ -74,7 +74,7 @@ interface BaseRateClientPort {
 
 ### Adaptador HTTP
 
-El adaptador implementa la petición del contrato `CLIENT-get-base-rate.md`. Codifica `categoryRoom` en la URL con `encodeURIComponent` y envía el valor recibido sin transformarlo. Si `baseRate` es texto decimal con valor menor o igual a cero, lanza `InvalidBaseRateError`; este error no cuenta como fallo del circuit breaker y se traduce a `INVALID_BASE_RATE`. La estructura inválida, el cuerpo no JSON, los campos ausentes, el tipo incorrecto, `baseRate` como número JSON o no decimal, la moneda distinta de COP y el eco discordante de `categoryRoom` o `date` lanzan `MalformedBaseRateResponseError`; este error cuenta como fallo del circuit breaker y se traduce a `MODULE1_UNAVAILABLE`. El timeout es de 500 ms y el circuit breaker opossum se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s. El adaptador no persiste ni cachea datos.
+El adaptador implementa la petición del contrato `CLIENT-get-base-rate.md`. Inserta el `roomId`, ya validado como UUID, en la ruta sin transformarlo. Si `baseRate` es texto decimal con valor menor o igual a cero, lanza `InvalidBaseRateError`; este error no cuenta como fallo del circuit breaker y se traduce a `INVALID_BASE_RATE`. La estructura inválida, el cuerpo no JSON, los campos ausentes, el tipo incorrecto, `baseRate` como número JSON o no decimal, la moneda distinta de COP y el eco discordante de `roomId` o `date` lanzan `MalformedBaseRateResponseError`; este error cuenta como fallo del circuit breaker y se traduce a `MODULE1_UNAVAILABLE`. El timeout es de 500 ms y el circuit breaker opossum se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s. El adaptador no persiste ni cachea datos.
 
 ### Errores
 
@@ -99,9 +99,9 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 - [ ] T002 [P] Definir `BaseRateClientPort`, el modelo `BaseRate` y los errores de dominio `InvalidBaseRateQueryError`, `InvalidBaseRateError` y `MalformedBaseRateResponseError`.
 - [ ] T003 Registrar el adaptador HTTP y exportar el puerto `GetBaseRateUseCase` desde `pricing.module.ts`.
 
-## Phase 3: User Story 1 — Consulta exitosa por tipo y fecha (Priority: P1)
+## Phase 3: User Story 1 — Consulta exitosa por habitación y fecha (Priority: P1)
 
-**Goal**: Obtener de Módulo 1 una tarifa base válida para el tipo de habitación y la fecha consultados.
+**Goal**: Obtener de Módulo 1 una tarifa base válida para la habitación identificada por su `roomId` y la fecha consultados.
 
 **Independent Test**: Verificar el modelo, el servicio, la respuesta HTTP válida y el contrato de éxito.
 
@@ -127,8 +127,8 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 
 ### Tests for User Story 2
 
-- [ ] T012 [P] [US2] Crear pruebas de servicio para `categoryRoom` vacío y fecha inválida, verificando que no invocan el puerto.
-- [ ] T013 [P] [US2] Crear pruebas de integración HTTP para `404` estructurado, `404` sin cuerpo, importe decimal no positivo, moneda distinta, `categoryRoom` o fecha discordantes, `baseRate` numérico o no decimal, cuerpo no JSON, campos ausentes, tipo incorrecto, timeout, `5xx` y circuito abierto [SPEC FR-004, SC-002, SC-003]. El importe decimal no positivo debe producir `INVALID_BASE_RATE` y no incrementar el contador ni abrir el circuito; las respuestas malformadas deben producir `MODULE1_UNAVAILABLE` y contar como fallos del circuito.
+- [ ] T012 [P] [US2] Crear pruebas de servicio para `roomId` sin formato UUID y fecha inválida, verificando que no invocan el puerto.
+- [ ] T013 [P] [US2] Crear pruebas de integración HTTP para `404` estructurado, `404` sin cuerpo, importe decimal no positivo, moneda distinta, `roomId` o fecha discordantes, `baseRate` numérico o no decimal, cuerpo no JSON, campos ausentes, tipo incorrecto, timeout, `5xx` y circuito abierto [SPEC FR-004, SC-002, SC-003]. El importe decimal no positivo debe producir `INVALID_BASE_RATE` y no incrementar el contador ni abrir el circuito; las respuestas malformadas deben producir `MODULE1_UNAVAILABLE` y contar como fallos del circuito.
 
 ### Implementation for User Story 2
 
