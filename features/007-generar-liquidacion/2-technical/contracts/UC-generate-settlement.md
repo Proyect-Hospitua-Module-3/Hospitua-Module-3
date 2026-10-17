@@ -23,7 +23,7 @@ Solo pueden inyectarlo `checkout-ingestion` (010) y `billing` (006); ningún con
 
 ### `GenerateSettlementCommand`
 
-010 lo arma a partir del `payload` del evento `habitacion.checkout`; 006 lo arma a partir de los datos de la liquidación/estancia que ya tiene [BASE] [PLAN].
+010 lo arma a partir del `payload` del evento `habitacion.checkout`; 006 lo arma con los mismos datos de check-out del evento que recibe de 010, sin `billingCustomer` [BASE] [PLAN].
 
 | Campo | Tipo | Obligatorio | Descripción | Origen |
 |---|---|---|---|---|
@@ -36,7 +36,6 @@ Solo pueden inyectarlo `checkout-ingestion` (010) y `billing` (006); ningún con
 | `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha **real** de salida; posterior a `checkInDate` | [SPEC FR-016] |
 
 El comando nunca trae `channel`, `lodgingAmount`, datos de la OTA ni `billingCustomer`: los datos tributarios los entrega 010 directamente a 006 y `settlement` no los guarda [BASE] [SPEC BR-012]. El canal y la comisión salen de la reserva de Módulo 2 y el hospedaje de la cotización guardada [BASE] [SPEC BR-010].
-El comando no acepta `billingCustomer`, `channel`, `lodgingAmount` ni datos de la OTA. Los datos tributarios del evento son consumidos exclusivamente por 006; el canal y la comisión salen de la reserva de Módulo 2 y el hospedaje de la cotización guardada [BASE] [SPEC BR-010].
 
 ### Ejemplo
 
@@ -104,7 +103,6 @@ Devuelve la entidad `Settlement`, sea recién creada o la ya existente (el llama
 | `generatedAt` | datetime ISO 8601 | Fecha y hora de generación (hora de la base de datos) | [SPEC NFR-003] |
 
 Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si se serializan van como texto [SPEC NFR-004] [CONV]. El resultado no incluye datos migratorios, datos personales del huésped ni datos tributarios [SPEC NFR-006, BR-012].
-Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si se serializan van como texto [SPEC NFR-004] [CONV]. El resultado no incluye datos migratorios ni datos personales del huésped [SPEC NFR-006].
 
 ### Ejemplo (canal OTA, 15 %)
 
@@ -145,7 +143,7 @@ Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si s
 | `MissingCommissionError` | `MISSING_COMMISSION` | Canal OTA sin `otaCommissionPercentage` | No | Dead-letter | [SPEC FR-014, HU2 escenario 3] [BASE] |
 | `InvalidCommissionError` | `INVALID_COMMISSION` | Porcentaje menor a 0 o mayor a 100 | No | Dead-letter | [SPEC casos límite] [PLAN] |
 | `SettlementAlreadyExistsError` | `SETTLEMENT_ALREADY_EXISTS` | Ya existe liquidación para el `stayId` con datos de check-out distintos | No | Dead-letter | [SPEC FR-010, HU3 escenario 2] [BASE] |
-| `Module2UnavailableError` | `MODULE2_UNAVAILABLE` | Timeout (500 ms), 5xx o circuito abierto al consultar Módulo 2 | **Sí** | No confirma (ack); RabbitMQ reentrega | [SPEC FR-021] [BASE] |
+| `Module2UnavailableError` | `MODULE2_UNAVAILABLE` | Timeout (500 ms), 5xx o circuito abierto al consultar Módulo 2 | **Sí** | Cola de reintento `modulo3.checkout.retry.30s` (cada 30 s, hasta 5 veces); agotados, dead-letter | [SPEC FR-021] [BASE] |
 
 007 no devuelve respuestas HTTP y no genera 5xx. Si un endpoint que reutilice este cálculo (002, informativa) recibe `Module2UnavailableError`, lo traduce a HTTP 424 con `MODULE2_UNAVAILABLE` y reintentable, según el plan base. Los `5xx` mencionados en este contrato son los que Módulo 2 le responde a 007.
 
@@ -169,5 +167,5 @@ Un comando con campos obligatorios faltantes o fechas inconsistentes es un error
 - **Idempotente**: mismo `stayId` y mismos datos de check-out → misma liquidación, siempre, sin recalcular [SPEC FR-011, NFR-001, SC-009].
 - **Una liquidación por estancia**: nunca existen dos `FINAL` para el mismo `stayId` [SPEC FR-010, SC-008].
 - **Sin datos supuestos**: ante cualquier error no se guarda liquidación ni se produce ingreso neto parcial [SPEC BR-007, SC-004].
-- **Sin transacción compartida con 006**: si 006 falla después de que 007 guardó, la reentrega vuelve a llamar a `generate`, que devuelve la existente, y 006 se reintenta [PLAN].
+- **Sin transacción compartida con 006**: si 006 falla después de que 007 guardó, el reintento del evento vuelve a llamar a `generate`, que devuelve la existente, y 006 se reintenta [PLAN].
 - **Rendimiento**: la generación cabe en 800 ms con Módulo 2 respondiendo, porque el timeout hacia Módulo 2 es de 500 ms [SPEC NFR-002] [PLAN].

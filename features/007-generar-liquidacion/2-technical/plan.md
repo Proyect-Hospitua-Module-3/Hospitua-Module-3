@@ -244,7 +244,7 @@ La tabla no tiene `UPDATE` en ningún camino de código: la liquidación es inmu
 | `MissingCommissionError` | `MISSING_COMMISSION` | No | Dead-letter |
 | `InvalidCommissionError` | `INVALID_COMMISSION` | No | Dead-letter |
 | `SettlementAlreadyExistsError` | `SETTLEMENT_ALREADY_EXISTS` | No | Dead-letter (datos distintos para una estancia ya liquidada) |
-| `Module2UnavailableError` | `MODULE2_UNAVAILABLE` | Sí | No confirma el evento; RabbitMQ lo reentrega |
+| `Module2UnavailableError` | `MODULE2_UNAVAILABLE` | Sí | Cola de reintento `modulo3.checkout.retry.30s` (cada 30 s, hasta 5 veces); agotados, dead-letter |
 
 007 no devuelve ninguna respuesta HTTP, así que no genera 5xx. Los 5xx que aparecen en este plan son los que *recibimos* de Módulo 2. Si un endpoint que reutilice este cálculo (002) recibe `Module2UnavailableError`, lo responde como 424 con `MODULE2_UNAVAILABLE` (plan base); no es una decisión de 007.
 
@@ -252,7 +252,7 @@ Cada mensaje dice qué falló y con qué dato (reserva, habitación, OTA), para 
 
 ### Relación con 010, 006 y 002
 
-- **010** llama a `generate` después de validar el evento y, con el resultado, a `Generar factura final` (006). El evento solo se confirma cuando ambos terminaron. Si 006 falla después de que 007 guardó, la reentrega llega a 007, que devuelve la liquidación existente (paso 1) y 006 se reintenta. La idempotencia evita tener que envolver a 007 y 006 en una sola transacción.
+- **010** llama a `generate` después de validar el evento y, con el resultado, a `Generar factura final` (006). El evento solo se confirma cuando ambos terminaron. Si 006 falla después de que 007 guardó, el reintento del evento (cola de reintento del plan base) llega a 007, que devuelve la liquidación existente (paso 1) y 006 se reintenta. La idempotencia evita tener que envolver a 007 y 006 en una sola transacción.
 - **006** también puede llamar a `generate` (FR-019); por la idempotencia siempre obtiene la misma liquidación `Final`.
 - **003** lee la liquidación `Final` más reciente de una OTA con su propio puerto de lectura sobre la tabla `settlement` (`ota-commission-query.port.ts`), sin pasar por `SettlementRepositoryPort`; `GenerateSettlementService` nunca depende de esa consulta, porque el porcentaje sale solo de la reserva de Módulo 2 (FR-003 de `consultar_porcentaje_comision_ota.md`).
 - **002** también consulta por `findByReservationAndRoom`, y reutiliza `SettlementCalculator` y los mismos puertos para calcular la liquidación informativa sin guardarla, antes del check-out.
@@ -291,7 +291,7 @@ Cada mensaje dice qué falló y con qué dato (reserva, habitación, OTA), para 
 
 **Goal**: Cada check-out de habitación produce una liquidación `Final` con el valor de hospedaje de su cotización guardada, de forma idempotente, y sin liquidar con datos supuestos
 
-**Independent Test**: Sembrar una cotización y simular en Módulo 2 una reserva de canal directo con dos habitaciones de distinto tipo; generar la liquidación de cada habitación y verificar que cada una usa la cotización de su tipo, tiene estado `Final` e ingreso neto igual al hospedaje; reenviar el mismo comando y verificar que no hay duplicado
+**Independent Test**: Sembrar una cotización por habitación y simular en Módulo 2 una reserva de canal directo con dos habitaciones del mismo tipo y tarifas distintas; generar la liquidación de cada habitación y verificar que cada una usa la cotización de su `roomId`, tiene estado `Final` e ingreso neto igual al hospedaje; reenviar el mismo comando y verificar que no hay duplicado
 
 ### Tests for User Story 1
 
@@ -360,7 +360,7 @@ Cada mensaje dice qué falló y con qué dato (reserva, habitación, OTA), para 
 - [ ] T031 Verificar que la tabla `settlement` no tiene ningún `UPDATE` en el código (búsqueda en el repositorio + test que compara la fila antes y después de un reenvío) [FR-009, FR-017]
 - [ ] T032 Logging estructurado de cada generación (`stayId`, `reservationRef`, canal, `quoteId`, resultado o `errorCode`, duración), sin datos personales del huésped [NFR-003, NFR-006]
 - [ ] T033 Medir el tiempo de `generate` con Módulo 2 simulado y confirmar que cabe en el objetivo de 800 ms [NFR-002]
-- [ ] T034 Coordinar con 010 el manejo de errores de la tabla "Errores y qué hace quien llama" (dead-letter o reentrega) y con 002 la reutilización de `SettlementCalculator`
+- [ ] T034 Coordinar con 010 el manejo de errores de la tabla "Errores y qué hace quien llama" (dead-letter o cola de reintento) y con 002 la reutilización de `SettlementCalculator`
 
 ---
 
