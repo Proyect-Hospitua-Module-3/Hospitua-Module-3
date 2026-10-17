@@ -91,7 +91,7 @@ test/
 2. Si el sobre es reconocible (JSON válido con un `eventId` con formato UUID), `registerIfAbsent(...)` registra atómicamente el mensaje con estado `PENDING` o devuelve el registro existente por `eventId`.
 3. Se valida el sobre, la lista blanca y los datos mínimos. Si el JSON es inválido o el sobre no es reconocible, se sigue el flujo de publicación a DLQ y auditoría descrito para ese caso. Si el evento reconocible con `eventId` tiene campos inválidos, se publica a DLQ con las reglas de confirmación; tras la confirmación y sin `basic.return`, se registra `REJECTED` con `INVALID_CHECKOUT_EVENT`.
 4. Un evento válido ejecuta `GenerateSettlementUseCase` de 007 y, después, `GenerateFinalInvoiceUseCase` de 006. 006 vuelve a invocar 007 internamente; la idempotencia por `stayId` devuelve la liquidación existente sin duplicarla.
-5. Si `billingCustomer` falta o está incompleto, 006 produce `BillingCustomerDataMissingError`; 010 conserva la liquidación, confirma el evento y marca `PROCESSED` con la nota definida en el contrato. Un evento nuevo para la misma estancia, con los mismos datos de check-out y datos tributarios completos, reutiliza la liquidación existente y permite emitir la factura.
+5. 010 entrega `billingCustomer` solo a 006, nunca a 007. Si falta o está incompleto, 006 produce `BillingCustomerDataMissingError`; 010 conserva la liquidación, confirma el evento y marca `PROCESSED` con la nota definida en el contrato. Un evento nuevo para la misma estancia, con los mismos datos de check-out y datos tributarios completos, reutiliza la liquidación existente y permite emitir la factura.
 
 ### Puertos y dependencias
 
