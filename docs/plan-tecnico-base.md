@@ -78,8 +78,8 @@ Regla arquitectónica de Módulo 3:
 | **Consultar porcentaje de comisión OTA** | M2, OTA → M3 | REST GET | Reactiva | 003 `consultar_porcentaje_comision_ota.md` |
 | **Gestionar facturación** | Administrador → M3 | REST GET | Reactiva | 008 `gestionar_facturacion.md` |
 | **Actualizar porcentaje de IVA** | Administrador → M3 | REST PUT | Reactiva | 001 `actualizar_porcentaje_iva.md` |
-| **Modificar precio tarifa según temporada** | Administrador → M3 | REST GET/PUT | Reactiva | 009 `modificar_precio_tarifa_segun_temporada.md` |
-| **Revisar temporada del año** | Administrador → M3 | REST GET | Reactiva | 011 `revisar_temporada_del_año.md` |
+| **Modificar precio tarifa según temporada** | Administrador → M3 | REST GET/POST/PUT/DELETE | Reactiva | 009 `modificar_precio_tarifa_segun_temporada.md` |
+| **Revisar temporada del año** | Administrador → M3 | REST GET/PUT | Reactiva | 011 `revisar_temporada_del_año.md` |
 
 ### Convenciones de Mensajería (RabbitMQ)
 
@@ -89,7 +89,11 @@ Regla arquitectónica de Módulo 3:
 - **Consumer**: `infrastructure/adapters/in/messaging/checkout-registered.consumer.ts` — valida el payload mínimo (FR-002 de `registrar_checkout.md`), y si es válido invoca el caso de uso `RegisterCheckoutUseCase`, que a su vez incluye `GenerateSettlementUseCase`.
 - **Idempotencia**: se usa el `stayId` del evento como clave (una estancia = una habitación de la reserva); `settlement` tiene una restricción de unicidad por estancia, de modo que un reenvío del mismo evento (BR-006 de `registrar_checkout.md`) siempre resuelve al mismo resultado sin duplicar.
 - **Ack**: manual (`noAck: false`), confirmado solo después de persistir el resultado (liquidación + factura, si corresponde), para garantizar *at-least-once* sin perder eventos ante una caída a mitad de proceso.
-- **Dead-letter**: eventos rechazados por datos obligatorios inválidos (FR-006 de `registrar_checkout.md`) se enrutan a una cola de dead-letter para revisión manual, no se reintentan indefinidamente.
+- **Reintentos y dead-letter** (detalle en el plan 010): las publicaciones a retry y DLQ son persistentes, por el exchange por defecto, con `mandatory`; el original solo se confirma (ack) tras el publisher confirm y sin `basic.return`, y en cualquier otro caso se hace nack con reencolado.
+  - **Falla transitoria** (`MODULE2_UNAVAILABLE`, `VAT_RATE_UNAVAILABLE`, `DATABASE_UNAVAILABLE`): se publica a `modulo3.checkout.retry.30s` (durable, TTL 30 s, vuelve a `modulo3.checkout`) con `x-retry-count` incrementado, hasta 5 reintentos; agotados, va a la DLQ.
+  - **Dead-letter** (`modulo3.checkout.dlq`, durable, sin binding a `hospitua.events`): eventos con datos obligatorios inválidos (FR-006 de `registrar_checkout.md`), errores de negocio no recuperables (`RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION`, `SETTLEMENT_ALREADY_EXISTS`, `FINAL_SETTLEMENT_NOT_FOUND`) y reintentos agotados. Quedan para revisión manual, no se reintentan indefinidamente.
+  - **Datos tributarios ausentes o incompletos** (`BILLING_CUSTOMER_DATA_MISSING`): no es un error; la liquidación se conserva, no se emite factura y el evento se confirma. Un evento posterior de la estancia con datos completos emite la factura.
+  - Estos códigos son resultados de mensajería y auditoría (`checkout_event_log`), no respuestas HTTP.
 - **Estructura estándar del mensaje (`EventEnvelope<T>`)**, la misma envoltura que usa Módulo 1 para sus eventos (acordada con Módulo 1). El `payload` solo trae hechos físicos de la estancia; los datos de canal, OTA y hospedaje se obtienen de Módulo 2 y de la cotización guardada en `pricing`:
   ```json
   {
@@ -113,9 +117,9 @@ Regla arquitectónica de Módulo 3:
   ```
   - El evento es **por habitación**: una reserva con varias habitaciones genera un check-out (y una liquidación) por cada una.
   - Campos obligatorios del `payload`: `stayId`, `reservationRef`, `roomId`, `categoryRoom`, `checkInDate` y `checkOutDate` reales (`checkOutDate` posterior a `checkInDate`, FR-003 de `registrar_checkout.md`).
-  - `categoryRoom` (tipo de habitación, nombre que usa Módulo 1; equivale al `roomType` de `pricing`) permite elegir la cotización de esa habitación entre los `quoteIds` de la reserva.
+  - `roomId` permite elegir la cotización de esa habitación entre los `quoteIds` de la reserva. `categoryRoom` (tipo de habitación, nombre que usa Módulo 1) es informativo: no interviene en la elección de la cotización, porque habitaciones del mismo tipo pueden tener tarifas base distintas.
   - El evento no trae `channel`, `lodgingAmount` ni datos de la OTA: el canal y los datos OTA se consultan a Módulo 2 y el hospedaje se toma de la cotización guardada (ver [regla 5](#reglas-transversales-de-arquitectura)).
-  - `billingCustomer` es opcional: si llega, se entrega únicamente a `Generar factura final`; `Generar liquidación` no lo acepta y su ausencia no invalida el evento (FR-002).
+  - `billingCustomer` es opcional: si llega, se entrega a `Generar factura final` (006); `settlement` no lo recibe ni lo guarda. Su ausencia no invalida el evento (FR-002). Si faltan datos, la factura se emite con un evento posterior de la misma estancia que los traiga completos.
   - El `payload` nunca incluye datos migratorios ni SIRE (FR-007, NFR-003).
   - `eventId` queda registrado en `checkout_event_log` para trazabilidad (NFR-004).
 
@@ -123,7 +127,7 @@ Regla arquitectónica de Módulo 3:
 
 - Llamadas salientes a Módulo 1 y Módulo 2 con **timeout explícito + circuit breaker**, para que una caída de otro módulo detenga el proceso en vez de bloquear indefinidamente (NFR-003 de `consultar_tarifa_dinamica.md`).
 - Manejo diferenciado de dos fallos distintos al consultar la tarifa base (FR-008 de `consultar_tarifa_base.md`): *ausencia de tarifa* (respuesta 404/negocio) vs. *falla de comunicación* (timeout/5xx). Ninguno de los dos se sustituye por un valor supuesto.
-- Al procesar el check-out, se distinguen los mismos dos fallos al consultar la reserva a Módulo 2: *reserva o cotización inexistente* (404) → el evento va a dead-letter para revisión manual; *falla de comunicación* (timeout/5xx o circuito abierto) → el evento no se confirma y se reintenta. En ningún caso se genera la liquidación con datos supuestos.
+- Al procesar el check-out, se distinguen los mismos dos fallos al consultar la reserva a Módulo 2: *reserva o cotización inexistente* (404) → el evento va a dead-letter para revisión manual; *falla de comunicación* (timeout/5xx o circuito abierto) → el evento va a la cola de reintento (30 s, hasta 5 veces) y, agotados, a dead-letter. En ningún caso se genera la liquidación con datos supuestos.
 - El evento de check-out solo se confirma (ack) tras persistir; si el proceso cae a mitad, RabbitMQ lo reentrega y la idempotencia evita duplicados.
 
 ---
@@ -135,7 +139,7 @@ Regla arquitectónica de Módulo 3:
 | Método y Ruta | Consumidor | Feature | Propósito |
 |---|---|---|---|
 | `POST /auth/login` | Administrador, OTA | — | Login propio de Módulo 3: emite el JWT de usuario |
-| `GET /pricing/dynamic-rate` | Módulo 2, OTA | 005 | Tarifa dinámica por noche (tarifa base + regla de temporada) |
+| `GET /pricing/dynamic-rate` | Módulo 2 | 005 | Tarifa dinámica por noche de una habitación (`roomId`): tarifa base de esa habitación + regla de temporada |
 | `POST /pricing/quotes` | Módulo 2 | 005 | Cotización del hospedaje de una habitación al crear una reserva: calcula y guarda la tarifa dinámica de cada noche y el total |
 | `GET /api/settlements?reservationRef={ref}&checkInDate={in}&checkOutDate={out}&source={src}&roomId={room}&categoryRoom={type}` | Módulo 1, OTA | 002 | Desglose de la liquidación de una habitación (ruta y parámetros definidos por Módulo 1) |
 | `GET /ota-commission/{otaId}` | Módulo 2, OTA | 003 | Último porcentaje de comisión aplicado a una OTA (referencial) |
@@ -143,8 +147,8 @@ Regla arquitectónica de Módulo 3:
 | `GET /invoices/{id}` | Administrador | 008 | Detalle de solo lectura de una factura |
 | `GET /invoices/summary` | Administrador | 008 | Consolidado por canal en un rango de fechas |
 | `PUT /admin/vat-rate` | Administrador | 001 | Actualización del porcentaje de IVA vigente |
-| `GET/PUT /admin/season-rules` | Administrador | 009 | Consulta y modificación de reglas de precio por temporada |
-| `GET /admin/season-calendar` | Administrador | 011 | Revisión del calendario anual de temporadas |
+| `GET/POST /admin/season-rules`, `PUT/DELETE /admin/season-rules/{seasonId}` | Administrador | 009 | Catálogo de temporadas y modificación de sus reglas de precio |
+| `GET /admin/season-calendar`, `PUT /admin/season-calendar/{year}` | Administrador | 011 | Revisión y publicación (reemplazo atómico) del calendario anual de temporadas |
 
 Todos estos endpoints son adaptadores de entrada en `infrastructure/adapters/in/http/`; ninguno contiene lógica de negocio, solo mapean HTTP ↔ caso de uso. Los que consumen Módulo 1 y Módulo 2 (`POST /pricing/quotes`, `GET /pricing/dynamic-rate`, `GET /api/settlements`, `GET /ota-commission/{otaId}`) están acordados con esos módulos; el contrato detallado (esquemas de request/response) de todos los endpoints se publica en OpenAPI (T026).
 
@@ -152,7 +156,7 @@ Todos estos endpoints son adaptadores de entrada en `infrastructure/adapters/in/
 
 | Servicio Externo | Método y Ruta | Propósito |
 |---|---|---|
-| **Módulo 1** | `GET /rooms/{roomType}/base-rate?date=YYYY-MM-DD` | Consulta de la tarifa base usada por `pricing` para `Consultar tarifa base` |
+| **Módulo 1** | `GET /rooms/{roomId}/base-rate?date=YYYY-MM-DD` | Consulta de la tarifa base usada por `pricing` para `Consultar tarifa base` |
 | **Módulo 2** | `GET /api/reservations/{reservationRef}` | Datos de la reserva usados por `settlement`: `quoteIds`, `channel` y, si es OTA, `otaId`, `otaConfirmationCode` y `otaCommissionPercentage` |
 
 Ambos contratos están acordados con Módulo 1 y Módulo 2.
@@ -163,11 +167,26 @@ Módulo 3 calcula el valor del hospedaje en el momento de la reserva, para que e
 
 - Módulo 2 solicita la cotización solo como parte de la creación de una reserva (no existen cotizaciones sueltas, por lo que no se maneja vigencia).
 - Una cotización corresponde a **una habitación**: si la reserva incluye varias, Módulo 2 pide una cotización por cada una y guarda la lista de `quoteId` en la reserva.
-- `POST /pricing/quotes` recibe `{ roomType, checkInDate, checkOutDate }` y responde `{ quoteId, currency: "COP", nightlyRates: [{ date, rate }], lodgingAmount }`. Módulo 2 muestra `lodgingAmount` al cliente (la suma de todas, si hay varias habitaciones).
+- Habitaciones del mismo tipo pueden tener tarifas base distintas, por eso la cotización se calcula **por habitación concreta** (`roomId`), con la tarifa base de esa habitación. Módulo 2 conoce la habitación asignada al reservar y no se asigna una habitación con tarifa distinta a la cotizada.
+- `POST /pricing/quotes` recibe `{ roomId, checkInDate, checkOutDate }` y responde `{ quoteId, currency: "COP", nightlyRates: [{ date, rate }], lodgingAmount }`. Módulo 2 muestra `lodgingAmount` al cliente (la suma de todas, si hay varias habitaciones).
 - **Salida anticipada**: no genera una nueva cotización; se liquida lo cotizado, porque es lo que el cliente aceptó al confirmar (no es una penalización).
 - `GET /api/reservations/{reservationRef}` devuelve `reservationRef`, `quoteIds: ["UUID", ...]`, `channel` y, si `channel = OTA`, `otaId`, `otaConfirmationCode` y `otaCommissionPercentage`. Si la reserva no existe, Módulo 2 responde 404.
 - Módulo 3 llama a Módulo 2 sin token, por la red interna (ver [Autenticación](#autenticación)).
-- Para liquidar una habitación, `settlement` elige entre los `quoteIds` de la reserva la cotización cuyo `roomType` coincide con el `categoryRoom` que envía Módulo 1 (en el evento y en la consulta de liquidación). Si hay varias del mismo tipo, son equivalentes (mismo tipo y mismas fechas reservadas) y se usa cualquiera. Si ninguna coincide, se rechaza con `QUOTE_NOT_FOUND` (el evento va a dead-letter).
+- Para liquidar una habitación, `settlement` elige entre los `quoteIds` de la reserva la cotización cuyo `roomId` coincide con el `roomId` que envía Módulo 1 (en el evento y en la consulta de liquidación). Cada habitación tiene su propia cotización, así que no hay ambigüedad. Si ninguna coincide, se rechaza con `QUOTE_NOT_FOUND` (el evento va a dead-letter).
+
+#### Desglose de tarifa dinámica en la liquidación
+
+A la OTA solo le interesa qué parte del dinero proviene de la tarifa dinámica, no la tarifa noche por noche. Por eso ese dato viaja en la liquidación y no en un endpoint de tarifas:
+
+- `baseLodgingAmount` = suma de `base_rate` de las noches de la cotización de la habitación (`lodging_quote_night`).
+- `dynamicAdjustmentAmount` = `lodgingAmount − baseLodgingAmount`: lo que la tarifa dinámica sumó (positivo) o restó (negativo) a la tarifa base. Es informativo.
+- `settlement` los toma de la cotización guardada y los persiste junto con la liquidación; nunca recalcula la tarifa dinámica (regla 5). La comisión y el ingreso neto siguen calculándose sobre `lodgingAmount`.
+- `GET /api/settlements` los devuelve en el `breakdown` (liquidación `Final` e informativa).
+
+#### Temporadas y calendario (reglas acordadas)
+
+- **`Regular` es editable en su porcentaje.** Es la temporada por defecto: no se elimina y conserva su nombre reservado, pero el Administrador puede cambiar su `adjustmentPercent` (puede dejar de ser 0). Nace con 0 % en el seed. Las fechas sin clasificación usan la temporada por defecto con el porcentaje vigente en ese momento.
+- **Los períodos del calendario pueden cruzar el cambio de año** (p. ej. Alta del 20 de diciembre al 10 de enero). Una revisión pertenece al año de la `startDate` de sus períodos y un período puede terminar en el año siguiente. Al resolver una fecha se consideran la revisión activa de su año y los períodos de la revisión del año anterior que se extiendan hasta esa fecha. Al publicar una revisión se valida que no haya solapamientos con esos períodos que vienen del año anterior ni, hacia adelante, con los de la revisión ya activa del año siguiente.
 
 #### Consulta de liquidación desde Módulo 1
 
@@ -176,9 +195,9 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 - Si ya existe la liquidación `Final` de esa habitación, la devuelve.
 - Si todavía no existe, la calcula con la misma lógica de `Generar liquidación` (reserva de Módulo 2 + cotización guardada), **sin persistirla**, y la devuelve como informativa. Como el cálculo es determinista, coincide con la liquidación `Final` que se genera al recibir el evento.
 - Debe responder en menos de 800 ms (objetivo de rendimiento de Módulo 1).
-- `categoryRoom` es obligatorio: con él se elige la cotización de la habitación.
+- `roomId` es obligatorio: con él se elige la cotización de la habitación. `categoryRoom` es informativo.
 - El parámetro `source` (Directo / OTA) es informativo; la fuente de verdad del canal sigue siendo la reserva de Módulo 2.
-- `GET /pricing/dynamic-rate` se mantiene para consultas de tarifa por noche (Módulo 2, OTA).
+- `GET /pricing/dynamic-rate` se mantiene para consultas de tarifa por noche de Módulo 2. La OTA no lo consume: obtiene la parte de tarifa dinámica en el desglose de la liquidación (ver [Desglose de tarifa dinámica](#desglose-de-tarifa-dinámica-en-la-liquidación)).
 
 ### Autenticación
 
@@ -195,7 +214,8 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 | `POST /auth/login` | Público (Administrador u OTA con sus credenciales) |
 | `/admin/*`, `/invoices*` | Solo JWT con `role = Administrador` |
 | `POST /pricing/quotes` | Solo Módulo 2 (red interna, sin token) |
-| `GET /pricing/dynamic-rate`, `GET /ota-commission/{otaId}`, `GET /api/settlements` | Módulo 1 / Módulo 2 por la red interna sin token, u OTA con JWT `role = OTA` |
+| `GET /pricing/dynamic-rate` | Solo Módulo 2 (red interna, sin token) |
+| `GET /ota-commission/{otaId}`, `GET /api/settlements` | Módulo 1 / Módulo 2 por la red interna sin token, u OTA con JWT `role = OTA` |
 
 - Cada controller declara los roles permitidos con `@Roles(...)` y un Guard valida el claim `role`. En los endpoints compartidos con la OTA, si llega un token se valida y se aplican las reglas de OTA; si no llega, se trata como llamada interna de un módulo.
 - Las reglas que dependen de datos de negocio (p. ej. que la reserva consultada sea de la OTA del token) se validan en el caso de uso, no solo en el Guard.
@@ -205,7 +225,7 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 Toda excepción o rechazo funcional se traduce a un cuerpo JSON estandarizado:
 ```json
 {
-  "errorCode": "INVALID_VAT_RATE | OVERLAPPING_SEASON | MISSING_COMMISSION | SETTLEMENT_NOT_FOUND | INVOICE_NOT_FOUND | BASE_RATE_NOT_FOUND | MODULE1_UNAVAILABLE | RESERVATION_NOT_FOUND | QUOTE_NOT_FOUND | MODULE2_UNAVAILABLE | INVALID_COMMISSION | SETTLEMENT_ALREADY_EXISTS | MISSING_SEARCH_CRITERIA | INVALID_DATE_RANGE | INVALID_QUERY_PARAMS | UNAUTHENTICATED | FORBIDDEN | UNEXPECTED_ERROR",
+  "errorCode": "INVALID_VAT_RATE | INVALID_BASE_RATE | INVALID_SEASON | INVALID_SEASON_ADJUSTMENT | SEASON_NOT_FOUND | SEASON_NAME_CONFLICT | DEFAULT_SEASON_IMMUTABLE | SEASON_IN_USE | SEASON_RULE_CONFLICT | INVALID_CALENDAR_RANGE | OVERLAPPING_SEASON_CALENDAR | DUPLICATE_SEASON_EXCEPTION | SEASON_CALENDAR_CONFLICT | SEASON_CALENDAR_NOT_FOUND | MISSING_COMMISSION | SETTLEMENT_NOT_FOUND | INVOICE_NOT_FOUND | BASE_RATE_NOT_FOUND | MODULE1_UNAVAILABLE | RESERVATION_NOT_FOUND | QUOTE_NOT_FOUND | MODULE2_UNAVAILABLE | INVALID_COMMISSION | SETTLEMENT_ALREADY_EXISTS | MISSING_SEARCH_CRITERIA | INVALID_DATE_RANGE | INVALID_QUERY_PARAMS | UNAUTHENTICATED | FORBIDDEN | UNEXPECTED_ERROR",
   "message": "Descripción legible y accionable de la regla violada o contingencia.",
   "timestamp": "2026-09-28T10:30:00Z",
   "path": "/admin/vat-rate"
@@ -268,7 +288,7 @@ src/
 │   │   │   ├── date-range.vo.ts
 │   │   │   └── channel.vo.ts                     # Directo | OTA
 │   │   ├── pricing/
-│   │   │   ├── season.ts                         # Enum: alta | regular | baja
+│   │   │   ├── season.ts                         # Temporada del catálogo configurable (nombre, color); una es la predeterminada (Regular)
 │   │   │   ├── season-calendar-entry.ts          # Rango de fechas clasificado (sin solapamientos)
 │   │   │   ├── season-rule.ts                    # Ajuste vigente por temporada
 │   │   │   ├── base-rate.ts                      # Tarifa base consultada a Módulo 1
@@ -294,6 +314,9 @@ src/
 │       ├── in/                                   # Puertos de Entrada (Casos de Uso primarios)
 │       │   ├── review-season-calendar.use-case.ts        # 011
 │       │   ├── modify-season-rule.use-case.ts            # 009
+│       │   ├── replace-season-calendar.use-case.ts       # 011 Publicar revisión anual del calendario
+│       │   ├── resolve-season-by-date.use-case.ts        # 011 Puerto interno para 005
+│       │   ├── get-effective-season-rules.use-case.ts    # 009 Puerto interno para 005 y 011
 │       │   ├── get-base-rate.use-case.ts                 # 004
 │       │   ├── get-dynamic-rate.use-case.ts              # 005
 │       │   ├── create-lodging-quote.use-case.ts          # 005 Cotización del hospedaje para Módulo 2
@@ -307,6 +330,8 @@ src/
 │       └── out/                                  # Puertos de Salida (Persistencia, Clientes HTTP)
 │           ├── season-calendar.repository.port.ts
 │           ├── season-rule.repository.port.ts
+│           ├── season-catalog-query.port.ts      # 011 consulta IDs y default del catálogo de 009
+│           ├── season-calendar-reference.port.ts # 009 consulta si el calendario de 011 referencia una temporada
 │           ├── base-rate.client.port.ts          # Consulta de tarifa base a Módulo 1
 │           ├── lodging-quote.repository.port.ts  # Persistencia de cotizaciones (pricing)
 │           ├── lodging-quote-query.port.ts       # Solo lectura de cotizaciones guardadas, usado por settlement
@@ -314,8 +339,8 @@ src/
 │           ├── ota-commission-query.port.ts      # Solo lectura sobre settlement
 │           ├── checkout-event-log.repository.port.ts
 │           ├── settlement.repository.port.ts     # SettlementRepositoryPort
-│           ├── invoice.repository.port.ts
-│           ├── invoice-number-sequence.port.ts   # Numeración consecutiva oficial
+│           ├── invoice.repository.port.ts        # Lectura (002, 008)
+│           ├── invoice-issuance.repository.port.ts # Idempotencia + número consecutivo + factura, atómicos (006)
 │           └── vat-rate.repository.port.ts
 │
 ├── application/                                  # CAPA DE APLICACIÓN (orquestación de Casos de Uso)
@@ -372,7 +397,7 @@ src/
     │       │   │   ├── prisma-checkout-event-log.repository.ts
     │       │   │   ├── prisma-settlement.repository.ts
     │       │   │   ├── prisma-invoice.repository.ts
-    │       │   │   ├── postgres-invoice-number-sequence.adapter.ts   # Secuencia nativa PostgreSQL
+    │       │   │   ├── prisma-invoice-issuance.repository.ts         # Contador transaccional + factura atómicos
     │       │   │   └── prisma-vat-rate.repository.ts
     │       └── http/                             # Clientes HTTP hacia otros módulos
     │           ├── module1-base-rate.client.ts   # Implementa BaseRateClientPort (timeout + circuit breaker)
@@ -436,19 +461,20 @@ Basado en las entidades clave de `docs/diccionario.md` y de cada spec:
 |---|---|---|
 | `vat_rate` | `billing` | Porcentaje de IVA vigente único, en una fila única (BR-003 de `actualizar_porcentaje_iva.md`). |
 | `vat_rate_history` | `billing` | Historial de cambios del IVA: valor anterior (nulo al primer registro), valor nuevo, responsable y fecha (FR-005 de `actualizar_porcentaje_iva.md`). |
-| `season` | `pricing` | Catálogo de temporadas: nombre único, color e indicador de temporada por defecto (`Regular`, solo una) (FR-001 de `modificar_precio_tarifa_segun_temporada.md`). |
+| `season` | `pricing` | Catálogo de temporadas: nombre único, color e indicador de temporada por defecto (`Regular`, solo una, no eliminable; su porcentaje sí es editable) (FR-001 de `modificar_precio_tarifa_segun_temporada.md`). |
 | `season_rule` | `pricing` | Versiones del ajuste porcentual de cada temporada, con vigencia `valid_from`/`valid_to` (nulo en la vigente) (BR-005 de `modificar_precio_tarifa_segun_temporada.md`). |
 | `season_rule_history` | `pricing` | Auditoría de cada cambio de regla: ajuste anterior (nulo al crear), ajuste nuevo, responsable y fecha (FR-004 de `modificar_precio_tarifa_segun_temporada.md`). |
 | `season_calendar_revision` | `pricing` | Revisión anual del calendario: `UNIQUE(year, revision)`, una sola activa por año, con vigencia y responsable (FR-008 de `revisar_temporada_del_año.md`). |
-| `season_calendar_entry` | `pricing` | Períodos base y excepciones puntuales de una revisión, que referencian una temporada del catálogo; sin solapamientos entre períodos base (BR-005 de `revisar_temporada_del_año.md`). |
-| `lodging_quote` | `pricing` | Cotización del hospedaje de una habitación, solicitada por Módulo 2 al crear la reserva: tipo de habitación, fechas reservadas, moneda y total. Inmutable una vez creada. |
+| `season_calendar_entry` | `pricing` | Períodos base (pueden cruzar el cambio de año) y excepciones puntuales de una revisión, que referencian una temporada del catálogo; sin solapamientos entre períodos base (BR-005 de `revisar_temporada_del_año.md`). |
+| `lodging_quote` | `pricing` | Cotización del hospedaje de una habitación, solicitada por Módulo 2 al crear la reserva: habitación (`room_id`), fechas reservadas, moneda y total. Inmutable una vez creada. |
 | `lodging_quote_night` | `pricing` | Detalle por noche de la cotización: tarifa base, temporada y ajuste aplicados y tarifa resultante; `UNIQUE(quote_id, night_date)`. |
 | `settlement` | `settlement` | Liquidación: una fila por estancia, `UNIQUE(stay_id)`, estado siempre `Final` (BR-006/FR-010 de `generar_liquidacion.md`). |
-| `invoice` | `billing` | Factura: `UNIQUE(settlement_id)`, número de una secuencia PostgreSQL dedicada para la numeración consecutiva oficial (FR-011 de `generar_factura_final.md`). |
+| `invoice` | `billing` | Factura: `UNIQUE(settlement_id)`, `UNIQUE(stay_id)`, número de un contador transaccional dedicado para la numeración consecutiva oficial (FR-011 de `generar_factura_final.md`). |
+| `invoice_number_counter` | `billing` | Fila única con el último número oficial asignado; se bloquea e incrementa en la misma transacción que inserta la factura. |
 | `app_user` | auth (transversal) | Usuarios del login propio: `username` único, `password_hash` (bcrypt), `role` (`Administrador` / `OTA`), `ota_id` (obligatorio si es OTA), `active`. Se crean por seed. |
 | `checkout_event_log` | `checkout-ingestion` | Registro de cada evento de check-out recibido, para trazabilidad y para resolver idempotencia de forma explícita (NFR-004 de `registrar_checkout.md`). |
 
-La numeración consecutiva oficial usa una **secuencia nativa de PostgreSQL** (no un contador en tabla de aplicación) para que la asignación sea atómica incluso ante reintentos concurrentes del cierre de check-out (FR-011, NFR-003 de `generar_factura_final.md`).
+La numeración consecutiva oficial usa un **contador transaccional en una fila única, bloqueada por fila** (no una secuencia nativa de PostgreSQL). `nextval()` no se revierte al abortar la transacción y dejaría huecos, lo que contradice FR-011/NFR-003 de `generar_factura_final.md`. El número se asigna solo dentro de `issueIfAbsent`, en la misma transacción que inserta la factura: un rollback revierte contador y factura, y los reintentos concurrentes de la misma estancia resuelven a la misma factura (ver plan 006).
 
 ### Diagrama entidad-relación
 
@@ -465,7 +491,7 @@ erDiagram
 
     SEASON {
         uuid id PK
-        text name UK "Regular es el default"
+        text name UK "Regular es el default, su % es editable"
         text color "Formato RRGGBB"
         bool is_default "Solo una verdadera"
         uuid created_by
@@ -518,7 +544,7 @@ erDiagram
 
     LODGING_QUOTE {
         uuid id PK "quoteId"
-        text room_type
+        uuid room_id
         date check_in_date
         date check_out_date
         char currency "COP"
@@ -555,6 +581,8 @@ erDiagram
         text channel "DIRECT u OTA"
         text ota_id "Solo OTA"
         decimal ota_commission_percentage "Solo OTA"
+        decimal base_lodging_amount "Suma de tarifas base de la cotizacion"
+        decimal dynamic_adjustment_amount "lodging_amount menos base_lodging_amount"
         decimal lodging_amount
         decimal ota_commission_amount
         decimal net_income
@@ -565,17 +593,22 @@ erDiagram
     INVOICE {
         uuid id PK
         bigint invoice_number UK "Consecutivo oficial"
+        text status "Siempre ISSUED"
         uuid settlement_id FK
         uuid stay_id UK
+        uuid source_event_id
         text reservation_ref
         text channel
         text ota_id
         text customer_name
         text customer_tax_id
+        char currency "COP"
         decimal lodging_amount
+        decimal ota_commission_amount "Informativa"
+        decimal net_income "Informativo"
         decimal vat_rate_applied "Copia, no es FK"
         decimal vat_amount
-        decimal total_amount
+        decimal total_amount "lodging_amount + vat_amount"
         datetime issued_at
     }
 ```
