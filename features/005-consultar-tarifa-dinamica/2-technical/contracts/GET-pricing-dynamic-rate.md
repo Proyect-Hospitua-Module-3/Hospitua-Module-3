@@ -177,6 +177,7 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 | **400** | `INVALID_QUERY_PARAMS` | Faltan parámetros, tienen formato inválido (por ejemplo una fecha mal escrita) o se combinan `date` y el rango. | No | [PLAN] [CONV] |
 | **400** | `INVALID_DATE_RANGE` | `checkOutDate` anterior o igual a `checkInDate`. | No | [SPEC FR-008] [PLAN] |
 | **404** | `BASE_RATE_NOT_FOUND` | Módulo 1 no reporta tarifa base para alguna noche del rango. | No | [SPEC FR-006] [BASE] |
+| **424** | `INVALID_BASE_RATE` | Módulo 1 reporta para alguna noche una tarifa base menor o igual a cero (no cuenta como fallo del circuit breaker). | No | [SPEC FR-006] [BASE] [004] |
 | **424** | `MODULE1_UNAVAILABLE` | Módulo 1 no responde, hay timeout o el circuito está abierto. | Sí | [SPEC NFR-003] [BASE] |
 | **422** | `UNEXPECTED_ERROR` | El calendario de 011 referencia una temporada que no está en el catálogo de 009, no se pueden leer las reglas o el calendario, o hay cualquier otro error inesperado. | No | [PLAN] |
 

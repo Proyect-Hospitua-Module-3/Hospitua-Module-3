@@ -74,7 +74,7 @@ X-Correlation-Id: 4d7e1b2a-9c3f-4a58-8e60-1b2c3d4e5f60
 
 1. **Validación del rango primero**: `checkInDate < checkOutDate`. Si no, `400 INVALID_DATE_RANGE` y no se guarda nada [SPEC FR-015] [PLAN].
 2. **Cálculo de cada noche**: se reutiliza el mismo cálculo de [`GET /pricing/dynamic-rate`](./GET-pricing-dynamic-rate.md) para las noches de `[checkInDate, checkOutDate)`, con un único `asOf` y un único snapshot de reglas de temporada. Así el valor cotizado coincide con el que Módulo 2 pudo consultar antes [SPEC FR-012] [PLAN] [009] [011].
-3. **Tarifa base de Módulo 1**: cada noche pide su tarifa base a Módulo 1 mediante `GetBaseRateUseCase` de 004. Si Módulo 1 no reporta tarifa para **alguna** noche, o no está disponible, la solicitud falla completa y no se guarda nada, ni parcial ni estimada [SPEC FR-015, NFR-003] [004].
+3. **Tarifa base de Módulo 1**: cada noche pide su tarifa base a Módulo 1 mediante `GetBaseRateUseCase` de 004. Si Módulo 1 no reporta tarifa para **alguna** noche, reporta una tarifa menor o igual a cero, o no está disponible, la solicitud falla completa y no se guarda nada, ni parcial ni estimada [SPEC FR-015, NFR-003] [004].
 4. **Total**: suma exacta de la tarifa de cada noche, con `Money` (decimal, *half-up* a 2 decimales, moneda `COP`), nunca con `number` [PLAN].
 5. **Identificador**: Módulo 3 genera un `quoteId` (UUID) al guardar la cotización y lo devuelve en la respuesta [PLAN].
 6. **Qué se guarda**: la cotización (`quoteId`, `roomId`, `checkInDate`, `checkOutDate`, `currency`, `lodgingAmount`) y, por cada noche, `night_date`, `base_rate`, `season_name`, `adjustment_percent` y `rate`, para poder reconstruir cómo se compuso cada valor [SPEC FR-009, NFR-004] [PLAN].
@@ -127,6 +127,7 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 | **400** | `INVALID_DATE_RANGE` | `checkOutDate` anterior o igual a `checkInDate`. | No | [SPEC FR-015] [PLAN] |
 | **403** | `FORBIDDEN` | La solicitud trae un JWT (de OTA o de Administrador). | No | [SPEC FR-016, BR-008, SC-008] [PLAN] |
 | **404** | `BASE_RATE_NOT_FOUND` | Módulo 1 no reporta tarifa base para alguna noche. | No | [SPEC FR-015] [BASE] |
+| **424** | `INVALID_BASE_RATE` | Módulo 1 reporta para alguna noche una tarifa base menor o igual a cero (no cuenta como fallo del circuit breaker). La solicitud completa falla y no se guarda ninguna cotización. | No | [SPEC FR-015] [BASE] [004] |
 | **424** | `MODULE1_UNAVAILABLE` | Módulo 1 no responde, hay timeout o el circuito está abierto. | Sí | [SPEC NFR-003] [BASE] |
 | **422** | `UNEXPECTED_ERROR` | El calendario de 011 referencia una temporada que no está en el catálogo de 009, no se pueden leer las reglas o el calendario, falla la inserción, o hay cualquier otro error inesperado. | No (ver nota) | [PLAN] |
 
