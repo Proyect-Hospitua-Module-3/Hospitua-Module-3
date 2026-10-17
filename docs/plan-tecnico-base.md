@@ -115,7 +115,7 @@ Regla arquitectónica de Módulo 3:
   - Campos obligatorios del `payload`: `stayId`, `reservationRef`, `roomId`, `categoryRoom`, `checkInDate` y `checkOutDate` reales (`checkOutDate` posterior a `checkInDate`, FR-003 de `registrar_checkout.md`).
   - `categoryRoom` (tipo de habitación, nombre que usa Módulo 1; equivale al `roomType` de `pricing`) permite elegir la cotización de esa habitación entre los `quoteIds` de la reserva.
   - El evento no trae `channel`, `lodgingAmount` ni datos de la OTA: el canal y los datos OTA se consultan a Módulo 2 y el hospedaje se toma de la cotización guardada (ver [regla 5](#reglas-transversales-de-arquitectura)).
-  - `billingCustomer` es opcional: si llega, se entrega a `Generar liquidación`, pero su ausencia no invalida el evento (FR-002).
+  - `billingCustomer` es opcional: si llega, se entrega únicamente a `Generar factura final`; `Generar liquidación` no lo acepta y su ausencia no invalida el evento (FR-002).
   - El `payload` nunca incluye datos migratorios ni SIRE (FR-007, NFR-003).
   - `eventId` queda registrado en `checkout_event_log` para trazabilidad (NFR-004).
 

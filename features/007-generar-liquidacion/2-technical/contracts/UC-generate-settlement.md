@@ -34,10 +34,8 @@ Solo pueden inyectarlo `checkout-ingestion` (010) y `billing` (006); ningún con
 | `categoryRoom` | string | Sí | Tipo de habitación confirmado por Módulo 1 (nombre que usa Módulo 1); se compara con el `roomType` de la cotización para elegirla | [BASE] [SPEC FR-020] |
 | `checkInDate` | date `YYYY-MM-DD` | Sí | Fecha **real** de entrada | [SPEC FR-016] |
 | `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha **real** de salida; posterior a `checkInDate` | [SPEC FR-016] |
-| `billingCustomer.name` | string | No | Nombre o razón social para la factura; se guarda tal cual para 006 | [BASE] [PLAN] |
-| `billingCustomer.taxId` | string | No | Documento fiscal para la factura | [BASE] [PLAN] |
 
-El comando nunca trae `channel`, `lodgingAmount` ni datos de la OTA: el canal y la comisión salen de la reserva de Módulo 2 y el hospedaje de la cotización guardada [BASE] [SPEC BR-010].
+El comando no acepta `billingCustomer`, `channel`, `lodgingAmount` ni datos de la OTA. Los datos tributarios del evento son consumidos exclusivamente por 006; el canal y la comisión salen de la reserva de Módulo 2 y el hospedaje de la cotización guardada [BASE] [SPEC BR-010].
 
 ### Ejemplo
 
@@ -49,11 +47,7 @@ El comando nunca trae `channel`, `lodgingAmount` ni datos de la OTA: el canal y 
   "roomId": "5f0e8a47-1b2c-4d3e-9f6a-7b8c9d0e1f23",
   "categoryRoom": "DOBLE",
   "checkInDate": "2026-12-20",
-  "checkOutDate": "2026-12-23",
-  "billingCustomer": {
-    "name": "Comercializadora Andina S.A.S.",
-    "taxId": "900123456-7"
-  }
+  "checkOutDate": "2026-12-23"
 }
 ```
 
@@ -102,11 +96,10 @@ Devuelve la entidad `Settlement`, sea recién creada o la ya existente (el llama
 | `lodgingAmount` | string decimal | Valor de hospedaje de la cotización | [SPEC FR-012] |
 | `otaCommissionAmount` | string decimal | Valor de la comisión; `"0.00"` en canal directo | [SPEC FR-012] |
 | `netIncome` | string decimal | Hospedaje menos comisión, sin IVA | [SPEC FR-008, FR-013] |
-| `billingCustomer` | `{ name, taxId }` \| null | Datos tributarios mínimos para 006 | [PLAN] |
 | `sourceEventId` | UUID | Evento que la generó | [SPEC NFR-003] |
 | `generatedAt` | datetime ISO 8601 | Fecha y hora de generación (hora de la base de datos) | [SPEC NFR-003] |
 
-Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si se serializan van como texto [SPEC NFR-004] [CONV]. El resultado no incluye datos migratorios ni datos personales del huésped más allá de `billingCustomer` [SPEC NFR-006].
+Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si se serializan van como texto [SPEC NFR-004] [CONV]. El resultado no incluye datos migratorios ni datos personales del huésped [SPEC NFR-006].
 
 ### Ejemplo (canal OTA, 15 %)
 
@@ -129,10 +122,6 @@ Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si s
   "lodgingAmount": "750000.00",
   "otaCommissionAmount": "112500.00",
   "netIncome": "637500.00",
-  "billingCustomer": {
-    "name": "Comercializadora Andina S.A.S.",
-    "taxId": "900123456-7"
-  },
   "sourceEventId": "9b1f6d3e-2c4a-4f7b-8e5d-3a1c0b9d8e72",
   "generatedAt": "2026-12-23T11:04:58-05:00"
 }

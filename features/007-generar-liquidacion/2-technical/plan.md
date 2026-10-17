@@ -132,7 +132,6 @@ test/
 | `roomId` | UUID | Sí | Evento — habitación liquidada (FR-016) |
 | `categoryRoom` | string | Sí | Evento — tipo de habitación (nombre de Módulo 1); se compara con el `roomType` de la cotización para elegirla (FR-020) |
 | `checkInDate`, `checkOutDate` | date | Sí | Evento — fechas **reales** (FR-016) |
-| `billingCustomer` | `{ name, taxId }` | No | Evento — se guarda para que 006 emita la factura |
 
 010 ya validó formato y fechas (FR-002/FR-003 de `registrar_checkout.md`); 007 vuelve a construir `DateRange` para no depender de esa validación.
 
@@ -214,7 +213,6 @@ Ejemplo: cotización de 750.000 COP, canal OTA con 15 % → comisión 112.500 y 
 | `ota_commission_percentage` | numeric(5,2), nullable | Solo canal OTA; lo lee `ota-commission` (003) |
 | `currency` | char(3) | `COP` |
 | `lodging_amount`, `ota_commission_amount`, `net_income` | numeric(14,2) | Desglose [FR-012] |
-| `billing_customer_name`, `billing_customer_tax_id` | text, nullable | Datos tributarios mínimos para 006; nada más del huésped [NFR-006] |
 | `status` | text | Siempre `FINAL` [FR-009] |
 | `source_event_id` | uuid | Evento que la generó [NFR-003] |
 | `generated_at` | timestamptz | Hora de la base de datos [NFR-003] |

@@ -105,7 +105,7 @@ test/
 
 ### Entrada del caso de uso
 
-`GenerateFinalInvoiceCommand` lleva los mismos datos de check-out que `GenerateSettlementCommand` de 007. `checkout-ingestion` (010) lo arma desde el mensaje `habitacion.checkout`; 006 reenvía esos datos a 007 cuando necesita generar u obtener la liquidación.
+`GenerateFinalInvoiceCommand` lleva los datos de check-out del evento (`roomId` y `categoryRoom` incluidos) y el `billingCustomer` opcional que solo consume 006. `checkout-ingestion` (010) lo arma desde el mensaje `habitacion.checkout`; cuando 006 llama a 007, envía únicamente los campos de check-out aceptados por `GenerateSettlementCommand`, sin `billingCustomer`.
 
 | Campo | Tipo | Obligatorio | Origen |
 |---|---|---|---|
@@ -113,11 +113,11 @@ test/
 | `stayId` | UUID | Sí | Evento; idempotencia de liquidación y factura |
 | `reservationRef` | string | Sí | Evento; reserva de la estancia |
 | `roomId` | UUID | Sí | Evento; habitación liquidada |
-| `roomType` | string | Sí | Evento; selección de cotización por 007 |
+| `categoryRoom` | string | Sí | Evento; categoría confirmada por Módulo 1, usada por 007 para seleccionar la cotización |
 | `checkInDate`, `checkOutDate` | date `YYYY-MM-DD` | Sí | Evento; fechas reales validadas por 010 y revalidadas por 007 |
 | `billingCustomer` | `{ name?, taxId? }` | No en el evento | Datos tributarios que Módulo 1 entrega en el check-out; obligatorios y completos para emitir |
 
-El comando no acepta importes, IVA, comisión, canal, número de factura ni datos migratorios. Los importes/canal provienen de la liquidación inmutable de 007; el IVA proviene de 001; el número lo asigna la persistencia. Si el comando trae un objeto tributario parcial, se rechaza: nunca se mezclan nombre y documento de fuentes o intentos diferentes. Si no trae objeto tributario, se puede reutilizar el dato completo persistido en la liquidación; si ninguna fuente contiene ambos campos no vacíos, la emisión falla antes de asignar numeración. Un reenvío con los datos tributarios completados puede emitir la factura de una liquidación previamente generada sin modificarla.
+El comando no acepta importes, IVA, comisión, canal, número de factura ni datos migratorios. Los importes/canal provienen de la liquidación inmutable de 007; el IVA proviene de 001; el número lo asigna la persistencia. `billingCustomer` solo se obtiene del evento de check-out y nunca se envía a 007 ni se recupera de la liquidación. Si el evento no incluye ambos campos tributarios completos y no vacíos, la emisión falla antes de consultar IVA o asignar numeración. Un evento posterior con los datos completos puede emitir la factura para una liquidación previamente generada sin modificarla.
 
 ### Puertos y dependencias
 
@@ -145,8 +145,8 @@ export interface InvoiceIssuanceRepositoryPort {
 
 1. **Validar el comando**: requiere identificadores y fechas válidos; no hace I/O ni consume numeración si la entrada es inválida.
 2. **Idempotencia rápida**: consulta `InvoiceIssuanceRepositoryPort.findByStayId(stayId)`. Si existe una factura emitida, la devuelve sin volver a leer el IVA, recalcularla o cambiar sus valores.
-3. **Obtener la liquidación**: invoca `GenerateSettlementUseCase.generate` con los datos de check-out. 007 devuelve la liquidación `FINAL` existente o la genera idempotentemente. Sus errores tipados se propagan sin crear factura.
-4. **Resolver cliente tributario**: usa el objeto completo del comando si se suministró; si no se suministró, usa el objeto completo persistido en la liquidación. Rechaza campos en blanco o un objeto parcial. No captura ni completa datos por inferencia.
+3. **Obtener la liquidación**: invoca `GenerateSettlementUseCase.generate` con `eventId`, `stayId`, `reservationRef`, `roomId`, `categoryRoom` y las fechas; no envía `billingCustomer`. 007 devuelve la liquidación `FINAL` existente o la genera idempotentemente. Sus errores tipados se propagan sin crear factura.
+4. **Validar cliente tributario**: usa exclusivamente `billingCustomer` del evento/comando. Rechaza datos ausentes, campos en blanco o un objeto parcial; no lee el cliente desde la liquidación, no combina fuentes y no completa datos por inferencia.
 5. **Obtener IVA vigente**: invoca `GetCurrentVatRateUseCase.getCurrent()` solo después de validar los datos tributarios. Guarda el valor exacto retornado como `vatRateApplied`, evitando que cambios posteriores afecten esta factura.
 6. **Calcular el desglose** con `Money`/`decimal.js`, aritmética decimal exacta y redondeo half-up a dos decimales:
    - `vatAmount = lodgingAmount × vatRateApplied / 100`.
@@ -215,7 +215,7 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 **Purpose**: Verificar los puertos internos y preparar el agregado `billing` para emitir.
 
 - [ ] T001 Confirmar que el wiring de `billing` exporta `GenerateFinalInvoiceUseCase` solo a `checkout-ingestion` (010); ningún controller REST expone la operación.
-- [ ] T002 Confirmar que 007 exporta `GenerateSettlementUseCase` y que su contrato acepta los datos del check-out más `billingCustomer`.
+- [ ] T002 Confirmar que 007 exporta `GenerateSettlementUseCase` y que su contrato acepta los datos de check-out (`roomId` y `categoryRoom` incluidos), sin recibir ni persistir `billingCustomer`.
 - [ ] T003 Confirmar que 001 exporta `GetCurrentVatRateUseCase.getCurrent()` y devuelve una tasa decimal validada; no consultar `vat_rate` directamente desde 006.
 - [ ] T004 Acordar con 002/008 los campos copiados de la factura y mantener sus adaptadores en solo lectura.
 
@@ -245,7 +245,7 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 - [ ] T012 [P] [US1] Unit tests de `Invoice`: solo acepta snapshots completos, estado `ISSUED`, moneda coherente y total igual a hospedaje más IVA; no ofrece mutadores.
 - [ ] T013 [P] [US1] Unit tests de `GenerateFinalInvoiceService`: llama a 007, obtiene una liquidación `FINAL`, devuelve factura existente sin consultar IVA, y propaga errores de liquidación.
-- [ ] T014 [P] [US1] Unit tests del flujo de validación tributaria: nombre y documento requeridos; ausente/parcial/vacío rechaza antes de IVA/persistencia; cliente completo nuevo permite reintentar liquidación existente que se guardó sin cliente.
+- [ ] T014 [P] [US1] Unit tests del flujo de validación tributaria: nombre y documento requeridos desde el evento; ausente/parcial/vacío rechaza antes de IVA/persistencia; evento posterior completo permite emitir para una liquidación existente sin leer ni actualizar datos tributarios en ella.
 - [ ] T015 [P] [US1] Unit tests de cálculo para canal directo: comisión `0.00`, IVA con redondeo half-up, total hospedaje + IVA.
 - [ ] T016 [P] [US1] Unit tests de reenvío: misma estancia ya emitida devuelve número y valores originales incluso si cambió la tasa vigente.
 - [ ] T017 [US1] Integration tests de `PrismaInvoiceIssuanceRepository` con Postgres: emisión, relectura por estancia, rollback y ausencia de incremento cuando falla la inserción.
@@ -253,7 +253,7 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] Implementar validación y resolución de `billingCustomer` desde el evento o, cuando el evento no lo trae, desde la liquidación existente; nunca combinar campos parciales.
+- [ ] T019 [US1] Implementar validación de `billingCustomer` exclusivamente desde el evento; si falta o es parcial, rechazar antes de leer IVA o persistir factura, sin buscar datos en la liquidación ni combinar fuentes.
 - [ ] T020 [US1] Implementar `GenerateFinalInvoiceService.generate`: idempotencia, invocación de 007, validación tributaria, lectura de 001, cálculo y emisión mediante el puerto.
 - [ ] T021 [US1] Implementar cálculo con `Money`/`decimal.js`, redondeo half-up a dos decimales; no usar `number` de JavaScript para importes.
 - [ ] T022 [US1] Implementar el mapeo de errores para que 010 envíe fallos corregibles a DLQ y reintente indisponibilidad sin ACK.
