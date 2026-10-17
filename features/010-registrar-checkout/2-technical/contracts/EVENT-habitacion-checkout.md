@@ -48,7 +48,7 @@ Módulo 3 lee directamente el `EventEnvelope` definido en el Plan Base.
 | `billingCustomer.name` | string opcional | Nombre o razón social; necesario y no vacío para emitir. |
 | `billingCustomer.taxId` | string opcional | Identificación fiscal; necesaria y no vacía para emitir. |
 
-La lista blanca del evento incluye los campos definidos en las tablas del sobre y el payload. Para `checkout_event_log.payload`, se conserva esa lista sin `billingCustomer.name` ni `billingCustomer.taxId` y se agrega únicamente `has_billing_customer: boolean`; el valor es `true` cuando el evento incluye el objeto `billingCustomer`, aunque esté incompleto, y `false` cuando no lo incluye. `Generar factura final` determina si los datos bastan para emitir la factura; los datos tributarios se procesan en memoria. Los campos adicionales, incluidos datos migratorios, se descartan; el cuerpo crudo no se almacena en la base de datos y el mensaje enviado a la DLQ conserva su contenido original [SPEC FR-006, NFR-003] [PLAN].
+La lista blanca del evento incluye los campos definidos en las tablas del sobre y el payload. Para `checkout_event_log.payload`, se conserva esa lista sin `billingCustomer.name` ni `billingCustomer.taxId` y se agrega únicamente `has_billing_customer: boolean`; el valor es `true` cuando el evento incluye el objeto `billingCustomer`, aunque esté incompleto, y `false` cuando no lo incluye. `Generar factura final` (006) determina si los datos bastan para emitir la factura; 010 no los persiste en su auditoría y los pasa exclusivamente a 006. `Generar liquidación` (007) no acepta ni persiste `billingCustomer`.
 
 ## 3. Reglas de procesamiento
 

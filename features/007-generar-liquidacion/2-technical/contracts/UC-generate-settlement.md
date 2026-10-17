@@ -36,6 +36,7 @@ Solo pueden inyectarlo `checkout-ingestion` (010) y `billing` (006); ningún con
 | `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha **real** de salida; posterior a `checkInDate` | [SPEC FR-016] |
 
 El comando nunca trae `channel`, `lodgingAmount`, datos de la OTA ni `billingCustomer`: los datos tributarios los entrega 010 directamente a 006 y `settlement` no los guarda [BASE] [SPEC BR-012]. El canal y la comisión salen de la reserva de Módulo 2 y el hospedaje de la cotización guardada [BASE] [SPEC BR-010].
+El comando no acepta `billingCustomer`, `channel`, `lodgingAmount` ni datos de la OTA. Los datos tributarios del evento son consumidos exclusivamente por 006; el canal y la comisión salen de la reserva de Módulo 2 y el hospedaje de la cotización guardada [BASE] [SPEC BR-010].
 
 ### Ejemplo
 
@@ -103,6 +104,7 @@ Devuelve la entidad `Settlement`, sea recién creada o la ya existente (el llama
 | `generatedAt` | datetime ISO 8601 | Fecha y hora de generación (hora de la base de datos) | [SPEC NFR-003] |
 
 Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si se serializan van como texto [SPEC NFR-004] [CONV]. El resultado no incluye datos migratorios, datos personales del huésped ni datos tributarios [SPEC NFR-006, BR-012].
+Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si se serializan van como texto [SPEC NFR-004] [CONV]. El resultado no incluye datos migratorios ni datos personales del huésped [SPEC NFR-006].
 
 ### Ejemplo (canal OTA, 15 %)
 

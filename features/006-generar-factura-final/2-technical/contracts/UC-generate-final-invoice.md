@@ -23,7 +23,7 @@ Solo `checkout-ingestion` (010) recibe permiso de inyección del caso de uso. No
 
 ### `GenerateFinalInvoiceCommand`
 
-El comando conserva la forma de `GenerateSettlementCommand` de 007 para que 010 pueda pasar el payload validado del evento. Los campos se validan en 010 y 007 vuelve a validar su propio contrato [BASE] [007].
+El comando incluye los campos de check-out del evento más el `billingCustomer` opcional, que solo usa 006. 006 mapea y envía a 007 los campos aceptados por `GenerateSettlementCommand`, sin `billingCustomer`; 007 valida su propio contrato [BASE] [007].
 
 | Campo | Tipo | Obligatorio | Descripción | Origen |
 |---|---|---|---|---|
@@ -31,13 +31,13 @@ El comando conserva la forma de `GenerateSettlementCommand` de 007 para que 010 
 | `stayId` | UUID | Sí | Estancia de una habitación; clave idempotente | [BASE] [SPEC FR-007] |
 | `reservationRef` | string | Sí | Reserva asociada a la estancia | [BASE] |
 | `roomId` | UUID | Sí | Habitación que se factura | [BASE] |
-| `roomType` | string | Sí | Tipo de habitación para seleccionar la cotización en 007 | [BASE] [007] |
+| `categoryRoom` | string | Sí | Categoría de habitación del evento; 007 la compara con el `roomType` de la cotización | [BASE] [007] |
 | `checkInDate` | date `YYYY-MM-DD` | Sí | Fecha real de entrada | [BASE] [007] |
 | `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha real de salida, posterior a `checkInDate` | [BASE] [007] |
-| `billingCustomer.name` | string | No en el evento; obligatorio para emitir | Nombre o razón social, no vacío | [SPEC FR-008] |
-| `billingCustomer.taxId` | string | No en el evento; obligatorio para emitir | Identificación tributaria/documento fiscal, no vacío | [SPEC FR-008] |
+| `billingCustomer.name` | string | Opcional en el evento; obligatorio para emitir | Nombre o razón social, no vacío | [SPEC FR-008] |
+| `billingCustomer.taxId` | string | Opcional en el evento; obligatorio para emitir | Identificación tributaria/documento fiscal, no vacío | [SPEC FR-008] |
 
-El evento puede omitir los datos tributarios para que 007 genere la liquidación. Para emitir, ambos campos deben estar completos: se usa el objeto completo del comando si está presente; si no, se puede usar el objeto completo persistido en la liquidación. Un objeto parcial o con valores en blanco no se mezcla con la fuente alternativa: se rechaza. Un nuevo evento con datos completos puede emitir factura para una liquidación ya generada sin actualizar la liquidación inmutable [SPEC FR-008, FR-009, BR-004] [PLAN].
+El evento puede omitir los datos tributarios y 007 genera la liquidación sin recibirlos ni persistirlos. Para emitir, ambos campos de `billingCustomer` del evento deben estar completos. Un objeto ausente, parcial o con valores en blanco se rechaza; 006 no lee esos datos de la liquidación ni los combina con otra fuente. Un nuevo evento con datos completos puede emitir factura para una liquidación ya generada sin actualizarla [SPEC FR-008, FR-009, BR-004] [PLAN].
 
 El comando no permite establecer `lodgingAmount`, `channel`, comisión, porcentaje/importe de IVA, número, total, moneda ni estado de factura. Nunca contiene ni persiste datos migratorios [SPEC FR-003, FR-013].
 
@@ -49,7 +49,7 @@ El comando no permite establecer `lodgingAmount`, `channel`, comisión, porcenta
   "stayId": "c3a9e1b2-5f4d-4e6a-8b7c-1d2e3f4a5b6c",
   "reservationRef": "RES-000123",
   "roomId": "5f0e8a47-1b2c-4d3e-9f6a-7b8c9d0e1f23",
-  "roomType": "DOBLE",
+  "categoryRoom": "DOBLE",
   "checkInDate": "2026-12-20",
   "checkOutDate": "2026-12-23",
   "billingCustomer": {
@@ -63,8 +63,8 @@ El comando no permite establecer `lodgingAmount`, `channel`, comisión, porcenta
 
 1. **Validación**: requiere los campos estructurales del comando y fechas válidas. Una entrada incompleta falla antes de I/O [PLAN].
 2. **Factura existente**: busca por `stayId`. Si ya hay factura `ISSUED`, devuelve exactamente la factura persistida con su número; no consulta nuevamente 001, no recalcula y no modifica el documento [SPEC FR-006, FR-007] [BASE].
-3. **Liquidación `FINAL`**: llama a `GenerateSettlementUseCase.generate` (007) con los campos de check-out. Recibe liquidación existente o recién generada de forma idempotente. No solicita el documento fiscal a Módulo 1/Módulo 2 por otro canal [SPEC FR-001] [007].
-4. **Datos tributarios**: valida nombre/razón social y documento fiscal antes de solicitar el IVA o asignar número. Sin ambos campos completos → `BILLING_CUSTOMER_DATA_MISSING`; la liquidación puede permanecer guardada, no se crea factura ni se reserva consecutivo [SPEC FR-008, FR-009].
+3. **Liquidación `FINAL`**: llama a `GenerateSettlementUseCase.generate` (007) con `eventId`, `stayId`, `reservationRef`, `roomId`, `categoryRoom` y las fechas; no envía `billingCustomer`. Recibe liquidación existente o recién generada de forma idempotente [SPEC FR-001] [007].
+4. **Datos tributarios del evento**: valida nombre/razón social y documento fiscal del `billingCustomer` recibido en el evento antes de solicitar el IVA o asignar número. Sin ambos campos completos → `BILLING_CUSTOMER_DATA_MISSING`; la liquidación puede permanecer guardada, no se crea factura ni se reserva consecutivo. No consulta datos tributarios en la liquidación ni los mezcla con otra fuente [SPEC FR-008, FR-009].
 5. **IVA vigente**: consume `GetCurrentVatRateUseCase.getCurrent()` de 001. El valor leído se congela en `vatRateApplied`; una actualización posterior nunca cambia la factura [SPEC FR-002, BR-005] [001].
 6. **Cálculo**: emplea `Money`/`decimal.js`, sin `number` binario para importes y con redondeo half-up a 2 decimales [BASE] [PLAN]:
    - `vatAmount = lodgingAmount × vatRateApplied / 100`.

@@ -13,7 +13,7 @@ Es un puerto TypeScript dentro de la aplicación, no un endpoint HTTP ni una int
 
 ## 1. Propósito
 
-Entregar a `settlement` las cotizaciones guardadas que Módulo 2 dejó en la reserva (`quoteIds`), para que tome de ellas el valor de hospedaje **sin recalcular la tarifa dinámica** [SPEC HU4, FR-013] [BASE] [007].
+Entregar a `settlement` las cotizaciones guardadas que Módulo 2 dejó en la reserva (`quoteIds`), para que tome de ellas el valor de hospedaje **sin recalcular la tarifa dinámica** [SPEC HU3, FR-013] [BASE] [007].
 
 ## 2. Invocación
 
@@ -35,7 +35,7 @@ Lo implementa `PrismaLodgingQuoteRepository` de 005 y se registra en `pricing.mo
 ```ts
 export interface LodgingQuote {
   quoteId: string;
-  roomType: string;
+  roomId: string;
   checkInDate: string;
   checkOutDate: string;
   currency: string;
@@ -55,13 +55,13 @@ export interface LodgingQuoteNight {
 | Campo | Tipo | Obligatorio | Descripción |
 |---|---|---|---|
 | `quoteId` | UUID | Sí | Identificador de la cotización. |
-| `roomType` | string | Sí | Tipo de habitación cotizado. 007 lo compara con el `categoryRoom` del check-out para elegir la cotización de la habitación (mismo valor, distinto nombre) [007]. |
+| `roomId` | string (UUID) | Sí | Habitación cotizada. 007 lo compara con el `roomId` del check-out para elegir la cotización de esa habitación [007]. |
 | `checkInDate` | date `YYYY-MM-DD` | Sí | Fecha de entrada reservada. |
 | `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha de salida reservada (exclusiva). |
 | `currency` | string | Sí | Moneda (`"COP"`). |
 | `lodgingAmount` | decimal string | Sí | Valor de hospedaje total de la habitación. Es el que usa 007 como `lodgingAmount` de la liquidación [007]. |
 | `nights[].date` | date `YYYY-MM-DD` | Sí | Noche cotizada. |
-| `nights[].baseRate` | decimal string | Sí | Tarifa base de origen con la que se calculó la noche. |
+| `nights[].baseRate` | decimal string | Sí | Tarifa base de origen con la que se calculó la noche. 007 la usa para armar el desglose; 005 no lo calcula [SPEC FR-012]. |
 | `nights[].seasonName` | string | Sí | Temporada aplicada a la noche. |
 | `nights[].adjustmentPercent` | decimal string | Sí | Ajuste firmado aplicado a la noche. |
 | `nights[].rate` | decimal string | Sí | Tarifa dinámica de la noche. |
@@ -74,7 +74,7 @@ Los importes y porcentajes son decimales exactos en `string`; el consumidor no l
 [
   {
     "quoteId": "a1f2c3d4-e5b6-4789-8a9b-0c1d2e3f4a5b",
-    "roomType": "DOBLE",
+    "roomId": "3f2b8c1e-5a47-4d09-9b6e-1c2d3e4f5a6b",
     "checkInDate": "2026-12-23",
     "checkOutDate": "2026-12-26",
     "currency": "COP",
@@ -92,7 +92,7 @@ Los importes y porcentajes son decimales exactos en `string`; el consumidor no l
 
 - **Solo lectura**: no ejecuta `INSERT`, `UPDATE` ni `DELETE`, y nunca invoca el cálculo de tarifa dinámica ni consulta a Módulo 1, a 009 ni a 011 [SPEC BR-004, FR-013] [PLAN].
 - **Valores tal como se guardaron**: devuelve exactamente lo que se guardó al crear la cotización, sin recalcular, aunque las reglas de temporada o la tarifa base hayan cambiado después [SPEC FR-013, SC-007] [PLAN].
-- **Un `quoteId` que no existe no produce error**: simplemente no aparece en el resultado. Una lista vacía de `quoteIds` devuelve una lista vacía [CONV]. Decidir qué hacer cuando ninguna cotización coincide con el `categoryRoom` (`QUOTE_NOT_FOUND`) es responsabilidad de 007, no de este puerto [007].
+- **Un `quoteId` que no existe no produce error**: simplemente no aparece en el resultado. Una lista vacía de `quoteIds` devuelve una lista vacía [CONV]. Decidir qué hacer cuando ninguna cotización coincide con la habitación (`roomId`) del check-out (`QUOTE_NOT_FOUND`) es responsabilidad de 007, no de este puerto [007].
 - **Sin orden garantizado**: el consumidor no debe depender del orden del resultado. Cuando varias cotizaciones coinciden, 007 elige por su cuenta la de menor `quoteId` [007] [CONV].
 - **Fallo de lectura**: si la base de datos no puede responder, el error se propaga al consumidor. Nunca se devuelve una lista vacía ni valores supuestos como reemplazo [CONV].
 
@@ -100,6 +100,6 @@ Los importes y porcentajes son decimales exactos en `string`; el consumidor no l
 
 - **Inmutabilidad**: una cotización leída hoy tiene los mismos valores que mañana; las tablas solo reciben `INSERT` [SPEC FR-013] [PLAN].
 - **Determinismo**: los mismos `quoteIds` devuelven siempre los mismos datos [SPEC NFR-001].
-- **Sin recalcular**: 007 usa `lodgingAmount` tal cual; 006 congela ese valor en la factura. Ninguno vuelve a leer reglas de temporada [SPEC HU4] [BASE] [007].
+- **Sin recalcular**: 007 usa `lodgingAmount` tal cual; 006 congela ese valor en la factura. Ninguno vuelve a leer reglas de temporada [SPEC HU3] [BASE] [007].
 - **Frontera protegida**: `settlement` puede importar este puerto y el modelo `LodgingQuote`, pero nunca `GetDynamicRateService` ni `CreateLodgingQuoteService`. Una regla de `dependency-cruiser` lo verifica, por lo que un check-out, también una salida anticipada, nunca genera una cotización [SPEC FR-014] [PLAN] [BASE].
 - Un cambio en los campos de `LodgingQuote`, en la firma de `findByIds` o en el tratamiento de ids inexistentes requiere coordinar con 007 y actualizar `test/contract/lodging-quote-query.port.spec.ts` [PLAN].

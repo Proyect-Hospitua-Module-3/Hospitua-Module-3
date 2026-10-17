@@ -111,9 +111,9 @@ Como sistema de Facturación, Consumos y Liquidación, quiero reconocer reenvío
 ### Requisitos funcionales
 
 - **FR-001**: El sistema DEBE recibir y procesar el evento externo `Registrar Check-out` emitido por el actor `Módulo 1`.
-- **FR-002**: El sistema DEBE validar que el evento contenga como mínimo: identificador UUID único del evento, identificador UUID de la estancia, identificador de la reserva, identificador de la habitación, tipo de habitación, fecha real de entrada y fecha real de salida. Los datos tributarios del cliente responsable de la facturación pueden estar ausentes o incompletos y NO DEBEN impedir la validación del evento; cuando estén presentes, DEBEN entregarse al procesamiento de facturación.
+- **FR-002**: El sistema DEBE validar que el evento contenga como mínimo: identificador UUID único del evento, identificador UUID de la estancia, identificador de la reserva, identificador de la habitación, tipo de habitación, fecha real de entrada y fecha real de salida. Los datos tributarios del cliente responsable de la facturación pueden estar ausentes o incompletos y NO DEBEN impedir la validación del evento; cuando estén presentes, DEBEN entregarse a `Generar factura final`.
 - **FR-003**: El sistema DEBE validar que la fecha de entrada sea anterior a la fecha de salida.
-- **FR-004**: El sistema DEBE incluir (`<<include>>`) a `Generar liquidación` tras validar satisfactoriamente el evento, entregándole los datos recibidos.
+- **FR-004**: El sistema DEBE incluir (`<<include>>`) a `Generar liquidación` tras validar satisfactoriamente el evento, entregándole los datos de la estancia recibidos.
 - **FR-005**: El sistema DEBE rechazar el evento sin incluir a `Generar liquidación` cuando falte algún dato obligatorio o alguno no sea válido, sin contar los datos tributarios, cuya ausencia o incompletitud solo impide emitir la factura.
 - **FR-006**: Los registros de Módulo 3 NO DEBEN contener datos de control migratorio ni archivos .TXT de SIRE. El evento enviado a revisión manual puede conservar su contenido original, pero Módulo 3 no usa ni expone esos datos. Esta separación respeta la frontera de responsabilidad con Módulo 2.
 - **FR-007**: El sistema NO DEBE modificar estados físicos de ocupación de habitaciones ni controlar disponibilidad de inventario; esa transición es responsabilidad exclusiva de `Módulo 1`.

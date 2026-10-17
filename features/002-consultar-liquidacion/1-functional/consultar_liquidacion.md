@@ -17,7 +17,7 @@ Como OTA (Booking, Airbnb, Expedia), quiero consultar las liquidaciones `Final` 
 1. **Escenario**: Consulta de una reserva con habitaciones liquidadas
    - **Dado** que una reserva intermediada por la OTA tiene liquidaciones `Final` para una o más habitaciones
    - **Cuando** la OTA consulta la reserva usando su propia identidad
-   - **Entonces** el sistema devuelve las liquidaciones `Final` de las habitaciones que tuvieron check-out, cada una identificada por su habitación y tipo de habitación, con su desglose y la factura definitiva asociada cuando haya sido emitida
+   - **Entonces** el sistema devuelve las liquidaciones `Final` de las habitaciones que tuvieron check-out, cada una identificada por su habitación y tipo de habitación, con su desglose —incluido `dynamicAdjustmentAmount`, para que la OTA vea la parte dinámica del hospedaje— y la factura definitiva asociada cuando haya sido emitida
 
 2. **Escenario**: Consulta de una reserva sin habitaciones con check-out
    - **Dado** que ninguna habitación de la reserva intermediada por la OTA tiene check-out
@@ -29,10 +29,10 @@ Como OTA (Booking, Airbnb, Expedia), quiero consultar las liquidaciones `Final` 
    - **Cuando** una OTA consulta la reserva
    - **Entonces** el sistema no revela información financiera de esa reserva
 
-4. **Escenario**: Consulta de una reserva OTA sin identidad válida de OTA
-   - **Dado** que una solicitud pretende consultar una reserva OTA, pero no presenta una identidad válida de OTA
+4. **Escenario**: Consulta de una reserva OTA sin identidad válida
+   - **Dado** que una solicitud autenticada presenta un token inválido o un token válido cuyo rol no es OTA, o que una solicitud sin token no incluye los datos mínimos de una consulta interna de Módulo 1 (`reservationRef` y `roomId`)
    - **Cuando** se consulta la reserva
-   - **Entonces** el sistema no la trata como consulta de OTA ni como consulta interna de Módulo 1 y no revela información financiera
+   - **Entonces** el sistema rechaza la solicitud, no la trata como consulta de OTA y no revela información financiera
 
 ---
 
@@ -49,15 +49,15 @@ Como Módulo 1, quiero consultar la liquidación de una habitación de una reser
 1. **Escenario**: Consulta informativa antes del check-out
    - **Dado** que una habitación de una reserva aún no ha tenido check-out y existen la reserva y su cotización de hospedaje
    - **Cuando** Módulo 1 consulta la liquidación de esa habitación
-   - **Entonces** el sistema devuelve el desglose calculado con la cotización guardada y la comisión correspondiente al canal de la reserva, identificado como informativo y sin guardarlo
+   - **Entonces** el sistema devuelve el desglose calculado con la cotización guardada y la comisión correspondiente al canal de la reserva, incluyendo `baseLodgingAmount`, `dynamicAdjustmentAmount` y `lodgingAmount` como suma de ambos, identificado como informativo y sin guardarlo
 
 2. **Escenario**: La informativa y la liquidación `Final` son coherentes
    - **Dado** que Módulo 1 obtuvo una liquidación informativa de una habitación y luego el check-out generó su liquidación `Final`, sin cambios en la reserva ni en la cotización
    - **Cuando** se comparan ambos resultados
-   - **Entonces** coinciden en valor de hospedaje, comisión e ingreso neto
+   - **Entonces** coinciden en `baseLodgingAmount`, `dynamicAdjustmentAmount`, `lodgingAmount` —la suma de los dos importes—, comisión e ingreso neto
 
 3. **Escenario**: La liquidación informativa no puede calcularse
-   - **Dado** que la reserva o su cotización para el tipo de habitación no existen, la comisión de una reserva OTA está ausente, Módulo 2 no responde o devuelve una respuesta con estructura inválida, o la comisión recibida es un valor numérico menor que 0 o mayor que 100
+   - **Dado** que no existe la reserva o la cotización consultada mediante `reservationRef` y `roomId`, la comisión de una reserva OTA está ausente, Módulo 2 no responde o devuelve una respuesta con estructura inválida, o la comisión recibida es un valor numérico menor que 0 o mayor que 100
    - **Cuando** Módulo 1 consulta una habitación sin check-out
    - **Entonces** el sistema informa por separado la ausencia de datos, la falla de comunicación y la comisión inválida, y no devuelve valores parciales
 
@@ -98,7 +98,7 @@ Como `Módulo 1` o como OTA identificada con su propia identidad, quiero recibir
 - Módulo 1 consulta normalmente antes de formalizar el check-out; si la consulta coincide con el procesamiento asíncrono, Módulo 1 recibe la liquidación informativa o la `Final`, mientras que una OTA solo recibe la `Final` existente o que no existe liquidación. Ningún actor recibe un estado intermedio.
 - Una OTA consulta una reserva sin habitaciones con check-out: el sistema informa que no existe liquidación, sin generar un registro vacío ni devolver valores en cero.
 - Una OTA consulta una reserva de canal directo o intermediada por otra OTA: el sistema no revela información financiera de esa reserva.
-- Una solicitud pretende consultar liquidaciones de una reserva OTA sin presentar una identidad válida de OTA: no se trata como consulta de OTA ni como consulta interna de Módulo 1, y no se revela información financiera.
+- Una solicitud con token inválido o con un rol distinto de OTA, o una solicitud sin token que no incluye `reservationRef` y `roomId`: se rechaza y no se revela información financiera.
 - Módulo 2 no responde o devuelve una respuesta con estructura inválida, la reserva o cotización no existe, la comisión OTA está ausente o su valor numérico es menor que 0 o mayor que 100: el sistema informa el motivo sin devolver valores parciales. La estructura inválida se informa como falla de comunicación; la reserva, cotización o comisión ausente se informa como ausencia de datos; una comisión numérica fuera del rango permitido se informa como comisión inválida.
 - Cambian las reglas de temporada o la tarifa base entre la consulta informativa y el check-out: ambas liquidaciones conservan el valor de la cotización guardada.
 - Una reserva cancelada antes del check-out nunca tiene liquidación `Final` porque no hubo check-out; la OTA recibe que no existe liquidación. La liquidación informativa se calcula con los datos que devuelve Módulo 2; Módulo 3 no evalúa el estado de la reserva.
@@ -108,25 +108,25 @@ Como `Módulo 1` o como OTA identificada con su propia identidad, quiero recibir
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE permitir a `Módulo 1` consultar la liquidación de una habitación de una reserva mediante la reserva, la habitación y el tipo de habitación; una OTA DEBE consultar mediante la reserva y su propia identidad como OTA.
-- **FR-002**: El sistema DEBE devolver el desglose de cada liquidación `Final` existente —valor de hospedaje, canal de origen, comisión OTA cuando aplique e ingreso neto— y la factura definitiva asociada cuando haya sido emitida. Para una OTA, la respuesta DEBE incluir la liquidación de cada habitación de la reserva que haya tenido check-out, identificada por habitación y tipo de habitación; las habitaciones sin check-out no se incluyen. El IVA no forma parte del desglose de liquidación y se obtiene únicamente de la factura definitiva.
+- **FR-001**: El sistema DEBE permitir a `Módulo 1` consultar la liquidación de una habitación de una reserva mediante `reservationRef` y `roomId`. `categoryRoom` puede incluirse como dato informativo; no interviene en la selección ni validación de la consulta y su ausencia no la impide. En la respuesta, `categoryRoom` DEBE proceder de la liquidación o de la cotización, nunca del parámetro de la petición. Una OTA DEBE consultar mediante la reserva y su propia identidad como OTA.
+- **FR-002**: El sistema DEBE devolver el desglose de cada liquidación `Final` existente —`baseLodgingAmount`, `dynamicAdjustmentAmount`, `lodgingAmount` como suma de ambos, canal de origen, comisión OTA cuando aplique e ingreso neto— y la factura definitiva asociada cuando haya sido emitida. Para una OTA, la respuesta DEBE incluir la liquidación de cada habitación de la reserva que haya tenido check-out, identificada por habitación y tipo de habitación; las habitaciones sin check-out no se incluyen. La OTA DEBE recibir `dynamicAdjustmentAmount` en el desglose de cada liquidación `Final`, para ver la parte dinámica del hospedaje. El IVA no forma parte del desglose de liquidación y se obtiene únicamente de la factura definitiva.
 - **FR-003**: El sistema DEBE incluir la factura definitiva asociada, tal como fue generada por `Generar factura final`, cuando ya haya sido emitida; la liquidación informativa nunca incluye factura.
 - **FR-004**: El sistema NO DEBE recalcular la liquidación `Final` ni su factura como efecto de una consulta. La consulta es de solo lectura sobre los resultados existentes; la única operación de cálculo es la liquidación informativa descrita en FR-009.
 - **FR-005**: El sistema DEBE informar explícitamente cuando no exista liquidación `Final` y no corresponda devolver una liquidación informativa, sin generar un registro vacío ni un valor por defecto. Si ninguna habitación de una reserva consultada por una OTA tiene check-out, DEBE informar que no existe liquidación.
 - **FR-006**: El sistema DEBE restringir a cada OTA la consulta a sus propias reservas, identificadas mediante su identidad como OTA.
-- **FR-007**: El sistema NO DEBE exponer datos de control migratorio en el resultado de la consulta, respetando la frontera de responsabilidad con Módulo 2.
-- **FR-008**: El sistema DEBE devolver el mismo resultado ante consultas repetidas sobre una liquidación `Final` sin cambios en los datos. La liquidación informativa DEBE coincidir con la `Final` cuando no cambien los datos de la reserva ni de la cotización.
-- **FR-009**: El sistema DEBE calcular y devolver una liquidación informativa cuando `Módulo 1` consulte una habitación de una reserva que aún no tiene liquidación `Final`, usando el valor de hospedaje de la cotización guardada y el canal, la OTA y la comisión informados por Módulo 2, con las mismas reglas de cálculo que `Generar liquidación`. Si la reserva no informa canal, DEBE tratarse como canal directo y no aplicar comisión, según las reglas de `Generar liquidación`.
+- **FR-007**: El sistema NO DEBE exponer datos de control migratorio ni `billingCustomer` en el resultado de la consulta, respetando la frontera de responsabilidad con Módulo 2.
+- **FR-008**: El sistema DEBE devolver el mismo resultado ante consultas repetidas sobre una liquidación `Final` sin cambios en los datos. La liquidación informativa DEBE coincidir con la `Final` en `baseLodgingAmount`, `dynamicAdjustmentAmount`, `lodgingAmount` —la suma de ambos—, comisión e ingreso neto cuando no cambien los datos de la reserva ni de la cotización.
+- **FR-009**: El sistema DEBE calcular y devolver una liquidación informativa cuando `Módulo 1` consulte una habitación de una reserva que aún no tiene liquidación `Final`. DEBE obtener la cotización mediante `LodgingQuoteQueryPort`, identificándola por `reservationRef` y `roomId`; `categoryRoom` no interviene en su selección ni validación. `SettlementCalculator` DEBE calcular `baseLodgingAmount` y `dynamicAdjustmentAmount` con los datos de la cotización, y `lodgingAmount` DEBE ser la suma de ambos. El sistema DEBE usar el canal, la OTA y la comisión informados por Módulo 2 y las mismas reglas de cálculo que `Generar liquidación`. Si la reserva no informa canal, DEBE tratarse como canal directo y no aplicar comisión. En la respuesta informativa, `categoryRoom` DEBE proceder de la cotización y nunca del parámetro de la petición.
 - **FR-010**: El sistema DEBE identificar explícitamente toda liquidación informativa y distinguirla de una liquidación `Final`.
 - **FR-011**: El sistema NO DEBE guardar la liquidación informativa ni tratarla como liquidación existente de la estancia.
-- **FR-012**: El sistema DEBE informar el motivo cuando no pueda calcular la liquidación informativa porque la reserva o la cotización no existen, falta la comisión de una reserva OTA, Módulo 2 no responde o devuelve una respuesta con estructura inválida, o la comisión recibida es un valor numérico menor que 0 o mayor que 100. DEBE informar la respuesta estructuralmente inválida como falla de comunicación, distinguirla de la ausencia de datos y de una comisión inválida, y no devolver valores parciales.
-- **FR-013**: El sistema NO DEBE tratar como consulta de OTA ni como consulta interna de Módulo 1 una solicitud sin identidad válida de OTA que pretenda acceder a liquidaciones de reservas OTA. Solo Módulo 1, como módulo interno, puede consultar una habitación y recibir la liquidación informativa.
+- **FR-012**: El sistema DEBE informar el motivo cuando no pueda calcular la liquidación informativa porque no existe la reserva o la cotización identificada mediante `reservationRef` y `roomId`, falta la comisión de una reserva OTA, Módulo 2 no responde o devuelve una respuesta con estructura inválida, o la comisión recibida es un valor numérico menor que 0 o mayor que 100. DEBE informar la respuesta estructuralmente inválida como falla de comunicación, distinguirla de la ausencia de datos y de una comisión inválida, y no devolver valores parciales.
+- **FR-013**: El sistema DEBE tratar una solicitud sin token como una consulta interna de Módulo 1 cuando incluye `reservationRef` y `roomId`; si falta alguno de los dos, DEBE rechazarla sin revelar información financiera. Una solicitud autenticada con token inválido o con un rol distinto de OTA DEBE rechazarse sin revelar información financiera. Solo una OTA con identidad válida puede consultar las liquidaciones de sus reservas y solo Módulo 1, como módulo interno, puede recibir la liquidación informativa.
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
 - **Consulta de liquidación**: Solicitud de `Módulo 1` para una habitación de una reserva o de una OTA para una reserva propia, que obtiene las liquidaciones `Final` disponibles o una liquidación informativa para Módulo 1.
 - **Liquidación informativa**: Resultado calculado al consultar una habitación sin check-out, solo para `Módulo 1`; muestra el desglose que tendría la liquidación `Final`, no se guarda y no es base de una factura.
-- **Resultado de consulta**: Desglose de hospedaje, comisión OTA e ingreso neto, con identificación del resultado como `Final` o informativo y la factura definitiva asociada cuando ya exista; o indicación explícita de ausencia o imposibilidad de cálculo.
+- **Resultado de consulta**: Desglose de `baseLodgingAmount`, `dynamicAdjustmentAmount`, `lodgingAmount` —la suma de ambos—, comisión OTA e ingreso neto, con identificación del resultado como `Final` o informativo y la factura definitiva asociada cuando ya exista; o indicación explícita de ausencia o imposibilidad de cálculo.
 - **Ámbito de acceso por actor**: `Módulo 1` consulta la liquidación de la habitación de una reserva que gestiona; una OTA consulta las liquidaciones de las habitaciones con check-out de sus propias reservas.
 
 ### Reglas de negocio
@@ -136,14 +136,14 @@ Como `Módulo 1` o como OTA identificada con su propia identidad, quiero recibir
 - **BR-003**: El desglose refleja los valores producidos por `Generar liquidación` y `Generar factura final`, sin reinterpretarlos; la liquidación informativa refleja los valores que tendría la `Final` con los mismos datos.
 - **BR-004**: Una liquidación inexistente nunca se representa con valores en cero; su ausencia se informa explícitamente.
 - **BR-005**: La liquidación informativa no es una liquidación guardada, no puede consultarse como registro posterior y no sustituye ni condiciona la liquidación `Final` que genera el check-out.
-- **BR-006**: Una solicitud para consultar liquidaciones de reservas OTA requiere la identidad válida de la OTA correspondiente; una solicitud sin esa identidad no accede a dichas liquidaciones ni recibe la liquidación informativa, reservada a Módulo 1.
+- **BR-006**: Una solicitud sin token es una consulta interna de Módulo 1 solo si incluye `reservationRef` y `roomId`. Una solicitud autenticada requiere la identidad válida de la OTA correspondiente; con token inválido o con un rol distinto de OTA no accede a liquidaciones de reservas OTA. La liquidación informativa se reserva a Módulo 1.
 
 ## Requisitos no funcionales
 
 - **NFR-001**: Rendimiento: el 95% de las consultas responde en menos de 800 ms en condiciones normales.
-- **NFR-002**: Consistencia: una consulta de Módulo 1 concurrente con el procesamiento asíncrono del check-out debe devolver la liquidación informativa o la `Final`, nunca un estado intermedio o un desglose parcial. La informativa debe coincidir con la `Final` cuando no cambien los datos de la reserva ni de la cotización.
+- **NFR-002**: Consistencia: una consulta de Módulo 1 concurrente con el procesamiento asíncrono del check-out debe devolver la liquidación informativa o la `Final`, nunca un estado intermedio o un desglose parcial. La informativa debe coincidir con la `Final` en `baseLodgingAmount`, `dynamicAdjustmentAmount`, `lodgingAmount` —la suma de ambos—, comisión e ingreso neto cuando no cambien los datos de la reserva ni de la cotización.
 - **NFR-003**: Confidencialidad: ninguna OTA debe acceder a liquidaciones de reservas de canal directo o de otra OTA.
-- **NFR-004**: Privacidad: el resultado no debe exponer información personal del huésped ni datos migratorios que no sean necesarios para el proceso financiero.
+- **NFR-004**: Privacidad: el resultado no debe exponer información personal del huésped, datos migratorios ni `billingCustomer`.
 
 ## Criterios de éxito *(obligatorio)*
 
@@ -156,6 +156,6 @@ Como `Módulo 1` o como OTA identificada con su propia identidad, quiero recibir
 - **SC-005**: El 100% de las consultas repetidas sobre una liquidación `Final` sin cambios en los datos devuelve un resultado idéntico.
 - **SC-006**: El 100% de las consultas de Módulo 1 sobre una habitación sin check-out, con reserva y cotización válidas, devuelve la liquidación informativa.
 - **SC-007**: El 100% de las liquidaciones informativas se identifica como informativo y el 0% se guarda como liquidación de la estancia.
-- **SC-008**: El 100% de las liquidaciones informativas coincide con la `Final` cuando no cambian los datos de la reserva ni de la cotización.
+- **SC-008**: El 100% de las liquidaciones informativas coincide con la `Final` en `baseLodgingAmount`, `dynamicAdjustmentAmount`, `lodgingAmount` —la suma de ambos—, comisión e ingreso neto cuando no cambian los datos de la reserva ni de la cotización.
 - **SC-009**: El 100% de las consultas informativas que no pueden calcularse por ausencia de reserva, cotización o comisión, respuesta estructuralmente inválida de Módulo 2 o comisión numérica menor que 0 o mayor que 100 informa el motivo correspondiente sin valores parciales, distinguiendo falla de comunicación, ausencia de datos y comisión inválida.
-- **SC-010**: El 0% de las consultas sin identidad válida de OTA accede a liquidaciones de reservas OTA.
+- **SC-010**: El 100% de las solicitudes autenticadas con token inválido o con un rol distinto de OTA, y de las solicitudes sin token que no incluyen `reservationRef` y `roomId`, se rechaza sin revelar información financiera de reservas OTA.

@@ -1,6 +1,6 @@
 # Contrato REST: Cotizar hospedaje
 
-**Feature**: 005 Consultar tarifa dinámica — HU4 (Cotización de hospedaje)
+**Feature**: 005 Consultar tarifa dinámica — HU3 (Cotización de hospedaje)
 **Spec**: [consultar_tarifa_dinamica.md](../../1-functional/consultar_tarifa_dinamica.md)
 **Plan**: [plan.md](../plan.md)
 **Proyecto base**: [plan-tecnico-base.md](../../../../docs/plan-tecnico-base.md)
@@ -19,7 +19,7 @@
 
 **Módulo 2** solicita la cotización del hospedaje de **una habitación** cuando crea una reserva. Módulo 3 calcula la tarifa dinámica de cada noche, guarda la cotización y devuelve el valor de cada noche y el total [SPEC FR-012] [BASE].
 
-Con esto el cliente ve el valor antes de confirmar y en el check-out se liquida exactamente ese valor: `Generar liquidación` (007) toma el valor de hospedaje de la cotización guardada y no lo recalcula [SPEC HU4; BASE].
+Con esto el cliente ve el valor antes de confirmar y en el check-out se liquida exactamente ese valor: `Generar liquidación` (007) toma el valor de hospedaje de la cotización guardada y no lo recalcula [SPEC HU3; BASE].
 
 La cotización es **inmutable**: no se modifica ni se recalcula aunque cambien después las reglas de temporada o la tarifa base [SPEC FR-013, BR-006].
 
@@ -47,7 +47,7 @@ Cualquier solicitud que traiga un JWT (de OTA o de Administrador) se rechaza con
 
 | Campo | Tipo | Obligatorio | Descripción | Origen |
 |---|---|---|---|---|
-| `roomType` | string | Sí | Tipo de habitación a cotizar (por ejemplo `DOBLE`). Es el mismo valor que Módulo 1 llama `categoryRoom`. | [SPEC FR-012] [BASE] |
+| `roomId` | string (UUID) | Sí | Identificador de la habitación a cotizar. | [SPEC FR-012] [PLAN] |
 | `checkInDate` | date `YYYY-MM-DD` | Sí | Fecha de entrada: primera noche cotizada. | [SPEC FR-012] [BASE] |
 | `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha de salida, **exclusiva**: la noche de esa fecha no se cotiza. Posterior a `checkInDate`. | [SPEC FR-012] [BASE] |
 
@@ -62,7 +62,7 @@ Accept: application/json
 X-Correlation-Id: 4d7e1b2a-9c3f-4a58-8e60-1b2c3d4e5f60
 
 {
-  "roomType": "DOBLE",
+  "roomId": "3f2b8c1e-5a47-4d09-9b6e-1c2d3e4f5a6b",
   "checkInDate": "2026-12-23",
   "checkOutDate": "2026-12-26"
 }
@@ -77,10 +77,10 @@ X-Correlation-Id: 4d7e1b2a-9c3f-4a58-8e60-1b2c3d4e5f60
 3. **Tarifa base de Módulo 1**: cada noche pide su tarifa base a Módulo 1 mediante `GetBaseRateUseCase` de 004. Si Módulo 1 no reporta tarifa para **alguna** noche, o no está disponible, la solicitud falla completa y no se guarda nada, ni parcial ni estimada [SPEC FR-015, NFR-003] [004].
 4. **Total**: suma exacta de la tarifa de cada noche, con `Money` (decimal, *half-up* a 2 decimales, moneda `COP`), nunca con `number` [PLAN].
 5. **Identificador**: Módulo 3 genera un `quoteId` (UUID) al guardar la cotización y lo devuelve en la respuesta [PLAN].
-6. **Qué se guarda**: la cotización (`quoteId`, `roomType`, `checkInDate`, `checkOutDate`, `currency`, `lodgingAmount`) y, por cada noche, `night_date`, `base_rate`, `season_name`, `adjustment_percent` y `rate`, para poder reconstruir cómo se compuso cada valor [SPEC FR-009, NFR-004] [PLAN].
+6. **Qué se guarda**: la cotización (`quoteId`, `roomId`, `checkInDate`, `checkOutDate`, `currency`, `lodgingAmount`) y, por cada noche, `night_date`, `base_rate`, `season_name`, `adjustment_percent` y `rate`, para poder reconstruir cómo se compuso cada valor [SPEC FR-009, NFR-004] [PLAN].
 7. **Todo o nada**: la cotización y todas sus noches se guardan en **una sola transacción**. Si falla el cálculo de cualquier noche o la inserción, no queda ninguna cotización parcial [SPEC FR-015, SC-008] [PLAN].
 8. **Inmutable por diseño**: las tablas `lodging_quote` y `lodging_quote_night` solo reciben `INSERT`; no existe ningún camino de código que las actualice o borre [SPEC FR-013] [PLAN].
-9. **Sin idempotencia**: dos solicitudes idénticas crean dos cotizaciones con `quoteId` distintos. 007 las trata como equivalentes (mismo tipo y mismas fechas) [PLAN].
+9. **Sin idempotencia**: dos solicitudes idénticas crean dos cotizaciones con `quoteId` distintos. 007 las trata como equivalentes (misma habitación y mismas fechas) [PLAN].
 10. **Salida anticipada**: el check-out nunca invoca esta operación; se liquida el valor de la cotización guardada [SPEC FR-014] [PLAN].
 
 ---
@@ -136,7 +136,7 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 
 ## 6. Garantías para quien llama
 
-- **Valor que no cambia**: el `lodgingAmount` y el valor de cada noche devueltos son los que 007 usará al liquidar, sin recalcular [SPEC HU4, FR-013].
+- **Valor que no cambia**: el `lodgingAmount` y el valor de cada noche devueltos son los que 007 usará al liquidar, sin recalcular [SPEC HU3, FR-013].
 - **Todo o nada**: nunca existe una cotización parcial [SPEC FR-015].
 - **Consistencia con la consulta**: el valor de cada noche sale del mismo cálculo que [`GET /pricing/dynamic-rate`](./GET-pricing-dynamic-rate.md) [PLAN].
 - **Lectura posterior**: las cotizaciones guardadas se leen mediante [`LodgingQuoteQueryPort`](./PORT-find-lodging-quotes-by-ids.md), que es lo que consume 007 [PLAN].

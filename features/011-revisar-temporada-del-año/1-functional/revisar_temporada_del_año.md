@@ -70,7 +70,7 @@ Como Administrador, quiero revisar el calendario de temporadas antes de actualiz
 
 ### Casos límite
 
-- Fechas fuera del rango definido del calendario anual: el sistema debe tratarlas como temporada regular por defecto cuando no haya clasificación explícita.
+- Fechas sin clasificación propia en el año consultado: el sistema debe considerar primero si una temporada BASE del año anterior se prolonga hasta esa fecha; si no hay clasificación explícita propia ni heredada, debe tratarlas como temporada regular por defecto.
 - Rango de fechas inválido en la revisión del calendario: la consulta no debe aceptar una fecha de fin anterior a la fecha de inicio.
 - Solapamiento entre temporadas: el sistema debe señalar el conflicto y no asumir una prioridad implícita.
 - Duplicidad de la misma fecha en más de un período: debe rechazarse o destacarse como inconsistente antes de su uso operativo.
@@ -103,6 +103,7 @@ Como Administrador, quiero revisar el calendario de temporadas antes de actualiz
 - **BR-003**: Si una fecha no tiene una temporada configurada explícitamente, el sistema la toma como temporada regular para cálculos de tarifa.
 - **BR-004**: La clasificación anual es la fuente oficial de la temporada aplicable a cada fecha; debe ser coherente y no ambigua antes de usarse en la tarifa dinámica.
 - **BR-005**: Un rango de fechas inválido o una superposición de temporadas no puede resolverse implícitamente; debe ser rechazado o identificado como inconsistencia explícita.
+- **BR-006**: Un período base pertenece al año de su fecha de inicio y puede extenderse hasta el año inmediatamente siguiente; al revisar o resolver una fecha se deben considerar los períodos del año anterior que aún la cubran, y no se permiten solapamientos BASE entre años.
 
 ## Requisitos no funcionales
 
