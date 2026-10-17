@@ -45,14 +45,14 @@ Authorization: Bearer <token OTA>
 
 ### Respuesta de Módulo 1
 
-Devuelve un objeto individual con `settlementType` `FINAL` o `INFORMATIVE` y los campos de respuesta descritos a continuación. La liquidación `FINAL` se consulta mediante `(reservationRef, roomId)` y `categoryRoom` se proyecta desde la liquidación. Si no existe, la liquidación informativa obtiene la cotización mediante `LodgingQuoteQueryPort` y esos mismos identificadores; `categoryRoom` no interviene en la selección ni en la validación y se proyecta desde la cotización. Los valores `baseLodgingAmount` y `dynamicAdjustmentAmount` los provee la cotización y los calcula `SettlementCalculator`; `lodgingAmount` es su suma. La liquidación informativa solo está disponible para Módulo 1 y lleva `invoice: null` [SPEC FR-003, FR-009, FR-010].
+Devuelve un objeto individual con `settlementType` `FINAL` o `INFORMATIVE` y los campos de respuesta descritos a continuación. La liquidación `FINAL` se consulta mediante `(reservationRef, roomId)` y `categoryRoom` se proyecta desde la liquidación. Si no existe, se obtiene la reserva mediante `ReservationClientPort`, se toman sus `quoteIds` y se llama a `LodgingQuoteQueryPort.findByIds`; se elige la cotización cuyo `roomId` coincide con el consultado. `categoryRoom` no interviene en la selección ni en la validación. Como la cotización no incluye `categoryRoom` ni `roomType`, en la respuesta informativa `categoryRoom` es `null` y nunca se toma del parámetro de la petición. `lodgingAmount` sale de la cotización (o de la liquidación FINAL); `baseLodgingAmount` es la suma de `baseRate` de las noches de la cotización y `dynamicAdjustmentAmount = lodgingAmount − baseLodgingAmount`, por lo que siempre se cumple `lodgingAmount = baseLodgingAmount + dynamicAdjustmentAmount`. La liquidación informativa solo está disponible para Módulo 1 y lleva `invoice: null` [SPEC FR-003, FR-009, FR-010].
 
 ```json
 {
   "settlementType": "INFORMATIVE",
   "reservationRef": "RES-000789",
   "roomId": "9c8b7a6f-5e4d-4c2b-9a0f-123456789abc",
-  "categoryRoom": "DOBLE",
+  "categoryRoom": null,
   "channel": "OTA",
   "otaId": "expedia",
   "currency": "COP",
@@ -115,15 +115,15 @@ Devuelve todas las liquidaciones `FINAL` de habitaciones de la reserva que ya tu
 | `settlementType` | string | `FINAL` para liquidación definitiva o `INFORMATIVE` para informativa. |
 | `reservationRef` | string | Referencia opaca de reserva. |
 | `roomId` | UUID | Habitación de la reserva. |
-| `categoryRoom` | string | Tipo de habitación informativo, obtenido de la liquidación `FINAL` o de la cotización para la informativa; nunca del parámetro de la petición. |
+| `categoryRoom` | string o null | Tipo de habitación informativo, obtenido de la liquidación `FINAL`; es `null` en la respuesta `INFORMATIVE` porque la cotización no contiene este dato. Nunca se toma del parámetro de la petición. |
 | `channel` | string | `DIRECT` o `OTA`, obtenido de la reserva. |
 | `otaId` | string o null | Identidad de OTA si aplica; `null` cuando `channel = DIRECT`. |
 | `currency` | string | `COP`. |
-| `breakdown` | objeto | `baseLodgingAmount`, `dynamicAdjustmentAmount`, `lodgingAmount`, `otaCommissionPercentage`, `otaCommissionAmount`, `netIncome`. En una `FINAL`, `baseLodgingAmount` y `dynamicAdjustmentAmount` son datos provistos por la liquidación de 007; en una informativa, los provee la cotización de 005 y los calcula `SettlementCalculator`. Los tres importes son decimales en texto y `lodgingAmount` es la suma de `baseLodgingAmount` y `dynamicAdjustmentAmount`. En canal `DIRECT` también se informan ambos importes y se mantiene la suma; `otaCommissionPercentage` es `null`, `otaCommissionAmount` es `"0.00"` y `netIncome` es igual a `lodgingAmount`. El ingreso neto OTA es hospedaje menos comisión y no incluye IVA. |
+| `breakdown` | objeto | `baseLodgingAmount`, `dynamicAdjustmentAmount`, `lodgingAmount`, `otaCommissionPercentage`, `otaCommissionAmount`, `netIncome`. En una `FINAL`, `lodgingAmount`, `baseLodgingAmount` y `dynamicAdjustmentAmount` salen de la liquidación de 007; en una informativa, `lodgingAmount` sale de la cotización de 005, `baseLodgingAmount` es la suma de `baseRate` de sus noches y `dynamicAdjustmentAmount = lodgingAmount − baseLodgingAmount`. Los tres importes son decimales en texto y siempre se cumple `lodgingAmount = baseLodgingAmount + dynamicAdjustmentAmount`. En canal `DIRECT` también se informan ambos importes y se mantiene esta igualdad; `otaCommissionPercentage` es `null`, `otaCommissionAmount` es `"0.00"` y `netIncome` es igual a `lodgingAmount`. El ingreso neto OTA es hospedaje menos comisión y no incluye IVA. |
 | `invoice` | objeto o null | Subconjunto de factura 006/008: `invoiceId`, `invoiceNumber`, `issuedAt`, `vatRateApplied`, `vatAmount`, `totalAmount`, `status`. Nulo si no hay factura emitida o si es informativa. |
 | `generatedAt` | fecha y hora ISO 8601 | Momento del cálculo o generación. |
 
-Para Módulo 1, una consulta sin liquidación final calcula en memoria una informativa a partir de `SettlementCalculator` de 007, la reserva obtenida por `ReservationClientPort` y la cotización consultada mediante `LodgingQuoteQueryPort`. No la persiste. Para OTA, no se devuelve una informativa [SPEC FR-009, FR-011].
+Para Módulo 1, una consulta sin liquidación final calcula en memoria una informativa a partir de `SettlementCalculator` de 007, la reserva obtenida por `ReservationClientPort` y la cotización seleccionada por `roomId`: se pasan a `LodgingQuoteQueryPort.findByIds` los `quoteIds` de la reserva. No la persiste. Para OTA, no se devuelve una informativa [SPEC FR-009, FR-011].
 
 ## 4. Cómo interpreta cada respuesta
 
