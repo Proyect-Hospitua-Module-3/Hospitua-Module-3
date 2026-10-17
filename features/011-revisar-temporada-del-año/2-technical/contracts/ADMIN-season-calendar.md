@@ -40,7 +40,7 @@ Headers:
 | `asOf` | datetime ISO 8601 UTC | No | Revisión efectiva en ese instante; por defecto hora DB actual |
 | `revision` | integer | No | Selecciona una revisión histórica de ese año; mutuamente excluyente con `asOf` |
 
-`from` y `to` se envían juntos o se omiten ambos. Al omitirlos se consulta el año completo. Un rango no puede cruzar de año; una consulta de varias noches que cruce años la compone 005 con una resolución por cada fecha. Si se omiten `revision` y `asOf`, se lee la revisión actualmente efectiva.
+`from` y `to` se envían juntos o se omiten ambos. Al omitirlos se consulta el año completo. La ventana administrativa sigue limitada a un solo año; una consulta de varias noches que cruce años la compone 005 con una resolución por cada fecha. La respuesta de `GET` incluye por separado las entradas BASE de la revisión del año anterior que se prolongan al año consultado. Si se omiten `revision` y `asOf`, se lee la revisión actualmente efectiva.
 
 ## 3. Cuerpo de `PUT`
 
@@ -62,6 +62,12 @@ Headers:
       "kind": "EXCEPTION",
       "startDate": "2026-07-04",
       "endDate": "2026-07-04"
+    },
+    {
+      "seasonId": "5dca644e-7a6a-4d2e-a9a5-1943188c4710",
+      "kind": "BASE",
+      "startDate": "2026-12-20",
+      "endDate": "2027-01-10"
     }
   ]
 }
@@ -71,12 +77,12 @@ Headers:
 |---|---|---:|---|
 | Path `year` | integer `YYYY` | Sí | Año calendario que se publica |
 | `expectedRevision` | integer \| `null` | No | Control optimista; si se envía debe coincidir con la revisión activa. `null` significa que se espera que aún no exista |
-| `entries` | array | Sí | Conjunto completo de entradas; `[]` es válido y resuelve todas las fechas al default |
+| `entries` | array | Sí | Conjunto completo de entradas propias del año; `[]` es válido y las fechas sin BASE heredada ni otra asignación resuelven al default |
 | `entries[].entryId` | UUID | No | Se conserva para entradas existentes; si no llega el sistema genera uno |
 | `entries[].seasonId` | UUID/string | Sí | Debe existir en catálogo de 009 |
 | `entries[].kind` | `BASE` \| `EXCEPTION` | Sí | Período base o excepción puntual |
-| `entries[].startDate` | date `YYYY-MM-DD` | Sí | Inclusivo y dentro del año |
-| `entries[].endDate` | date `YYYY-MM-DD` | Sí | Inclusivo; igual a `startDate` para excepción |
+| `entries[].startDate` | date `YYYY-MM-DD` | Sí | Inclusivo y dentro del año propietario (`year`) |
+| `entries[].endDate` | date `YYYY-MM-DD` | Sí | Inclusivo; para BASE puede extenderse hasta el año inmediatamente siguiente; para EXCEPTION debe ser igual a `startDate` y estar dentro del año propietario |
 
 `changedBy`, revisión, fechas de vigencia y marcas temporales no se aceptan del cliente: se derivan del JWT y de la base de datos. No se aceptan `name`, `color` o `adjustmentPercent` en las entradas; esos campos pertenecen a 009.
 
@@ -86,17 +92,18 @@ Headers:
 
 1. Autentica y autoriza Administrador antes de leer calendario.
 2. Valida `year`, `from`, `to` y `asOf`; un rango inválido devuelve `400` sin resultado parcial.
-3. Obtiene la revisión efectiva para el año e instante; si no hay ninguna publicada, retorna el calendario implícito vacío (`revision: 0`) y todas las fechas usan default. Una revisión histórica explícita inexistente sí devuelve `404`.
-4. Combina las entradas con el catálogo de 009 para incluir nombre, color y ajuste efectivo de cada temporada.
-5. Por fecha/rango solicitado, identifica `EXCEPTION` primero, luego `BASE`; si ninguna aplica, informa `DEFAULT` y la temporada regular.
-6. Devuelve los conflictos que detecte en datos heredados con fecha/rango, entradas en conflicto y `blocking: true`; la revisión permanece visible para auditoría, pero no es consumible por el cálculo de tarifa.
+3. Obtiene la revisión de `year` e instante; para una revisión explícita, usa su `effectiveAt` como instante de referencia para cargar la revisión anterior. Si no hay revisión de `year`, usa `revision: 0`; una revisión histórica explícita inexistente sí devuelve `404`.
+4. Carga también la revisión efectiva de `year - 1` al mismo instante y extrae las entradas BASE que se prolonguen a `year` como `carriedInEntries`.
+5. Combina las entradas propias y heredadas con el catálogo de 009 para incluir nombre, color y ajuste efectivo de cada temporada.
+6. Por fecha/rango solicitado, identifica `EXCEPTION` primero, luego un único `BASE` propio o heredado; si ninguna aplica, informa `DEFAULT` y la temporada regular.
+7. Devuelve los conflictos que detecte en datos heredados con fecha/rango, entradas en conflicto y `blocking: true`; la revisión permanece visible para auditoría, pero no es consumible por el cálculo de tarifa.
 
 ### `PUT`
 
 1. Autentica y autoriza antes de procesar.
-2. Verifica año, forma del cuerpo, fechas civiles, rango dentro del año y `startDate <= endDate`.
+2. Verifica año, forma del cuerpo y fechas civiles; `startDate` debe estar dentro del año propietario, `startDate <= endDate`, y una entrada BASE no puede terminar después del año siguiente. Una EXCEPTION debe ser puntual y estar dentro del año propietario.
 3. Verifica en catálogo 009 que cada `seasonId` exista y que `expectedRevision` coincida con la revisión activa.
-4. Valida el conjunto completo: los rangos `BASE` no se pueden solapar; `EXCEPTION` debe ser puntual; dos excepciones no pueden tener la misma fecha. Una excepción sí puede coincidir con un período base y lo sobrescribe.
+4. Valida el conjunto completo junto con las entradas BASE de las revisiones efectivas de los años anterior y siguiente a `effectiveAt`: rangos BASE no pueden compartir fechas aunque pertenezcan a años distintos; EXCEPTION debe ser puntual y dos excepciones del mismo año no pueden tener la misma fecha. Una excepción sí puede coincidir con un período BASE y lo sobrescribe.
 5. Si alguna entrada/referencia/conflicto es inválido, rechaza todo el conjunto y conserva revisión activa e historial.
 6. En una única transacción, crea la nueva revisión con número monotónico, `effectiveAt` de la base de datos, actor autenticado y todas las entradas; activa la nueva y conserva la anterior como histórica.
 7. Un `expectedRevision` obsoleto produce `409 SEASON_CALENDAR_CONFLICT`; no se reintenta con una sobrescritura automática.
@@ -147,21 +154,37 @@ Las revisiones rigen cálculos iniciados con `asOf >= effectiveAt`. Una cotizaci
       }
     }
   ],
+  "carriedInEntries": [
+    {
+      "entryId": "7995b0b5-14b6-4d37-9827-40246f45e1c2",
+      "ownerYear": 2025,
+      "ownerRevision": 3,
+      "kind": "BASE",
+      "startDate": "2025-12-20",
+      "endDate": "2026-01-10",
+      "season": {
+        "seasonId": "5dca644e-7a6a-4d2e-a9a5-1943188c4710",
+        "name": "Temporada alta",
+        "color": "#C0392B",
+        "adjustmentPercent": "25.00"
+      }
+    }
+  ],
   "unclassifiedRanges": [
-    { "from": "2026-01-01", "to": "2026-05-31", "resolvedAs": "DEFAULT" },
+    { "from": "2026-01-11", "to": "2026-05-31", "resolvedAs": "DEFAULT" },
     { "from": "2026-09-01", "to": "2026-12-31", "resolvedAs": "DEFAULT" }
   ],
   "conflicts": []
 }
 ```
 
-`conflicts[]` tiene forma `{ code, blocking, dates, entryIds, message }`; cuando no hay conflictos es `[]`. Rangos no clasificados se devuelven compactados en secuencias contiguas, respetando la ventana consultada; no se crea una entrada persistida solo por usar default. Si se detectan datos heredados corruptos, `GET` los incluye con `blocking: true` para que el Administrador pueda revisarlos; el puerto de resolución para 005 devuelve error en vez de clasificación.
+`entries[]` contiene solo las entradas propiedad de la revisión solicitada. `carriedInEntries[]` contiene las entradas BASE de la revisión efectiva del año anterior que se prolongan a `year`; son de solo lectura en esta respuesta, conservan su intervalo original y muestran `ownerYear`/`ownerRevision`. Para la vista y `unclassifiedRanges`, se consideran tanto `entries` como `carriedInEntries`. `conflicts[]` tiene forma `{ code, blocking, dates, entryIds, message }`; cuando no hay conflictos es `[]`. Rangos no clasificados se devuelven compactados en secuencias contiguas, respetando la ventana consultada; no se crea una entrada persistida solo por usar default. Si se detectan datos heredados corruptos, `GET` los incluye con `blocking: true` para que el Administrador pueda revisarlos; el puerto de resolución para 005 devuelve error en vez de clasificación.
 
-Si no existe revisión publicada y no se solicita una revisión histórica concreta, `GET` devuelve `200` con `revision: 0`, `effectiveAt`, `changedBy` y `changedAt` en `null`, `entries: []`, todo el rango consultado en `unclassifiedRanges` y la temporada default. `revision: 0` identifica el calendario implícito sin configuración, no una revisión persistida.
+Si no existe revisión publicada para `year` y no se solicita una revisión histórica concreta, `GET` devuelve `200` con `revision: 0`, `effectiveAt`, `changedBy` y `changedAt` en `null`, y `entries: []`. Aun así consulta la revisión efectiva del año anterior para poblar `carriedInEntries` y clasificar las fechas cubiertas; solo el resto del rango va en `unclassifiedRanges` como default. `revision: 0` identifica que no hay configuración propia persistida para ese año.
 
 ### `PUT 200 OK`
 
-Devuelve los metadatos de la nueva revisión y el calendario efectivo: `year`, `revision`, `effectiveAt`, `changedBy`, `changedAt`, `entries[]` y `conflicts: []`. Los metadatos de catálogo se adjuntan como en `GET`.
+Devuelve los metadatos de la nueva revisión y el calendario efectivo: `year`, `revision`, `effectiveAt`, `changedBy`, `changedAt`, `entries[]`, `carriedInEntries[]`, `unclassifiedRanges[]` y `conflicts: []`. `carriedInEntries[]` se obtiene de la revisión efectiva del año anterior al `effectiveAt` de la revisión recién publicada. Los metadatos de catálogo se adjuntan como en `GET`.
 
 ## 6. Errores
 
@@ -169,12 +192,12 @@ Todos usan `{ errorCode, message, timestamp, path }` del `ApiError` compartido [
 
 | HTTP | `errorCode` | Cuándo ocurre | Reintentable |
 |---:|---|---|---:|
-| 400 | `INVALID_CALENDAR_RANGE` | Año/fecha inválidos, fechas fuera del año, `from > to`, entrada no puntual marcada como excepción | No |
+| 400 | `INVALID_CALENDAR_RANGE` | Año/fecha inválidos, ventana fuera del año, inicio fuera del año propietario, BASE que excede el año siguiente, `from > to`, o EXCEPTION no puntual/fuera del año propietario | No |
 | 401 | `UNAUTHENTICATED` | JWT ausente/inválido/expirado | No |
 | 403 | `FORBIDDEN` | JWT sin rol `Administrador` | No |
 | 400 | `INVALID_CALENDAR_RANGE` | Se envían `revision` y `asOf` a la vez | No |
 | 404 | `SEASON_CALENDAR_NOT_FOUND` | No existe la revisión histórica explícita solicitada | No |
-| 409 | `OVERLAPPING_SEASON_CALENDAR` | Dos rangos base comparten al menos un día | No |
+| 409 | `OVERLAPPING_SEASON_CALENDAR` | Dos rangos BASE de revisiones del mismo o de años vecinos comparten al menos un día | No |
 | 409 | `DUPLICATE_SEASON_EXCEPTION` | Más de una excepción para la misma fecha | No |
 | 409 | `SEASON_CALENDAR_CONFLICT` | `expectedRevision` desactualizado o carrera concurrente | No |
 | 422 | `SEASON_NOT_FOUND` | Un `seasonId` no existe en el catálogo de 009 | No |

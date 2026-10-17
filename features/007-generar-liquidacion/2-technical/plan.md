@@ -8,7 +8,7 @@
 
 `Generar liquidación` produce la liquidación `Final` de la estancia de cada habitación cuando se registra su check-out. Es el caso de uso núcleo del *bounded context* `settlement` y no tiene endpoint propio: solo lo incluyen (`<<include>>`) `Registrar Check-out` (010) y `Generar factura final` (006) [FR-001, FR-019].
 
-Enfoque técnico: el caso de uso `GenerateSettlementUseCase` recibe los datos del check-out (reserva, habitación, tipo de habitación y fechas reales), consulta la reserva a Módulo 2 para obtener sus `quoteIds`, el canal y, si es OTA, la OTA, su código de confirmación y la comisión. Luego elige la cotización guardada cuyo tipo de habitación coincide con el del check-out y calcula el ingreso neto con un servicio de dominio puro (`SettlementCalculator`): valor de hospedaje de la cotización menos la comisión OTA, sin IVA. Nunca recalcula la tarifa dinámica (regla 5 del plan base). La liquidación se guarda una sola vez por estancia (`UNIQUE(stay_id)`); un reenvío idéntico devuelve la existente y un intento con datos distintos se rechaza [FR-002, FR-005, FR-008, FR-010, FR-011, FR-020].
+Enfoque técnico: el caso de uso `GenerateSettlementUseCase` recibe los datos del check-out (reserva, habitación y fechas reales), consulta la reserva a Módulo 2 para obtener sus `quoteIds`, el canal y, si es OTA, la OTA, su código de confirmación y la comisión. Luego elige la cotización guardada de esa habitación (la de su `roomId`) y calcula el desglose con un servicio de dominio puro (`SettlementCalculator`): valor de hospedaje de la cotización, la parte de tarifa base y el ajuste de tarifa dinámica (informativo, tomados de las noches de la cotización), la comisión OTA y el ingreso neto, sin IVA. Nunca recalcula la tarifa dinámica (regla 5 del plan base). La liquidación se guarda una sola vez por estancia (`UNIQUE(stay_id)`); un reenvío idéntico devuelve la existente y un intento con datos distintos se rechaza [FR-002, FR-005, FR-008, FR-010, FR-011, FR-020].
 
 ## Technical Context
 
@@ -129,12 +129,13 @@ test/
 | `eventId` | UUID | Sí | Evento de Módulo 1 (trazabilidad, NFR-003) |
 | `stayId` | UUID | Sí | Evento — clave de idempotencia |
 | `reservationRef` | string | Sí | Evento — reserva a consultar en Módulo 2 |
-| `roomId` | UUID | Sí | Evento — habitación liquidada (FR-016) |
-| `categoryRoom` | string | Sí | Evento — tipo de habitación (nombre de Módulo 1); se compara con el `roomType` de la cotización para elegirla (FR-020) |
+| `roomId` | UUID | Sí | Evento — habitación liquidada; con él se elige su cotización entre los `quoteIds` de la reserva (FR-016, FR-020) |
+| `categoryRoom` | string | Sí | Evento — tipo de habitación (nombre de Módulo 1); informativo: se guarda, pero no interviene en la elección de la cotización, porque habitaciones del mismo tipo pueden tener tarifas base distintas (FR-016) |
 | `checkInDate`, `checkOutDate` | date | Sí | Evento — fechas **reales** (FR-016) |
-| `billingCustomer` | `{ name, taxId }` | No | Evento — se guarda para que 006 emita la factura |
 
 010 ya validó formato y fechas (FR-002/FR-003 de `registrar_checkout.md`); 007 vuelve a construir `DateRange` para no depender de esa validación.
+
+007 no recibe `billingCustomer`: 010 entrega los datos tributarios directamente a 006 y `settlement` no los guarda (plan base).
 
 ### Puertos
 
@@ -172,9 +173,9 @@ export interface SettlementRepositoryPort {
 2. **Reserva en Módulo 2**: `getReservation(reservationRef)`.
    - 404 → `ReservationNotFoundError` [FR-014].
    - Timeout (500 ms), 5xx o circuito abierto → `Module2UnavailableError`, reintentable [FR-021].
-3. **Elegir la cotización**: `findByIds(reservation.quoteIds)` y quedarse con las de `roomType` igual al `categoryRoom` del check-out (mismo valor, distinto nombre: `categoryRoom` es el nombre de Módulo 1 y `roomType` el de `pricing`) [FR-020].
+3. **Elegir la cotización**: `findByIds(reservation.quoteIds)` y quedarse con las de `roomId` igual al `roomId` del check-out [FR-020]. El `categoryRoom` no interviene.
    - Ninguna coincide → `QuoteNotFoundError` [FR-014].
-   - Varias coinciden (mismo tipo y mismo valor) → se toma la de menor `quoteId` para que el resultado sea siempre el mismo [NFR-001, casos límite].
+   - Varias coinciden (no debería ocurrir: una cotización por habitación) → se toma la de menor `quoteId` para que el resultado sea siempre el mismo [NFR-001, casos límite].
 4. **Canal**: `Channel` a partir de `reservation.channel`; sin canal informado → Directo [FR-003, FR-004].
    - Si es OTA: `CommissionPercentage.create(reservation.otaCommissionPercentage)`. Ausente → `MissingCommissionError`; negativo o mayor a 100 → `InvalidCommissionError`. Nunca se asume un porcentaje por defecto [FR-014, HU2 escenario 3].
 5. **Calcular** con `SettlementCalculator.calculate(quote, channel, commission)` (ver abajo) [FR-006, FR-007, FR-008].
@@ -189,12 +190,13 @@ El servicio no modifica la disponibilidad ni el estado de la habitación [FR-018
 Servicio de dominio puro, sin puertos ni I/O:
 
 - `lodgingAmount` = `quote.lodgingAmount` (con la moneda de la cotización, `COP`) [FR-002, BR-004].
+- `baseLodgingAmount` = suma de `baseRate` de las noches de la cotización; `dynamicAdjustmentAmount` = `lodgingAmount − baseLodgingAmount` (positivo, negativo o cero). Es informativo: no afecta la comisión ni el ingreso neto, y no recalcula la tarifa dinámica, solo resta valores ya guardados [FR-012, BR-004].
 - Directo: `commissionAmount = 0`, `netIncome = lodgingAmount` [FR-007].
 - OTA: `commissionAmount = lodgingAmount × porcentaje / 100`, redondeado half-up a 2 decimales con `Money`; `netIncome = lodgingAmount − commissionAmount` [FR-006, FR-008].
 - El IVA no entra en el cálculo; lo agrega 006 al emitir la factura [FR-013, BR-005].
 - Toda la aritmética usa `decimal.js` dentro de `Money`, nunca `number` de JavaScript [NFR-004].
 
-Ejemplo: cotización de 750.000 COP, canal OTA con 15 % → comisión 112.500 y neto 637.500.
+Ejemplo: cotización de 750.000 COP (tarifa base de las noches 700.000), canal OTA con 15 % → ajuste dinámico 50.000, comisión 112.500 y neto 637.500.
 
 **Salida anticipada**: el valor es siempre el de la cotización de la reserva; la liquidación solo registra las fechas reales [casos límite, BR-004].
 
@@ -213,8 +215,8 @@ Ejemplo: cotización de 750.000 COP, canal OTA con 15 % → comisión 112.500 y 
 | `ota_id`, `ota_confirmation_code` | text, nullable | Solo canal OTA |
 | `ota_commission_percentage` | numeric(5,2), nullable | Solo canal OTA; lo lee `ota-commission` (003) |
 | `currency` | char(3) | `COP` |
+| `base_lodging_amount`, `dynamic_adjustment_amount` | numeric(14,2) | Suma de tarifas base de la cotización y `lodging_amount − base_lodging_amount` (puede ser negativo) [FR-012] |
 | `lodging_amount`, `ota_commission_amount`, `net_income` | numeric(14,2) | Desglose [FR-012] |
-| `billing_customer_name`, `billing_customer_tax_id` | text, nullable | Datos tributarios mínimos para 006; nada más del huésped [NFR-006] |
 | `status` | text | Siempre `FINAL` [FR-009] |
 | `source_event_id` | uuid | Evento que la generó [NFR-003] |
 | `generated_at` | timestamptz | Hora de la base de datos [NFR-003] |
@@ -246,7 +248,7 @@ La tabla no tiene `UPDATE` en ningún camino de código: la liquidación es inmu
 
 007 no devuelve ninguna respuesta HTTP, así que no genera 5xx. Los 5xx que aparecen en este plan son los que *recibimos* de Módulo 2. Si un endpoint que reutilice este cálculo (002) recibe `Module2UnavailableError`, lo responde como 424 con `MODULE2_UNAVAILABLE` (plan base); no es una decisión de 007.
 
-Cada mensaje dice qué falló y con qué dato (reserva, tipo de habitación, OTA), para que recepción o facturación puedan corregirlo [NFR-005].
+Cada mensaje dice qué falló y con qué dato (reserva, habitación, OTA), para que recepción o facturación puedan corregirlo [NFR-005].
 
 ### Relación con 010, 006 y 002
 
@@ -260,7 +262,7 @@ Cada mensaje dice qué falló y con qué dato (reserva, tipo de habitación, OTA
 **Purpose**: Verificar que la base del proyecto y las piezas de `pricing` están disponibles
 
 - [ ] T001 Confirmar que el proyecto base (Fases 1 y 2 de `docs/plan-tecnico-base.md`) está completo: VOs compartidos (`Money`, `Channel`, `DateRange`), `PrismaService`, `ExceptionFilter` global y errores de dominio base
-- [ ] T002 Confirmar con la feature 005 que `lodging_quote` y `lodging_quote_night` existen y que `PrismaLodgingQuoteRepository` implementa `LodgingQuoteQueryPort.findByIds`; si aún no, acordarlo con su responsable antes de seguir
+- [ ] T002 Confirmar con la feature 005 que `lodging_quote` y `lodging_quote_night` existen, que la cotización expone `roomId` y la `baseRate` de cada noche, y que `PrismaLodgingQuoteRepository` implementa `LodgingQuoteQueryPort.findByIds`; si aún no, acordarlo con su responsable antes de seguir
 - [ ] T003 Agregar `MODULE2_BASE_URL` y `MODULE2_TIMEOUT_MS=500` a `.env.example` y al módulo de configuración; agregar las dependencias `decimal.js`, `opossum` y `@nestjs/axios`
 
 ---
@@ -293,8 +295,8 @@ Cada mensaje dice qué falló y con qué dato (reserva, tipo de habitación, OTA
 
 ### Tests for User Story 1
 
-- [ ] T013 [P] [US1] Unit test de `SettlementCalculator` para canal directo (neto = hospedaje, comisión 0, sin IVA) en `test/unit/domain/settlement/settlement-calculator.spec.ts`
-- [ ] T014 [P] [US1] Unit test de `GenerateSettlementService` con puertos mockeados: cotización elegida por `categoryRoom`, varias habitaciones, reenvío idéntico devuelve la existente sin llamar a Módulo 2, reserva inexistente → `ReservationNotFoundError`, sin cotización del tipo → `QuoteNotFoundError`, Módulo 2 caído → `Module2UnavailableError`, varias cotizaciones del mismo tipo → siempre la misma, en `test/unit/application/settlement/generate-settlement.service.spec.ts`
+- [ ] T013 [P] [US1] Unit test de `SettlementCalculator` para canal directo (neto = hospedaje, comisión 0, sin IVA; desglose base/dinámica, incluido un ajuste negativo) en `test/unit/domain/settlement/settlement-calculator.spec.ts`
+- [ ] T014 [P] [US1] Unit test de `GenerateSettlementService` con puertos mockeados: cotización elegida por `roomId` (dos habitaciones del mismo tipo con cotizaciones distintas), varias habitaciones, reenvío idéntico devuelve la existente sin llamar a Módulo 2, reserva inexistente → `ReservationNotFoundError`, sin cotización de la habitación → `QuoteNotFoundError`, Módulo 2 caído → `Module2UnavailableError`, varias cotizaciones de la misma habitación → siempre la de menor `quoteId`, en `test/unit/application/settlement/generate-settlement.service.spec.ts`
 - [ ] T015 [P] [US1] Integration test de `Module2ReservationClient` contra un servidor HTTP simulado: 200, 404, timeout de 500 ms, 5xx y circuito abierto, en `test/integration/http/module2-reservation.client.spec.ts`
 - [ ] T016 [P] [US1] Contract test de la respuesta de `GET /api/reservations/{reservationRef}` (campos y tipos acordados con Módulo 2) en `test/contract/settlement/module2-reservation.contract.spec.ts`
 - [ ] T017 [P] [US1] Integration test de `PrismaSettlementRepository` contra Postgres (Testcontainers): `insert`, `findByStayId` y dos `insert` simultáneos del mismo `stayId` que terminan en una sola fila, en `test/integration/persistence/settlement/prisma-settlement.repository.spec.ts`

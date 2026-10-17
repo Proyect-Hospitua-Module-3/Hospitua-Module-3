@@ -16,14 +16,14 @@ Como sistema de gestión hotelera, quiero generar la liquidación `Final` de la 
 **Escenarios de aceptación**:
 
 1. **Escenario**: Check-out de una reserva de canal directo
-   - **Dado** que Módulo 2 informa que la reserva es de canal directo y la reserva tiene guardada la cotización del hospedaje para el tipo de habitación del check-out
+   - **Dado** que Módulo 2 informa que la reserva es de canal directo y la reserva tiene guardada la cotización del hospedaje de la habitación del check-out
    - **Cuando** se registra el check-out de esa habitación
    - **Entonces** el sistema genera una liquidación `Final` cuyo ingreso neto es igual al valor de hospedaje de la cotización, sin ningún descuento de comisión
 
 2. **Escenario**: Reserva con varias habitaciones
    - **Dado** que una reserva incluye varias habitaciones, cada una con su propia cotización
    - **Cuando** se registra el check-out de cada habitación
-   - **Entonces** el sistema genera una liquidación `Final` independiente por cada habitación, usando la cotización que corresponde a su tipo de habitación
+   - **Entonces** el sistema genera una liquidación `Final` independiente por cada habitación, usando la cotización de esa habitación
 
 3. **Escenario**: Liquidación `Final` no se recalcula por sí sola
    - **Dado** que ya existe una liquidación `Final` generada para la estancia de una habitación
@@ -36,7 +36,7 @@ Como sistema de gestión hotelera, quiero generar la liquidación `Final` de la 
    - **Entonces** el sistema responde de forma idempotente devolviendo la liquidación `Final` existente, sin crear un duplicado
 
 5. **Escenario**: Reserva o cotización inexistente
-   - **Dado** que Módulo 2 responde que la reserva no existe, o que la reserva no tiene una cotización para el tipo de habitación del check-out
+   - **Dado** que Módulo 2 responde que la reserva no existe, o que la reserva no tiene una cotización para la habitación del check-out
    - **Cuando** el sistema intenta generar la liquidación
    - **Entonces** rechaza la generación con un motivo específico y no produce ningún ingreso neto
 
@@ -97,8 +97,9 @@ Como sistema de gestión hotelera, quiero garantizar que ninguna estancia tenga 
 ### Casos límite
 
 - La estancia fue cancelada en Módulo 2 antes de llegar al check-out: `Registrar Check-out` nunca se ejecuta para esa estancia, por lo que `Generar liquidación` tampoco se ejecuta y no debe existir ningún registro de liquidación.
-- La reserva no existe en Módulo 2, o ninguna de sus cotizaciones corresponde al tipo de habitación del check-out: la liquidación no debe generarse con un ingreso neto parcial o inventado.
-- La reserva tiene varias cotizaciones del mismo tipo de habitación con el mismo valor (mismo tipo y mismas fechas reservadas): son equivalentes, por lo que se usa cualquiera de ellas.
+- La reserva no existe en Módulo 2, o ninguna de sus cotizaciones corresponde a la habitación del check-out: la liquidación no debe generarse con un ingreso neto parcial o inventado.
+- Dos habitaciones del mismo tipo pueden tener tarifas base distintas: cada una se liquida con su propia cotización, elegida por la habitación y no por el tipo. El tipo de habitación que informa Módulo 1 es solo informativo.
+- La reserva tiene más de una cotización para la misma habitación (no debería ocurrir): se usa siempre la misma, la de menor identificador, para que el resultado sea determinista.
 - Módulo 2 no responde (caída o tiempo de espera agotado): la liquidación no se genera con datos supuestos; el check-out se reintenta hasta que Módulo 2 responda.
 - El porcentaje de comisión OTA suministrado por Módulo 2 es inválido (negativo o mayor al 100%): el sistema rechaza la generación de la liquidación y no sustituye el valor inválido por una comisión estimada.
 - Módulo 2 no informa un canal de origen para la reserva: el sistema asume canal directo y no aplica comisión.
@@ -121,15 +122,15 @@ Como sistema de gestión hotelera, quiero garantizar que ninguna estancia tenga 
 - **FR-009**: El sistema DEBE generar la liquidación con estado `Final` desde su creación; el sistema no guarda ningún estado intermedio o preliminar, dado que solo se genera en el check-out.
 - **FR-010**: El sistema DEBE mantener una única liquidación `Final` por estancia; no debe generar una segunda liquidación `Final` para la misma estancia.
 - **FR-011**: El sistema DEBE responder de forma idempotente ante un reenvío del mismo evento de check-out, devolviendo la liquidación `Final` ya generada sin crear un duplicado ni recalcularla.
-- **FR-012**: El sistema DEBE entregar un desglose de la liquidación que incluya el valor de hospedaje, el canal de origen, el porcentaje y valor de la comisión OTA (si aplica), y el ingreso neto resultante.
+- **FR-012**: El sistema DEBE entregar un desglose de la liquidación que incluya el valor de hospedaje, el canal de origen, la parte del valor de hospedaje que corresponde a la tarifa base y el ajuste que aportó la tarifa dinámica (que puede ser negativo), el porcentaje y valor de la comisión OTA (si aplica), y el ingreso neto resultante. El ajuste de tarifa dinámica es informativo: no cambia la comisión ni el ingreso neto, y se toma de la cotización guardada sin recalcular.
 - **FR-013**: El sistema NO DEBE incluir el Impuesto al Valor Agregado (IVA) dentro del ingreso neto de la liquidación.
-- **FR-014**: El sistema DEBE rechazar la generación de la liquidación cuando la reserva no exista en Módulo 2, cuando la reserva no tenga una cotización para el tipo de habitación del check-out, o cuando falte el porcentaje de comisión requerido para un canal OTA.
+- **FR-014**: El sistema DEBE rechazar la generación de la liquidación cuando la reserva no exista en Módulo 2, cuando la reserva no tenga una cotización para la habitación del check-out, o cuando falte el porcentaje de comisión requerido para un canal OTA.
 - **FR-015**: El sistema DEBE devolver un motivo identificable y accionable cuando rechace la generación de una liquidación.
 - **FR-016**: El sistema DEBE identificar la reserva, la habitación, el tipo de habitación, las fechas de la estancia y el canal de origen asociados a cada liquidación generada.
 - **FR-017**: El sistema DEBE permitir consultar posteriormente una liquidación ya generada sin recalcularla, para que su valor pueda reutilizarse en la generación de la factura final.
 - **FR-018**: El sistema NO DEBE modificar el estado de disponibilidad, ocupación o bloqueo de la habitación como efecto de generar una liquidación.
 - **FR-019**: El sistema DEBE permitir que `Generar liquidación` sea incluido (`<<include>>`) también por `Generar factura final`, que es el caso de uso que produce la factura fiscal definitiva a partir de la liquidación `Final`; `Generar liquidación` no invoca ni emite la factura por sí mismo.
-- **FR-020**: El sistema DEBE generar una liquidación por cada habitación: cuando una reserva incluye varias habitaciones, cada check-out de habitación produce su propia liquidación, usando la cotización cuyo tipo de habitación coincide con el informado por Módulo 1 en el evento.
+- **FR-020**: El sistema DEBE generar una liquidación por cada habitación: cuando una reserva incluye varias habitaciones, cada check-out de habitación produce su propia liquidación, usando la cotización cuya habitación coincide con la que informa Módulo 1 en el evento.
 - **FR-021**: El sistema NO DEBE generar la liquidación cuando Módulo 2 no esté disponible; debe distinguir esa falla de comunicación de una reserva inexistente y permitir que el check-out se procese de nuevo cuando Módulo 2 responda.
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
@@ -142,7 +143,7 @@ Como sistema de gestión hotelera, quiero garantizar que ninguna estancia tenga 
 - **Comisión OTA**: Porcentaje pactado con un intermediario, suministrado por Módulo 2.
 - **Valor de hospedaje**: Monto de la cotización guardada de la habitación; `Generar liquidación` lo usa como base sin recalcularlo.
 - **Ingreso neto**: Valor de hospedaje menos la comisión OTA aplicable, sin incluir impuestos.
-- **Detalle de liquidación**: Desglose que identifica el valor de hospedaje, el canal, la comisión aplicada y el ingreso neto de una liquidación específica.
+- **Detalle de liquidación**: Desglose que identifica el valor de hospedaje (con su parte de tarifa base y su ajuste de tarifa dinámica), el canal, la comisión aplicada y el ingreso neto de una liquidación específica.
 
 ### Reglas de negocio
 
@@ -156,7 +157,8 @@ Como sistema de gestión hotelera, quiero garantizar que ninguna estancia tenga 
 - **BR-008**: La disponibilidad, ocupación o bloqueo de la habitación no forma parte de la liquidación y no se modifica al generarla.
 - **BR-009**: `Generar liquidación` es un caso de uso incluido (`<<include>>`) tanto por `Registrar Check-out` como por `Generar factura final`; la liquidación no incluye ni invoca a `Generar factura final`, sino que este último la reutiliza para emitir la factura definitiva.
 - **BR-010**: El canal de origen, los datos de la OTA y el porcentaje de comisión los suministra Módulo 2 en la reserva; Módulo 1 informa en el evento de check-out la reserva, la habitación, su tipo y las fechas reales. Módulo 3 no gestiona ni corrige estos datos.
-- **BR-011**: La liquidación es por habitación: cada habitación de una reserva tiene su propia liquidación `Final`, calculada con la cotización de su tipo de habitación.
+- **BR-011**: La liquidación es por habitación: cada habitación de una reserva tiene su propia liquidación `Final`, calculada con la cotización de esa habitación.
+- **BR-012**: Los datos tributarios del cliente no forman parte de la liquidación: Módulo 3 no los guarda en ella; los usa únicamente `Generar factura final`, a partir del evento de check-out.
 
 ## Requisitos no funcionales
 
@@ -175,7 +177,7 @@ Como sistema de gestión hotelera, quiero garantizar que ninguna estancia tenga 
 - **SC-001**: El 100% de los check-out registrados generan una liquidación `Final` antes de habilitar la generación de la factura final.
 - **SC-002**: El 100% de las liquidaciones de reservas con canal OTA reflejan el descuento de comisión con el mismo porcentaje suministrado por Módulo 2.
 - **SC-003**: El 100% de las liquidaciones de reservas de canal directo, o sin canal registrado, no presentan ningún descuento de comisión.
-- **SC-004**: El 100% de los intentos de generar una liquidación sin reserva, sin cotización para el tipo de habitación, o con el porcentaje de comisión faltante o inválido se rechazan sin producir un ingreso neto.
+- **SC-004**: El 100% de los intentos de generar una liquidación sin reserva, sin cotización para la habitación, o con el porcentaje de comisión faltante o inválido se rechazan sin producir un ingreso neto.
 - **SC-005**: El ingreso neto de la liquidación `Final` coincide con el valor reutilizado posteriormente en la factura final en el 100% de los casos.
 - **SC-006**: Ninguna generación de liquidación modifica el estado de disponibilidad, ocupación o bloqueo de una habitación.
 - **SC-007**: El 100% de las estancias sin check-out registrado no presentan ninguna liquidación `Final` guardada.

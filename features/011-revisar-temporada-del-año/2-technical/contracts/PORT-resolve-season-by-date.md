@@ -40,6 +40,9 @@ export interface SeasonClassification {
   calendarYear: number;
   revision: number;              // 0 si aún no existe una revisión publicada
   calendarEffectiveAt: string | null;
+  entryOwnerYear: number | null; // año propietario de la entrada aplicada; null para DEFAULT
+  entryOwnerRevision: number | null;
+  entryOwnerEffectiveAt: string | null;
 }
 ```
 
@@ -52,6 +55,9 @@ export interface SeasonClassification {
 | `calendarYear` | integer | Sí | Año civil del calendario consultado |
 | `revision` | integer | Sí | Número de revisión del año efectiva en `asOf`; `0` representa calendario aún no publicado |
 | `calendarEffectiveAt` | datetime ISO 8601 UTC \| `null` | Sí | Vigencia de la revisión; `null` para revisión implícita `0` |
+| `entryOwnerYear` | integer \| `null` | Sí | Año cuya revisión contiene la entrada aplicada; `null` si la clasificación es `DEFAULT` |
+| `entryOwnerRevision` | integer \| `null` | Sí | Revisión propietaria de la entrada aplicada; `null` para `DEFAULT` |
+| `entryOwnerEffectiveAt` | datetime ISO 8601 UTC \| `null` | Sí | Vigencia de la revisión propietaria; `null` para `DEFAULT` |
 
 El puerto devuelve el `seasonId`, no duplica nombre/color/porcentaje. 005 localiza ese ID en la instantánea obtenida de 009, donde obtiene ajuste, nombre/color y `defaultSeasonId` [009].
 
@@ -65,19 +71,24 @@ El puerto devuelve el `seasonId`, no duplica nombre/color/porcentaje. 005 locali
   "entryId": "27c4d2a6-f4ec-42db-b143-8c817bdb8e98",
   "calendarYear": 2026,
   "revision": 5,
-  "calendarEffectiveAt": "2026-10-09T21:55:00.000Z"
+  "calendarEffectiveAt": "2026-10-09T21:55:00.000Z",
+  "entryOwnerYear": 2026,
+  "entryOwnerRevision": 5,
+  "entryOwnerEffectiveAt": "2026-10-09T21:55:00.000Z"
 }
 ```
 
+Si la fecha es `2027-01-05` y está cubierta por una entrada BASE de la revisión 3 de 2026, `calendarYear`/`revision` identifican la revisión de 2027 (o `0` si aún no existe) y los campos `entryOwner*` identifican el año 2026 y su revisión 3.
+
 ## 4. Reglas de resolución
 
-Para la revisión efectiva del año civil de `date` en el instante `asOf`:
+Para una fecha del año civil `N`, selecciona en una sola transacción las revisiones efectivas a `asOf` de `N` y `N-1`:
 
-1. Si existe una única excepción para la fecha, devuelve esa temporada con `source = EXCEPTION`.
-2. De lo contrario, si existe un único rango base que contiene la fecha, devuelve su temporada con `source = BASE`.
+1. Si existe una única excepción para la fecha en la revisión de `N`, devuelve esa temporada con `source = EXCEPTION`.
+2. De lo contrario, busca rangos BASE que contengan la fecha tanto en la revisión de `N` como en la revisión de `N-1`; los BASE del año anterior pueden cruzar el 31 de diciembre. Si existe exactamente uno, devuelve su temporada con `source = BASE`.
 3. Si no existe asignación, devuelve el `defaultSeasonId` de 009, con `source = DEFAULT` y `entryId = null` [SPEC FR-003, BR-003].
-4. Si se detectan varias excepciones para la fecha, rangos base solapados o una temporada referenciada que falta del snapshot 009, falla explícitamente. No devuelve respuesta parcial ni decide por ID/orden de inserción [SPEC FR-004, BR-004, BR-005].
-5. Si no hay revisión publicada para el año, el calendario se considera sin asignaciones explícitas y las fechas resuelven al default con `revision = 0` y `calendarEffectiveAt = null`. `GET` distingue este caso de una revisión publicada vacía.
+4. Si se detectan varias excepciones para la fecha, rangos BASE solapados entre revisiones anuales o una temporada referenciada que falta del snapshot 009, falla explícitamente. No devuelve respuesta parcial ni decide por ID/orden de inserción [SPEC FR-004, BR-004, BR-005].
+5. `calendarYear`, `revision` y `calendarEffectiveAt` identifican la revisión efectiva de `N`. Cuando se aplica una entrada, `entryOwnerYear`, `entryOwnerRevision` y `entryOwnerEffectiveAt` identifican la revisión propietaria de esa entrada; para `DEFAULT` son `null`. Si no existe revisión publicada para `N`, `revision = 0` y `calendarEffectiveAt = null`, pero aun así se consulta `N-1` por una entrada BASE heredada.
 
 Para un rango de noches que cruza años, el consumidor llama a este puerto para cada fecha con el mismo `asOf`. Cada fecha puede seleccionar su propia revisión anual; no se promedia ni se elige un calendario global.
 
@@ -93,6 +104,7 @@ Para un rango de noches que cruza años, el consumidor llama a este puerto para 
 ## 6. Garantías para 005
 
 - **Fuente canónica**: usa la misma clasificación que revisa el Administrador [SPEC FR-006, SC-003].
+- **Períodos entre años**: una entrada BASE pertenece al año de su fecha de inicio; la resolución de una fecha del año siguiente también considera la revisión propietaria del año anterior.
 - **Determinismo**: mismo `date`, `asOf` y revisiones válidas producen el mismo `seasonId` [SPEC NFR-003].
 - **Default explícito**: cualquier fecha no clasificada se identifica como default regular, no como clasificación ausente indefinida [SPEC FR-003, SC-004].
 - **Excepción explícita**: la excepción puntual prevalece únicamente sobre la clasificación base de la misma fecha [SPEC FR-002, BR-002].

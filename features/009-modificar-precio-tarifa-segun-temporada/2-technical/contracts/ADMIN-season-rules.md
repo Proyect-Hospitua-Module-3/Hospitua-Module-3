@@ -40,7 +40,7 @@ Headers:
 | `name` | string | Sí al crear; opcional al actualizar | No vacío tras trim; único sin distinguir mayúsculas; el default conserva el nombre reservado `Regular` |
 | `color` | string `#RRGGBB` | Sí al crear; opcional al actualizar | Hexadecimal RGB de seis dígitos |
 | `adjustmentPercent` | decimal string | Sí al crear; opcional al actualizar | Porcentaje firmado entre `-100.00` y `100.00`, hasta dos decimales |
-| `isDefault` | boolean | Respuesta, no modificable | Exactamente una temporada es la predeterminada; ajuste siempre `0.00` |
+| `isDefault` | boolean | Respuesta, no modificable | Exactamente una temporada es la predeterminada; su ajuste sigue el rango firmado y puede ser distinto de cero |
 | `validFrom` | datetime ISO 8601 UTC | Respuesta | Inicio de vigencia de la versión de ajuste |
 | `updatedBy` | UUID/string | Respuesta | Identificador del Administrador autenticado |
 | `updatedAt` | datetime ISO 8601 UTC | Respuesta | Hora de base de datos del último cambio efectivo |
@@ -87,7 +87,7 @@ Content-Type: application/json
 }
 ```
 
-Se permiten cambios parciales de los campos `name`, `color` y `adjustmentPercent`; un objeto vacío se rechaza. `PUT` con valores idénticos a los actuales se acepta como no-op y no genera historial redundante. Para la temporada default no se permite cambiar el nombre reservado `Regular` ni ajustar su porcentaje de `0.00`; el color puede personalizarse.
+Se permiten cambios parciales de los campos `name`, `color` y `adjustmentPercent`; un objeto vacío se rechaza. `PUT` con valores idénticos a los actuales se acepta como no-op y no genera historial redundante. Para la temporada default no se permite cambiar el nombre reservado `Regular`, ni eliminarla o renombrarla; su porcentaje puede cambiar dentro del rango firmado y el color puede personalizarse.
 
 ### Eliminar
 
@@ -110,7 +110,7 @@ La temporada default no puede borrarse. Si una entrada o excepción del calendar
       "seasonId": "00000000-0000-4000-8000-000000000001",
       "name": "Regular",
       "color": "#808080",
-      "adjustmentPercent": "0.00",
+      "adjustmentPercent": "-2.50",
       "isDefault": true,
       "validFrom": "2026-01-01T00:00:00.000Z",
       "updatedBy": "f2d3b4a5-6c7d-4e8f-9012-3456789abcde",
@@ -150,7 +150,7 @@ El cuerpo de error sigue el formato compartido `ApiError`: `{ errorCode, message
 | 403 | `FORBIDDEN` | JWT válido sin rol `Administrador` | No |
 | 404 | `SEASON_NOT_FOUND` | `seasonId` inexistente | No |
 | 409 | `SEASON_NAME_CONFLICT` | El nombre normalizado ya está en uso | No |
-| 409 | `DEFAULT_SEASON_IMMUTABLE` | Se intenta eliminar el default o cambiar su ajuste neutral | No |
+| 409 | `DEFAULT_SEASON_IMMUTABLE` | Se intenta eliminar o renombrar el default | No |
 | 409 | `SEASON_IN_USE` | Una entrada/excepción de calendario referencia la temporada | No |
 | 409 | `SEASON_RULE_CONFLICT` | Conflicto concurrente/temporal al actualizar | No |
 | 503 | `DATABASE_UNAVAILABLE` | Base de datos no disponible; la transacción se revirtió | Sí |
@@ -174,4 +174,4 @@ Ejemplo:
 - **No retroactivo**: se conserva el ajuste anterior para trazabilidad; cotizaciones/materializaciones previas no se actualizan [SPEC FR-006, BR-004].
 - **Sin cambio de base**: este endpoint solo administra ajuste/catálogo; nunca escribe o almacena la tarifa base de Módulo 1 [SPEC FR-009, BR-002].
 - **No-op limpio**: solicitud idéntica se acepta sin registrar una versión redundante [SPEC casos límite].
-- **Default seguro**: la temporada `Regular` existe siempre, conserva su identidad/nombre, su regla es neutra y no se elimina [SPEC FR-001, FR-007] [005].
+- **Default seguro**: la temporada `Regular` existe siempre, conserva su identidad/nombre, su regla sigue el rango firmado y no se elimina ni renombra [SPEC FR-001, FR-007] [005].

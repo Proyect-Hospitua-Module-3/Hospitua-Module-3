@@ -1,6 +1,6 @@
 # Contrato REST: Consultar tarifa dinámica
 
-**Feature**: 005 Consultar tarifa dinámica — HU1, HU2, HU3
+**Feature**: 005 Consultar tarifa dinámica — HU1, HU2
 **Spec**: [consultar_tarifa_dinamica.md](../../1-functional/consultar_tarifa_dinamica.md)
 **Plan**: [plan.md](../plan.md)
 **Proyecto base**: [plan-tecnico-base.md](../../../../docs/plan-tecnico-base.md)
@@ -17,13 +17,12 @@
 
 ## 1. Propósito
 
-Devuelve la tarifa dinámica de un tipo de habitación para una noche o para un rango de noches, con el detalle de cada noche [SPEC FR-001, FR-003, FR-009]:
+Devuelve la tarifa dinámica de una habitación para una noche o para un rango de noches, con el detalle de cada noche [SPEC FR-001, FR-003, FR-009]:
 - **Módulo 2** la consulta para conocer el precio por noche de una estancia antes de cotizar la reserva [SPEC HU1, HU2].
-- **OTA (Booking, Airbnb, Expedia)** la consulta para mantener la paridad de precios con el hotel [SPEC HU3].
 
 Es una operación **exclusivamente de lectura**: no guarda nada, ni la tarifa dinámica ni ningún otro registro [SPEC BR-001, BR-004, FR-007]. Cada consulta refleja la tarifa base y la temporada vigentes al ejecutarse; no hay caché con vida propia [SPEC FR-007; PLAN].
 
-El resultado es **idéntico para cualquier actor autorizado**. El actor solo se usa para autorizar el acceso, nunca para alterar el resultado [SPEC FR-011, BR-005].
+El resultado **no depende de la reserva ni del canal**: la misma habitación y fecha dan siempre la misma respuesta [SPEC FR-011, BR-005].
 
 ---
 
@@ -36,17 +35,13 @@ El resultado es **idéntico para cualquier actor autorizado**. El actor solo se 
 | Quién llama | Cómo se identifica | Resultado |
 |---|---|---|
 | **Módulo 2** | Llamada interna por la red de Docker Compose, **sin token** | Permitido [BASE] |
-| **OTA** | `Authorization: Bearer <token>` con `role = OTA` | Permitido [BASE] |
-| Token con otro rol (por ejemplo `Administrador`) | `Authorization` con `role` distinto de `OTA` | `403 FORBIDDEN` [PLAN] |
-| Token inválido o expirado | `Authorization` presente pero no válido | `401 UNAUTHENTICATED` [PLAN] |
 
-Si llega un token se valida y se aplican las reglas de OTA; si no llega, se trata como llamada interna de un módulo [BASE]. La autorización vive en el Guard del controller; el caso de uso no recibe el actor [PLAN]. Con esto el acceso queda restringido a los actores autorizados `Módulo 2` y `OTA` [SPEC FR-010, BR-002, SC-005].
+El acceso está reservado a `Módulo 2` [SPEC FR-010, BR-002, SC-005]. La autorización vive en el Guard del controller; el caso de uso no recibe el actor [PLAN].
 
 ### Headers
 
 | Header | Obligatorio | Valor | Descripción | Origen |
 |---|---|---|---|---|
-| `Authorization` | Condicional | `Bearer <token>` | Solo para OTA (`role = OTA`). No lo envía Módulo 2 en la red interna. | [BASE] |
 | `Accept` | No | `application/json` | Tipo MIME esperado. | [CONV] |
 | `X-Correlation-Id` | No | string | Identificador de trazabilidad distribuida; si no llega, Módulo 3 lo genera. | [BASE] |
 
@@ -54,7 +49,7 @@ Si llega un token se valida y se aplican las reglas de OTA; si no llega, se trat
 
 | Parámetro | Tipo | Obligatorio | Descripción | Origen |
 |---|---|---|---|---|
-| `roomType` | string | Sí | Tipo de habitación (por ejemplo `DOBLE`). Es el mismo valor que Módulo 1 llama `categoryRoom`. | [SPEC FR-001] [BASE] |
+| `roomId` | string (UUID) | Sí | Identificador de la habitación. | [SPEC FR-001] [PLAN] |
 | `date` | date `YYYY-MM-DD` | Condicional | Una sola noche. Equivale a `checkInDate = date` y `checkOutDate = date + 1 día`. | [PLAN] |
 | `checkInDate` | date `YYYY-MM-DD` | Condicional | Primera noche del rango (fecha de entrada). | [PLAN] |
 | `checkOutDate` | date `YYYY-MM-DD` | Condicional | Fecha de salida del rango, **exclusiva**: la noche de esa fecha no se cobra. | [SPEC FR-008] [PLAN] |
@@ -67,21 +62,14 @@ Las fechas son fechas civiles del hotel (`YYYY-MM-DD`), sin hora ni zona horaria
 
 #### Una sola noche (Módulo 2, llamada interna)
 ```http
-GET /pricing/dynamic-rate?roomType=DOBLE&date=2026-12-24
+GET /pricing/dynamic-rate?roomId=3f2b8c1e-5a47-4d09-9b6e-1c2d3e4f5a6b&date=2026-12-24
 Accept: application/json
 X-Correlation-Id: c89b3f0e-2d11-4a9f-9c02-7a8b9c0d1e2f
 ```
 
 #### Estancia de varias noches (Módulo 2, llamada interna)
 ```http
-GET /pricing/dynamic-rate?roomType=DOBLE&checkInDate=2026-12-23&checkOutDate=2026-12-26
-Accept: application/json
-```
-
-#### Llamada de una OTA
-```http
-GET /pricing/dynamic-rate?roomType=DOBLE&checkInDate=2026-12-23&checkOutDate=2026-12-26
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+GET /pricing/dynamic-rate?roomId=3f2b8c1e-5a47-4d09-9b6e-1c2d3e4f5a6b&checkInDate=2026-12-23&checkOutDate=2026-12-26
 Accept: application/json
 ```
 
@@ -92,8 +80,8 @@ Accept: application/json
 1. **Validación del rango primero**: antes de llamar a cualquier otro componente se valida que `checkInDate < checkOutDate`. Si no, `400 INVALID_DATE_RANGE`, sin resultado parcial. Un rango de una noche se pide con `checkOutDate = checkInDate + 1 día`; fin igual al inicio equivale a cero noches y se rechaza [SPEC FR-008, SC-004, casos límite] [PLAN].
 2. **Una instantánea de reglas por consulta**: se captura `asOf` una sola vez, se obtiene un único snapshot del catálogo de temporadas con `GetEffectiveSeasonRulesUseCase.getAll(asOf)` y ese mismo `asOf` se usa para clasificar todas las noches. Un cambio de reglas durante la consulta no se mezcla en ella [009] [011] [PLAN].
 3. **Por cada noche** del rango `[checkInDate, checkOutDate)`:
-   - **Tarifa base**: se pide a Módulo 1 mediante `GetBaseRateUseCase` de 004 (`roomType` y fecha de la noche). 005 no calcula, guarda ni asume una tarifa base propia [SPEC FR-005] [004].
-   - **Temporada**: se resuelve con el puerto de 011 (`resolve({ date, asOf })`), que devuelve el `seasonId` aplicable. Si no hay clasificación explícita, 011 devuelve la temporada por defecto (`Regular`) [SPEC FR-004] [011].
+   - **Tarifa base**: se pide a Módulo 1 mediante `GetBaseRateUseCase` de 004 (`roomId` y fecha de la noche). 005 no calcula, guarda ni asume una tarifa base propia [SPEC FR-005] [004].
+   - **Temporada**: se resuelve con el puerto de 011 (`resolve({ date, asOf })`), que devuelve el `seasonId` aplicable. Si no hay clasificación explícita, 011 devuelve la temporada por defecto, y se aplica el porcentaje de ajuste vigente de esa temporada en 009, sin suponer que sea cero [SPEC FR-004] [011].
    - **Ajuste**: se busca ese `seasonId` en el snapshot de 009 y se toma su `adjustmentPercent`, un porcentaje firmado de `-100.00` a `100.00` [009].
    - **Cálculo**: `dynamicRate = baseRate × (1 + adjustmentPercent / 100)`, con redondeo *half-up* a 2 decimales usando `Money` (decimal exacto, nunca `number`) [SPEC FR-002, SC-001] [PLAN].
 4. **El ajuste sale solo del valor numérico**: positivo incrementa, negativo decrementa y cero no cambia la tarifa base, sin importar el nombre de la temporada. Aplica igual a `Alta`, `Baja`, `Regular` y a cualquier temporada que el Administrador configure [SPEC BR-007] [PLAN].
@@ -112,7 +100,7 @@ Accept: application/json
 
 | Campo | Tipo | Requerido | Descripción | Origen |
 |---|---|---|---|---|
-| `roomType` | string | Sí | Tipo de habitación consultado. | [PLAN] |
+| `roomId` | string (UUID) | Sí | Habitación consultada. | [PLAN] |
 | `currency` | string | Sí | Moneda contractual (`"COP"`). | [BASE] |
 | `nights` | array | Sí | Un elemento por noche, en orden cronológico. | [SPEC FR-003] |
 | `nights[].date` | date `YYYY-MM-DD` | Sí | Noche valorada. | [PLAN] |
@@ -128,7 +116,7 @@ Los importes y porcentajes son **strings decimales con 2 decimales**, nunca `num
 
 ```json
 {
-  "roomType": "DOBLE",
+  "roomId": "3f2b8c1e-5a47-4d09-9b6e-1c2d3e4f5a6b",
   "currency": "COP",
   "nights": [
     {
@@ -149,7 +137,7 @@ Los importes y porcentajes son **strings decimales con 2 decimales**, nunca `num
 
 ```json
 {
-  "roomType": "DOBLE",
+  "roomId": "3f2b8c1e-5a47-4d09-9b6e-1c2d3e4f5a6b",
   "currency": "COP",
   "nights": [
     {
@@ -188,8 +176,6 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 |---|---|---|---|---|
 | **400** | `INVALID_QUERY_PARAMS` | Faltan parámetros, tienen formato inválido (por ejemplo una fecha mal escrita) o se combinan `date` y el rango. | No | [PLAN] [CONV] |
 | **400** | `INVALID_DATE_RANGE` | `checkOutDate` anterior o igual a `checkInDate`. | No | [SPEC FR-008] [PLAN] |
-| **401** | `UNAUTHENTICATED` | Llega un token JWT inválido o expirado. | No | [PLAN] |
-| **403** | `FORBIDDEN` | Llega un token válido con un rol distinto de `OTA`. | No | [PLAN] |
 | **404** | `BASE_RATE_NOT_FOUND` | Módulo 1 no reporta tarifa base para alguna noche del rango. | No | [SPEC FR-006] [BASE] |
 | **424** | `MODULE1_UNAVAILABLE` | Módulo 1 no responde, hay timeout o el circuito está abierto. | Sí | [SPEC NFR-003] [BASE] |
 | **422** | `UNEXPECTED_ERROR` | El calendario de 011 referencia una temporada que no está en el catálogo de 009, no se pueden leer las reglas o el calendario, o hay cualquier otro error inesperado. | No | [PLAN] |
@@ -200,8 +186,8 @@ Un error en cualquier noche hace fallar la consulta completa: nunca se devuelve 
 
 ## 6. Garantías para quien llama
 
-- **Mismo resultado para todos**: Módulo 2 y una OTA reciben exactamente la misma respuesta para la misma consulta [SPEC FR-011, SC-006].
+- **Mismo resultado para la misma consulta**: no depende de la reserva ni del canal [SPEC FR-011, SC-006].
 - **Sin valores supuestos**: nunca se devuelve una tarifa calculada sobre una tarifa base en cero o supuesta [SPEC FR-006].
-- **Sin retroactividad**: las cotizaciones ya guardadas (`POST /pricing/quotes`) no se ven afectadas por cambios posteriores de temporada o de tarifa base; esta consulta siempre refleja la configuración del momento en que se ejecuta [SPEC casos límite, HU4].
+- **Sin retroactividad**: las cotizaciones ya guardadas (`POST /pricing/quotes`) no se ven afectadas por cambios posteriores de temporada o de tarifa base; esta consulta siempre refleja la configuración del momento en que se ejecuta [SPEC casos límite, HU3].
 - **Sin persistencia**: la tarifa dinámica nunca se guarda [SPEC FR-007].
-- Un cambio en los parámetros, en la forma de la respuesta o en las reglas de cálculo requiere coordinar con Módulo 2 y con las OTA y actualizar `test/contract/dynamic-rate.contract.spec.ts` [PLAN].
+- Un cambio en los parámetros, en la forma de la respuesta o en las reglas de cálculo requiere coordinar con Módulo 2 y actualizar `test/contract/dynamic-rate.contract.spec.ts` [PLAN].
