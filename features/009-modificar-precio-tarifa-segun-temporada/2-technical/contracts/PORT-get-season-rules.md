@@ -66,7 +66,7 @@ El proveedor devuelve temporadas ordenadas determinísticamente por nombre norma
       "seasonId": "00000000-0000-4000-8000-000000000001",
       "name": "Regular",
       "color": "#808080",
-      "adjustmentPercent": "0.00",
+      "adjustmentPercent": "-2.50",
       "isDefault": true,
       "validFrom": "2026-01-01T00:00:00.000Z"
     },
@@ -107,7 +107,7 @@ El cálculo es por noche: un rango que cruza varias temporadas usa la regla de c
 - Al inicio de un cálculo se captura un instante único; todas las noches usan esa instantánea. Una actualización confirmada después de `asOf` no se mezcla en esa operación; la siguiente consulta la observa [SPEC casos límite, NFR-002, NFR-003].
 - Una lectura que no puede completarse se propaga como `SEASON_RULES_UNAVAILABLE`/`DATABASE_UNAVAILABLE`. No se devuelve lista vacía, temporada inventada, caché vencida ni porcentaje neutral como fallback.
 - Una inconsistencia entre calendario y catálogo se informa como error de dominio identificable; la operación no retorna un resultado parcial.
-- La temporada reservada `Regular` debe estar presente exactamente una vez, tener `isDefault = true` y `adjustmentPercent = "0.00"`. Si la invariante se rompe, falla la consulta explícitamente.
+- La temporada reservada `Regular` debe estar presente exactamente una vez, tener `isDefault = true` y un `adjustmentPercent` válido dentro del rango firmado. Si la invariante se rompe, falla la consulta explícitamente.
 
 ## 6. Garantías para quien llama
 

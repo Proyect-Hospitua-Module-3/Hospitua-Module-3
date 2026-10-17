@@ -9,7 +9,7 @@
 
 La feature 009 permite al Administrador mantener el catálogo de temporadas y el porcentaje de ajuste de cada temporada sobre la tarifa base. El caso de uso valida el catálogo y el ajuste, persiste cada cambio de forma atómica con su auditoría, y entrega la regla vigente a `Consultar tarifa dinámica` (005). No consulta ni modifica la tarifa base de Módulo 1.
 
-El ajuste se representa como **porcentaje firmado**, acordado para este plan: `+20.00` significa incrementar 20 % y `-10.00` reducir 10 %. El rango inclusivo es `-100.00..+100.00`; la tarifa dinámica se calcula como `baseRate × (1 + adjustmentPercent / 100)`, con aritmética decimal exacta y redondeo half-up a dos decimales. La temporada por defecto (`Regular`) permanece neutral en 0 % y no se puede borrar. Las reglas actualizadas aplican a consultas nuevas desde su instante de vigencia; las cotizaciones y liquidaciones ya materializadas son snapshots y no se recalculan.
+El ajuste se representa como **porcentaje firmado**, acordado para este plan: `+20.00` significa incrementar 20 % y `-10.00` reducir 10 %. El rango inclusivo es `-100.00..+100.00`; la tarifa dinámica se calcula como `baseRate × (1 + adjustmentPercent / 100)`, con aritmética decimal exacta y redondeo half-up a dos decimales. La temporada por defecto (`Regular`) es la temporada reservada del catálogo y no se puede borrar ni renombrar; su porcentaje de ajuste es configurable dentro del mismo rango y puede ser distinto de cero. Las reglas actualizadas aplican a consultas nuevas desde su instante de vigencia; las cotizaciones y liquidaciones ya materializadas son snapshots y no se recalculan.
 
 009 administra nombres, colores e importes de ajuste de las temporadas; 011 conserva la responsabilidad del calendario y sus clasificaciones/excepciones por fecha. La ausencia de clasificación explícita se resuelve usando la temporada por defecto. Una temporada referenciada en el calendario no se elimina, evitando referencias rotas.
 
@@ -22,7 +22,7 @@ El ajuste se representa como **porcentaje firmado**, acordado para este plan: `+
 **Target Platform**: Servicio backend Linux en contenedor Docker
 **Project Type**: Servicio backend único (monolito modular hexagonal), bounded context `pricing`, sin frontend en este repositorio
 **Performance Goals**: Lectura consistente de temporada/reglas sin llamadas externas; los cambios administrativos quedan disponibles inmediatamente para consultas nuevas de 005, sin caché con TTL
-**Constraints**: Solo Administrador puede modificar; porcentaje firmado entre -100 % y +100 %; temporada por defecto no eliminable y con ajuste neutral; una sola regla vigente por temporada; escritura + auditoría atómicas; cambios no alteran cotizaciones ya creadas ni liquidaciones/facturas consolidadas
+**Constraints**: Solo Administrador puede modificar; porcentaje firmado entre -100 % y +100 %; temporada por defecto no eliminable ni renombrable; su ajuste puede variar dentro del rango firmado; una sola regla vigente por temporada; escritura + auditoría atómicas; cambios no alteran cotizaciones ya creadas ni liquidaciones/facturas consolidadas
 **Scale/Scope**: Gestión CRUD del catálogo de temporadas, modificación/revisión de reglas y puerto interno de consulta para 005/011; sin llamada saliente a Módulo 1 ni cambio de tarifa base
 
 ## Project Structure
@@ -49,7 +49,7 @@ src/
 ├── domain/
 │   ├── model/pricing/
 │   │   ├── season.ts                         # Temporada configurable; identidad estable del default
-│   │   ├── season-adjustment-percent.vo.ts   # Decimal firmado -100..100; Regular = 0
+│   │   ├── season-adjustment-percent.vo.ts   # Decimal firmado -100..100; sin neutralización por nombre de temporada
 │   │   └── season-rule.ts                    # Regla temporal vigente e inmutable por versión
 │   ├── errors/
 │   │   ├── invalid-season.error.ts
@@ -110,32 +110,32 @@ test/
 
 Las rutas administrativas son privadas a Módulo 3 y requieren `JwtAuthGuard`, `RolesGuard` y rol `Administrador`, conforme al plan base. Se concreta la matriz base `GET/PUT /admin/season-rules` con operaciones de catálogo y una ruta identificada por temporada para actualización/borrado:
 
-| Método y ruta | Propósito | Respuesta |
-|---|---|---|
-| `GET /admin/season-rules` | Consultar catálogo completo, regla vigente, versión y auditoría mínima | `200` con `seasons[]` |
-| `POST /admin/season-rules` | Crear temporada con nombre, color y ajuste inicial | `201` con temporada y regla |
-| `PUT /admin/season-rules/{seasonId}` | Actualizar nombre, color y/o porcentaje de ajuste | `200` con configuración vigente |
-| `DELETE /admin/season-rules/{seasonId}` | Eliminar temporada no predeterminada y sin referencias en calendario | `204` |
+| Método y ruta                           | Propósito                                                              | Respuesta                       |
+| --------------------------------------- | ---------------------------------------------------------------------- | ------------------------------- |
+| `GET /admin/season-rules`               | Consultar catálogo completo, regla vigente, versión y auditoría mínima | `200` con `seasons[]`           |
+| `POST /admin/season-rules`              | Crear temporada con nombre, color y ajuste inicial                     | `201` con temporada y regla     |
+| `PUT /admin/season-rules/{seasonId}`    | Actualizar nombre, color y/o porcentaje de ajuste                      | `200` con configuración vigente |
+| `DELETE /admin/season-rules/{seasonId}` | Eliminar temporada no predeterminada y sin referencias en calendario   | `204`                           |
 
 El contrato HTTP define validación de formato, códigos de error y ejemplos en [`contracts/ADMIN-season-rules.md`](contracts/ADMIN-season-rules.md). Las consultas del calendario y sus excepciones siguen perteneciendo a 011; este controller no crea ni cambia períodos de fecha. La ruta de borrado devuelve conflicto si el catálogo de 011 referencia la temporada; no borra asignaciones ni las reclasifica silenciosamente.
 
 ### Dominio y valores
 
 - `Season` guarda un identificador estable, nombre visible, color hexadecimal `#RRGGBB` y el indicador `isDefault`.
-- Una sola temporada tiene `isDefault = true`; la migración asegura que exista el default neutral que la arquitectura y 005 necesitan. Su identidad estable y nombre reservado `Regular` no se pueden borrar ni cambiar; su color sí puede personalizarse. Las temporadas adicionales admiten nombres y colores definidos por el Administrador.
+- Una sola temporada tiene `isDefault = true`; la migración asegura que exista la temporada reservada `Regular` para la arquitectura y 005. Su identidad estable y nombre reservado `Regular` no se pueden borrar ni renombrar; su color sí puede personalizarse. Las temporadas adicionales admiten nombres y colores definidos por el Administrador.
 - `SeasonAdjustmentPercent` representa un decimal exacto firmado entre `-100.00` y `+100.00`, inclusive. Fuera de rango, no numérico, `NaN`/infinito o precisión superior a dos decimales se rechaza.
-- La temporada por defecto debe tener ajuste `0.00`, ya que 005 define que la temporada regular produce precio neutro. El default no puede eliminarse.
-- Para fecha sin clasificación explícita, 005 usa el `seasonId` predeterminado; esto hace visible la temporada y su regla neutral, en vez de devolver una categoría o importe inventado.
+- La temporada por defecto conserva el `seasonId` reservado y puede tener un ajuste distinto de cero, siempre que permanezca dentro del rango firmado. El default no puede eliminarse ni renombrarse.
+- Para fecha sin clasificación explícita, 005 usa el `seasonId` predeterminado; esto hace visible la temporada y su regla vigente, en vez de devolver una categoría o importe inventado.
 - El ajuste no modifica la tarifa base consultada a Módulo 1. El cálculo se aplica por noche sobre esa base, y no se almacena como una tarifa fija de fecha [SPEC FR-006, FR-009] [BASE].
 
 ### Modelo de datos y vigencia
 
-| Tabla | Campos esenciales | Restricciones |
-|---|---|---|
-| `season` | `id`, `name`, `color`, `is_default`, `created_at`, `created_by`, `updated_at`, `updated_by` | Un único default (índice único parcial); `name` único sin distinguir mayúsculas/espacios exteriores; default reservado como `Regular`; color `#RRGGBB` |
-| `season_rule` | `id`, `season_id`, `adjustment_percent`, `valid_from`, `valid_to`, `created_at`, `created_by` | Versiones append-only; restricción temporal de exclusión para evitar intervalos solapados por temporada; `valid_to` nulo solo para la versión vigente |
-| `season_rule_history` | `id`, `season_id`, `previous_rule_id`, `new_rule_id`, `previous_adjustment`, `new_adjustment`, `changed_by`, `changed_at` | Append-only y en la misma transacción que el cambio; para creación, valor anterior nulo |
-| `season_calendar_entry` (011) | Referenciada por `season_id` | 009 solo consulta referencias para proteger eliminaciones; 011 es dueño de sus fechas/excepciones |
+| Tabla                         | Campos esenciales                                                                                                         | Restricciones                                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `season`                      | `id`, `name`, `color`, `is_default`, `created_at`, `created_by`, `updated_at`, `updated_by`                               | Un único default (índice único parcial); `name` único sin distinguir mayúsculas/espacios exteriores; default reservado como `Regular`; color `#RRGGBB` |
+| `season_rule`                 | `id`, `season_id`, `adjustment_percent`, `valid_from`, `valid_to`, `created_at`, `created_by`                             | Versiones append-only; restricción temporal de exclusión para evitar intervalos solapados por temporada; `valid_to` nulo solo para la versión vigente  |
+| `season_rule_history`         | `id`, `season_id`, `previous_rule_id`, `new_rule_id`, `previous_adjustment`, `new_adjustment`, `changed_by`, `changed_at` | Append-only y en la misma transacción que el cambio; para creación, valor anterior nulo                                                                |
+| `season_calendar_entry` (011) | Referenciada por `season_id`                                                                                              | 009 solo consulta referencias para proteger eliminaciones; 011 es dueño de sus fechas/excepciones                                                      |
 
 Las fechas de vigencia son instantes UTC de la base de datos. Al cambiar el ajuste, la transacción bloquea la temporada/regla actual, cierra su `valid_to` y crea la nueva versión con `valid_from` igual al mismo instante de cambio. La regla anterior nunca se actualiza en sus valores; solo se cierra su intervalo vigente. La base valida además la exclusión de rangos superpuestos por `season_id` para protegerse de carreras concurrentes. La modificación de nombre/color es una actualización atómica del catálogo, con auditoría; no altera el identificador usado por 011.
 
@@ -153,16 +153,16 @@ El proceso que crea una cotización (005) persiste sus tarifas por noche en `lod
 
 Los errores de dominio se traducen en `ApiError` mediante el filtro compartido. Los mensajes son accionables y no revelan datos de autenticación.
 
-| Error | `errorCode` | HTTP | Reintentable | Efecto |
-|---|---|---:|---:|---|
-| Ajuste no decimal o fuera de `-100..100` | `INVALID_SEASON_ADJUSTMENT` | 400 | No | Conserva regla actual |
-| Nombre/color inválido o nombre duplicado | `INVALID_SEASON` | 400 / 409 | No | Conserva catálogo |
-| Intento de borrar la temporada por defecto | `DEFAULT_SEASON_IMMUTABLE` | 409 | No | Sin cambios |
-| Temporada referenciada por calendario | `SEASON_IN_USE` | 409 | No | Conserva temporada y asignaciones |
-| Conflicto de versión o cambio concurrente no rebasable | `SEASON_RULE_CONFLICT` | 409 | No | Transacción revertida |
-| Falta de autenticación/token inválido | `UNAUTHENTICATED` | 401 | No | No ejecuta el caso de uso |
-| Actor no Administrador | `FORBIDDEN` | 403 | No | No ejecuta el caso de uso |
-| Base de datos no disponible | `DATABASE_UNAVAILABLE` | 503 | Sí | Rollback completo |
+| Error                                                  | `errorCode`                 |      HTTP | Reintentable | Efecto                            |
+| ------------------------------------------------------ | --------------------------- | --------: | -----------: | --------------------------------- |
+| Ajuste no decimal o fuera de `-100..100`               | `INVALID_SEASON_ADJUSTMENT` |       400 |           No | Conserva regla actual             |
+| Nombre/color inválido o nombre duplicado               | `INVALID_SEASON`            | 400 / 409 |           No | Conserva catálogo                 |
+| Intento de borrar o renombrar la temporada por defecto | `DEFAULT_SEASON_IMMUTABLE`  |       409 |           No | Sin cambios                       |
+| Temporada referenciada por calendario                  | `SEASON_IN_USE`             |       409 |           No | Conserva temporada y asignaciones |
+| Conflicto de versión o cambio concurrente no rebasable | `SEASON_RULE_CONFLICT`      |       409 |           No | Transacción revertida             |
+| Falta de autenticación/token inválido                  | `UNAUTHENTICATED`           |       401 |           No | No ejecuta el caso de uso         |
+| Actor no Administrador                                 | `FORBIDDEN`                 |       403 |           No | No ejecuta el caso de uso         |
+| Base de datos no disponible                            | `DATABASE_UNAVAILABLE`      |       503 |           Sí | Rollback completo                 |
 
 ### Observabilidad y privacidad
 
@@ -184,9 +184,9 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 **Purpose**: Establecer modelo, invariantes, errores y persistencia atómica.
 
 - [ ] T005 Implementar `Season` con ID estable, nombre, color y protección del default.
-- [ ] T006 Implementar `SeasonAdjustmentPercent` con rango inclusivo `-100.00..100.00`, precisión de dos decimales y regla default `0.00`.
+- [ ] T006 Implementar `SeasonAdjustmentPercent` con rango inclusivo `-100.00..100.00`, precisión de dos decimales y sin fijar un valor por defecto por nombre de temporada.
 - [ ] T007 Definir `SeasonRule`, `ManageSeasonRulesUseCase`, `GetEffectiveSeasonRulesUseCase` y los puertos de persistencia/consulta de calendario.
-- [ ] T008 Agregar tablas e índices de temporada/reglas/historial a Prisma; migración con una temporada default neutral, sin asumir categorías o colores adicionales.
+- [ ] T008 Agregar tablas e índices de temporada/reglas/historial a Prisma; migración con una temporada default reservada, sin asumir categorías o colores adicionales.
 - [ ] T009 Implementar mapper y repositorio Prisma: snapshot por `asOf`, bloqueo/versionado transaccional, no-op sin historial redundante y rollback si falla auditoría.
 - [ ] T010 Registrar los bindings del catálogo, caso de uso administrativo y puerto de reglas efectivas en `PricingModule`.
 - [ ] T011 Registrar los errores de dominio y sus `errorCode` en el filtro compartido.
@@ -202,7 +202,7 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 ### Tests for User Story 1
 
 - [ ] T012 [P] [US1] Unit tests del VO: límites `-100.00`, `0.00`, `100.00`; rechaza fuera de rango, formato no numérico, NaN/infinito y exceso de decimales.
-- [ ] T013 [P] [US1] Unit tests de `Season`: valida nombre/color/identidad, default no eliminable y regla default neutral.
+- [ ] T013 [P] [US1] Unit tests de `Season`: valida nombre/color/identidad, default no eliminable ni renombrable y reglaje validado por el rango firmado.
 - [ ] T014 [P] [US1] Unit tests de servicio: alta, cambio de ajuste, cambio de nombre/color, no-op idéntico, rechazo del default y temporada referenciada.
 - [ ] T015 [P] [US1] Contract/e2e tests REST para autorización, alta/modificación/borrado, payload inválido, default protegido y errores `409`.
 - [ ] T016 [US1] Integration test con Postgres: cambio de regla y registro de auditoría atómicos; fallo de historial revierte la regla.
@@ -242,7 +242,7 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 
 **Goal**: Mostrar sin ambigüedad el catálogo, ajuste, estado default y datos mínimos de auditoría.
 
-**Independent Test**: revisar un catálogo con múltiples temporadas y confirmar que cada nombre/color/porcentaje vigente es identificable y la temporada por defecto aparece explícitamente como neutral.
+**Independent Test**: revisar un catálogo con múltiples temporadas y confirmar que cada nombre/color/porcentaje vigente es identificable y la temporada por defecto aparece explícitamente como reservada, con `isDefault = true` y ajuste válido dentro del rango firmado.
 
 ### Tests for User Story 3
 
@@ -262,7 +262,7 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 - [ ] T034 Documentar el contrato REST en OpenAPI y el puerto de integración con 005/011.
 - [ ] T035 Verificar con test de arquitectura que `settlement`/`billing` no dependan de reglas actuales de `pricing`.
 - [ ] T036 Agregar logs estructurados para cambios efectivos, errores de validación y conflictos de concurrencia sin credenciales.
-- [ ] T037 Ejecutar pruebas de migración desde base vacía y validar que se crea una temporada default neutral y única.
+- [ ] T037 Ejecutar pruebas de migración desde base vacía y validar que se crea una temporada default reservada y única, con ajuste válido dentro del rango firmado.
 
 ## Dependencies & Execution Order
 
@@ -285,7 +285,7 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 ## Notes
 
 - El porcentaje firmado y rango `-100..100` quedan fijados para este plan: `-100` produce tarifa cero y `+100` como máximo duplica la base. Si el negocio cambia el rango, deberán cambiar en conjunto validación, contrato y pruebas.
-- El default se trata como la temporada regular neutral exigida por el cálculo de 005, incluso si las temporadas adicionales tienen nombres comerciales libres.
+- El default se trata como la temporada reservada `Regular` exigida por la lógica de 005, incluso si las temporadas adicionales tienen nombres comerciales libres; su ajuste puede no ser neutro y sigue validado por el rango firmado.
 - El calendario estacional es propiedad de 011; 009 no redefine la precedencia de excepciones puntuales ni la estructura de los períodos.
 - La matriz de contratos REST del plan base enumera `GET/PUT /admin/season-rules`; esta feature necesita completar las operaciones de creación y borrado previstas por FR-001. Acordar esa ampliación de OpenAPI antes de implementar.
 - El cambio de regla no recalcula la cotización guardada, liquidación ni factura. La aplicación efectiva es solo para operaciones de cálculo que comiencen después del instante de confirmación.
