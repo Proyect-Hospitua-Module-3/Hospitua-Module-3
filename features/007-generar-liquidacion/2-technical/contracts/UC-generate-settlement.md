@@ -30,11 +30,12 @@ Solo pueden inyectarlo `checkout-ingestion` (010) y `billing` (006); ningún con
 | `eventId` | UUID | Sí | `eventId` del evento de Módulo 1; se guarda como `source_event_id` | [BASE] [SPEC NFR-003] |
 | `stayId` | UUID | Sí | Estancia (una habitación de la reserva); clave de idempotencia | [BASE] [SPEC FR-010] |
 | `reservationRef` | string | Sí | Reserva que se consulta en Módulo 2, p. ej. `RES-000123` | [BASE] [SPEC FR-005] |
-| `roomId` | UUID | Sí | Habitación liquidada | [SPEC FR-016, FR-020] |
-| `categoryRoom` | string | Sí | Tipo de habitación confirmado por Módulo 1 (nombre que usa Módulo 1); se compara con el `roomType` de la cotización para elegirla | [BASE] [SPEC FR-020] |
+| `roomId` | UUID | Sí | Habitación liquidada; con él se elige su cotización entre los `quoteIds` de la reserva | [BASE] [SPEC FR-016, FR-020] |
+| `categoryRoom` | string | Sí | Tipo de habitación confirmado por Módulo 1; informativo: se guarda, pero no interviene en la elección de la cotización | [BASE] [SPEC FR-016] |
 | `checkInDate` | date `YYYY-MM-DD` | Sí | Fecha **real** de entrada | [SPEC FR-016] |
 | `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha **real** de salida; posterior a `checkInDate` | [SPEC FR-016] |
 
+El comando nunca trae `channel`, `lodgingAmount`, datos de la OTA ni `billingCustomer`: los datos tributarios los entrega 010 directamente a 006 y `settlement` no los guarda [BASE] [SPEC BR-012]. El canal y la comisión salen de la reserva de Módulo 2 y el hospedaje de la cotización guardada [BASE] [SPEC BR-010].
 El comando no acepta `billingCustomer`, `channel`, `lodgingAmount` ni datos de la OTA. Los datos tributarios del evento son consumidos exclusivamente por 006; el canal y la comisión salen de la reserva de Módulo 2 y el hospedaje de la cotización guardada [BASE] [SPEC BR-010].
 
 ### Ejemplo
@@ -60,13 +61,14 @@ Se ejecutan en este orden; la primera que falla detiene el proceso y no se guard
    - Existe y `reservationRef`, `roomId`, `categoryRoom`, `checkInDate` y `checkOutDate` coinciden con el comando → devuelve la existente sin llamar a Módulo 2 ni recalcular [SPEC HU1 escenarios 3 y 4].
    - Existe con algún dato distinto → `SETTLEMENT_ALREADY_EXISTS`; la original no cambia [SPEC FR-010, HU3 escenario 2].
 3. **Reserva**: consulta `GET /api/reservations/{reservationRef}` a Módulo 2 (ver [CLIENT-get-reservation.md](CLIENT-get-reservation.md)). 404 → `RESERVATION_NOT_FOUND`; timeout, 5xx o circuito abierto → `MODULE2_UNAVAILABLE` [SPEC FR-014, FR-021].
-4. **Cotización**: lee las cotizaciones de `reservation.quoteIds` y elige la de `roomType` igual al `categoryRoom` del comando (mismo valor, distinto nombre). Ninguna coincide → `QUOTE_NOT_FOUND`. Si varias coinciden se usa la de menor `quoteId`, para que el resultado sea siempre el mismo [SPEC FR-020, NFR-001] [PLAN].
+4. **Cotización**: lee las cotizaciones de `reservation.quoteIds` y elige la de `roomId` igual al `roomId` del comando; el `categoryRoom` no interviene. Ninguna coincide → `QUOTE_NOT_FOUND`. Si varias coinciden (no debería ocurrir) se usa la de menor `quoteId`, para que el resultado sea siempre el mismo [SPEC FR-020, NFR-001] [PLAN].
 5. **Canal**: `OTA` si la reserva lo informa; `DIRECT` si es otro canal o no informa ninguno [SPEC FR-003, FR-004].
    - `OTA` sin `otaCommissionPercentage` → `MISSING_COMMISSION`.
    - `OTA` con porcentaje menor a 0 o mayor a 100 → `INVALID_COMMISSION`.
    - Nunca se asume un porcentaje por defecto [SPEC FR-014, HU2 escenario 3].
 6. **Cálculo** con `SettlementCalculator`, aritmética decimal exacta, redondeo half-up a 2 decimales, moneda de la cotización (`COP`) [SPEC FR-006, FR-007, FR-008, NFR-004] [PLAN]:
    - `lodgingAmount` = `lodgingAmount` de la cotización, sin recalcular la tarifa dinámica [SPEC FR-002, BR-004].
+   - `baseLodgingAmount` = suma de `baseRate` de las noches de la cotización; `dynamicAdjustmentAmount = lodgingAmount − baseLodgingAmount` (puede ser negativo). Informativo: no cambia comisión ni ingreso neto [SPEC FR-012] [PLAN].
    - `DIRECT`: `otaCommissionAmount = 0.00`, `netIncome = lodgingAmount`.
    - `OTA`: `otaCommissionAmount = lodgingAmount × porcentaje / 100`, `netIncome = lodgingAmount − otaCommissionAmount`.
    - El IVA no entra en el cálculo; lo agrega 006 al facturar [SPEC FR-013, BR-005].
@@ -94,11 +96,14 @@ Devuelve la entidad `Settlement`, sea recién creada o la ya existente (el llama
 | `otaCommissionPercentage` | string decimal \| null | Porcentaje aplicado, p. ej. `"15.00"`; `null` en canal directo | [SPEC FR-012] |
 | `currency` | string | Moneda de los importes, `COP` | [BASE] |
 | `lodgingAmount` | string decimal | Valor de hospedaje de la cotización | [SPEC FR-012] |
+| `baseLodgingAmount` | string decimal | Suma de las tarifas base de las noches de la cotización | [SPEC FR-012] [PLAN] |
+| `dynamicAdjustmentAmount` | string decimal | Parte del hospedaje que aportó la tarifa dinámica (`lodgingAmount − baseLodgingAmount`); puede ser negativo; informativo | [SPEC FR-012] [PLAN] |
 | `otaCommissionAmount` | string decimal | Valor de la comisión; `"0.00"` en canal directo | [SPEC FR-012] |
 | `netIncome` | string decimal | Hospedaje menos comisión, sin IVA | [SPEC FR-008, FR-013] |
 | `sourceEventId` | UUID | Evento que la generó | [SPEC NFR-003] |
 | `generatedAt` | datetime ISO 8601 | Fecha y hora de generación (hora de la base de datos) | [SPEC NFR-003] |
 
+Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si se serializan van como texto [SPEC NFR-004] [CONV]. El resultado no incluye datos migratorios, datos personales del huésped ni datos tributarios [SPEC NFR-006, BR-012].
 Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si se serializan van como texto [SPEC NFR-004] [CONV]. El resultado no incluye datos migratorios ni datos personales del huésped [SPEC NFR-006].
 
 ### Ejemplo (canal OTA, 15 %)
@@ -120,6 +125,8 @@ Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si s
   "otaCommissionPercentage": "15.00",
   "currency": "COP",
   "lodgingAmount": "750000.00",
+  "baseLodgingAmount": "700000.00",
+  "dynamicAdjustmentAmount": "50000.00",
   "otaCommissionAmount": "112500.00",
   "netIncome": "637500.00",
   "sourceEventId": "9b1f6d3e-2c4a-4f7b-8e5d-3a1c0b9d8e72",
@@ -129,12 +136,12 @@ Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si s
 
 ## 5. Errores
 
-007 no tiene respuesta HTTP: lanza errores de dominio tipados (`domain/errors/`) que el llamador traduce. El `errorCode` sigue el formato de `ApiError` del plan base [BASE]. Cada `message` dice qué falló y con qué dato (reserva, tipo de habitación, OTA) para que recepción o facturación puedan corregirlo [SPEC FR-015, NFR-005].
+007 no tiene respuesta HTTP: lanza errores de dominio tipados (`domain/errors/`) que el llamador traduce. El `errorCode` sigue el formato de `ApiError` del plan base [BASE]. Cada `message` dice qué falló y con qué dato (reserva, habitación, OTA) para que recepción o facturación puedan corregirlo [SPEC FR-015, NFR-005].
 
 | Error de dominio | `errorCode` | Cuándo ocurre | Reintentable | Qué hace 010 con el evento | Origen |
 |---|---|---|---|---|---|
 | `ReservationNotFoundError` | `RESERVATION_NOT_FOUND` | Módulo 2 responde 404 para `reservationRef` | No | Dead-letter | [SPEC FR-014] [BASE] |
-| `QuoteNotFoundError` | `QUOTE_NOT_FOUND` | Ninguna cotización de la reserva coincide con el `categoryRoom` del check-out | No | Dead-letter | [SPEC FR-014] [BASE] |
+| `QuoteNotFoundError` | `QUOTE_NOT_FOUND` | Ninguna cotización de la reserva corresponde al `roomId` del check-out | No | Dead-letter | [SPEC FR-014] [BASE] |
 | `MissingCommissionError` | `MISSING_COMMISSION` | Canal OTA sin `otaCommissionPercentage` | No | Dead-letter | [SPEC FR-014, HU2 escenario 3] [BASE] |
 | `InvalidCommissionError` | `INVALID_COMMISSION` | Porcentaje menor a 0 o mayor a 100 | No | Dead-letter | [SPEC casos límite] [PLAN] |
 | `SettlementAlreadyExistsError` | `SETTLEMENT_ALREADY_EXISTS` | Ya existe liquidación para el `stayId` con datos de check-out distintos | No | Dead-letter | [SPEC FR-010, HU3 escenario 2] [BASE] |
