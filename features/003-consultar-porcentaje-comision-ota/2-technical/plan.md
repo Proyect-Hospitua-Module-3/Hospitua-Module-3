@@ -102,7 +102,7 @@ Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se tra
 | OTA con liquidaciones `Final` previas | 200 `{ otaId, percentage, settlementId, settlementDate, historical: true }` | — |
 | OTA sin liquidaciones previas | 200 `{ otaId, historical: false }` (sin `percentage` ni `settlementDate`) | — |
 | Identificador del canal directo (`DIRECT`), que no es una OTA (FR-006) | 400 | `INVALID_QUERY_PARAMS` |
-| Sin token válido en una llamada de OTA | 401 | `UNAUTHENTICATED` |
+| Token inválido o expirado | 401 | `UNAUTHENTICATED` |
 | OTA consultando a otra OTA, o rol distinto a `OTA` | 403 con mensaje genérico, sin confirmar si la otra OTA tiene historial | `FORBIDDEN` |
 | Error inesperado | 422 | `UNEXPECTED_ERROR` |
 
@@ -174,7 +174,7 @@ Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se tra
 
 - [ ] T017 [P] [US3] Unit test de autorización: actor OTA con `otaId` distinto al del parámetro → `OtaAccessDeniedError`, sin llegar a invocar el puerto de lectura (evita fuga por tiempo de respuesta o por existencia)
 - [ ] T018 [P] [US3] Unit test: actor interno (Módulo 2) puede consultar cualquier `otaId`
-- [ ] T019 [US3] Test e2e: OTA consultando su propio `otaId` → 200; OTA consultando un `otaId` ajeno → 403 con el mismo cuerpo exista o no historial de la otra OTA; sin token → 401 en la llamada de OTA; token con rol `Administrador` → 403
+- [ ] T019 [US3] Test e2e: OTA consultando su propio `otaId` → 200; OTA consultando un `otaId` ajeno → 403 con el mismo cuerpo exista o no historial de la otra OTA; token inválido o expirado → 401; sin token → llamada interna permitida; token con rol `Administrador` → 403
 
 ### Implementation for User Story 3
 
