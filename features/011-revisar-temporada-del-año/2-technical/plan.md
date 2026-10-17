@@ -124,7 +124,7 @@ No se exponen mutaciones por elemento en rutas separadas: el `PUT` reemplaza la 
 
 - `CalendarYear` es un entero entre 1 y 9999 y determina el intervalo `[YYYY-01-01, (YYYY+1)-01-01)`. `from` y `to` son fechas civiles del hotel, no timestamps; los rangos del API son inclusivos.
 - `SeasonCalendarEntry` contiene `entryId`, `seasonId`, `kind` (`BASE` o `EXCEPTION`), `startDate`, `endDate`, `validFrom` y `validTo`.
-- `BASE` puede cubrir uno o varios días del año y su intervalo no puede cruzar el límite del año. Dos entradas `BASE` con días compartidos se rechazan.
+- `BASE` pertenece al año de `startDate`; puede cubrir uno o varios días y cruzar el 31 de diciembre, pero `endDate` no puede exceder el año inmediatamente siguiente. Al revisar o resolver el año siguiente se consideran las entradas `BASE` heredadas de la revisión efectiva del año anterior. Dos entradas `BASE` con días compartidos se rechazan aunque pertenezcan a revisiones anuales distintas.
 - `EXCEPTION` cubre exactamente un día (`startDate = endDate`) y puede superponerse con una entrada `BASE`: tiene precedencia explícita. Dos excepciones para la misma fecha se rechazan incluso si apuntan a la misma temporada; no se usa orden de inserción para desempatar.
 - Una fecha que no coincide con ninguna entrada `BASE` o `EXCEPTION` se resuelve al `defaultSeasonId` del catálogo de 009, con `isDefault = true` y clasificación `DEFAULT`. El hueco se hace explícito en la respuesta administrativa.
 - `seasonId` debe existir en el catálogo retornado por 009. Los nombres, colores y porcentajes no se copian como fuente de verdad en el calendario; se adjuntan al consultar a través del snapshot de catálogo.
@@ -143,11 +143,11 @@ La hora de publicación y las fechas civiles se manejan por separado: `effective
 | Tabla | Campos esenciales | Restricciones |
 |---|---|---|
 | `season_calendar_revision` | `id`, `year`, `revision`, `effective_at`, `changed_by`, `changed_at`, `is_active` | `UNIQUE(year, revision)`; máximo una activa por año; versiones publicadas inmutables |
-| `season_calendar_entry` | `id`, `revision_id`, `season_id`, `kind`, `start_date`, `end_date` | FK a revisión y season; `start_date <= end_date`; dentro del año; excepción de un solo día |
+| `season_calendar_entry` | `id`, `revision_id`, `season_id`, `kind`, `start_date`, `end_date` | FK a revisión y season; `start_date <= end_date`; `start_date` pertenece al año de la revisión; `BASE` termina como máximo el año siguiente; excepción de un solo día dentro del año propietario |
 
-La activación de una revisión y la inserción completa de sus entradas ocurre en una sola transacción. La validación de dominio detecta conflictos con mensajes que identifican rango/fecha y entradas en colisión. La persistencia usa una restricción de exclusión PostgreSQL sobre rangos de `BASE` para defensa concurrente; las restricciones de `EXCEPTION` aseguran unicidad por fecha dentro de la revisión. Las excepciones pueden superponerse con los rangos base por diseño, pero no con otra excepción.
+La activación de una revisión y la inserción completa de sus entradas ocurre en una sola transacción. La validación de dominio detecta conflictos con mensajes que identifican rango/fecha y entradas en colisión. Al publicar el año `N`, se validan también las entradas `BASE` de las revisiones efectivas de `N-1` y `N+1` a `effectiveAt`; la escritura serializa la validación con bloqueos de los años vecinos para impedir solapamientos por publicaciones concurrentes. La persistencia aplica la restricción de exclusión PostgreSQL sobre una proyección de las entradas efectivas, incluyendo las que cruzan años, para no bloquear revisiones históricas; las restricciones de `EXCEPTION` aseguran unicidad por fecha dentro de su año propietario. Las excepciones pueden superponerse con rangos base por diseño, pero no con otra excepción de la misma fecha.
 
-Para `resolveSeasonByDate`, la lectura selecciona la revisión efectiva para `asOf`, busca primero una excepción puntual, luego un rango base y por último usa el default de 009. Una sola transacción de lectura obtiene revisión y entradas; la consulta no puede ver la mitad de una publicación.
+Para `resolveSeasonByDate`, la lectura selecciona en una sola transacción las revisiones efectivas a `asOf` del año de la fecha y del año anterior. Busca primero una excepción puntual del año de la fecha, luego un rango base propio o heredado del año anterior y por último usa el default de 009. La respuesta conserva la revisión del año consultado y reporta también el año/revisión propietario de la entrada aplicada, si existe.
 
 `GET` devuelve estado de conflicto si lee una revisión histórica malformada (p. ej. datos anteriores a las restricciones), pero la resolución consumida por 005 falla explícitamente antes de devolver clasificación. No se aplica prioridad implícita ni se retorna una temporada parcial.
 
@@ -168,12 +168,16 @@ export interface SeasonClassification {
   seasonId: string;
   source: 'BASE' | 'EXCEPTION' | 'DEFAULT';
   entryId: string | null;
+  calendarYear: number;
   revision: number;
-  calendarEffectiveAt: string;
+  calendarEffectiveAt: string | null;
+  entryOwnerYear: number | null;
+  entryOwnerRevision: number | null;
+  entryOwnerEffectiveAt: string | null;
 }
 ```
 
-005 captura un único `asOf` para el cálculo del rango, solicita el snapshot de reglas a 009 y resuelve la temporada de cada noche mediante 011 con ese mismo `asOf`. Luego toma el ajuste por `seasonId` del snapshot 009. Esto evita la carrera de combinar un calendario posterior con reglas de precio anteriores o viceversa. 011 no calcula tarifas ni depende de la tarifa base.
+005 captura un único `asOf` para el cálculo del rango, solicita el snapshot de reglas a 009 y resuelve la temporada de cada noche mediante 011 con ese mismo `asOf`. Para una fecha del año `N`, 011 consulta las revisiones efectivas de `N` y `N-1` y considera las entradas del año anterior que crucen al año `N`. Luego 005 toma el ajuste por `seasonId` del snapshot 009. Esto evita la carrera de combinar un calendario posterior con reglas de precio anteriores o viceversa. 011 no calcula tarifas ni depende de la tarifa base.
 
 Un rango puede cruzar años: 005 resuelve cada fecha de forma independiente y 011 escoge la revisión correspondiente al año civil de cada fecha. La validación de la consulta de rango y el formato de salida noche a noche son responsabilidad de 005; la consulta administrativa de 011 limita `from`/`to` a un único año.
 
@@ -183,9 +187,9 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 
 | Error | `errorCode` | HTTP | Efecto |
 |---|---|---:|---|
-| Año/fechas malformados o rango invertido/fuera del año | `INVALID_CALENDAR_RANGE` | 400 | Sin lectura parcial ni publicación |
+| Año/fechas malformados, rango invertido, inicio fuera del año propietario o período `BASE` que excede el año siguiente | `INVALID_CALENDAR_RANGE` | 400 | Sin lectura parcial ni publicación |
 | ID de temporada desconocido en el catálogo 009 | `SEASON_NOT_FOUND` | 422 | Rechaza la revisión completa |
-| Rangos base solapados | `OVERLAPPING_SEASON_CALENDAR` | 409 | No activa la revisión |
+| Rangos base solapados dentro de una revisión o entre años vecinos | `OVERLAPPING_SEASON_CALENDAR` | 409 | No activa la revisión |
 | Excepciones duplicadas para una fecha | `DUPLICATE_SEASON_EXCEPTION` | 409 | No activa la revisión |
 | `expectedRevision` no es la activa | `SEASON_CALENDAR_CONFLICT` | 409 | Conserva la revisión ganadora |
 | Revisión solicitada inexistente | `SEASON_CALENDAR_NOT_FOUND` | 404 | Sin resultados |
@@ -228,13 +232,13 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 ### Tests for User Story 1
 
 - [ ] T012 [P] [US1] Unit tests del resolver: rango base, excepción sobre base, default para hueco y límites inclusivos de fechas.
-- [ ] T013 [P] [US1] Unit tests de validación: fin anterior a inicio, fechas fuera del año, rango que cruza de año y catálogo sin temporada referenciada.
-- [ ] T014 [P] [US1] Contract/e2e test de `GET /admin/season-calendar`: año completo, rango parcial, autenticación, rol, huecos y enriquecimiento con nombre/color de 009.
+- [ ] T013 [P] [US1] Unit tests de validación: fin anterior a inicio, inicio fuera del año propietario, período BASE válido que cruza al año siguiente, BASE que excede el año siguiente, excepción fuera de su año y catálogo sin temporada referenciada.
+- [ ] T014 [P] [US1] Contract/e2e test de `GET /admin/season-calendar`: año completo, rango parcial, entrada heredada desde el año anterior, autenticación, rol, huecos y enriquecimiento con nombre/color de 009.
 - [ ] T015 [US1] Integration test Postgres que comprueba lectura de una revisión completa en una sola transacción y reporta explícitamente filas conflictivas heredadas.
 
 ### Implementation for User Story 1
 
-- [ ] T016 [US1] Implementar `ReviewSeasonCalendarService` y read model que expone cada período, excepción y hueco con clasificación default visible.
+- [ ] T016 [US1] Implementar `ReviewSeasonCalendarService` y read model que expone períodos propios, BASE heredadas del año anterior, excepciones y huecos con clasificación default visible.
 - [ ] T017 [US1] Implementar `GET /admin/season-calendar`, validar `year/from/to`, proteger con JWT/rol Administrador.
 - [ ] T018 [US1] Resolver/adjuntar nombres, colores y reglas vigentes con el catálogo de 009 para que el Administrador pueda revisar la leyenda completa.
 
@@ -248,15 +252,15 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Contract test del puerto para fecha en BASE, fecha en EXCEPTION, fecha DEFAULT y fecha de un año distinto.
-- [ ] T020 [P] [US2] Unit tests: excepción prevalece; dos excepciones o solapamiento BASE levantan error de inconsistencia en vez de elegir prioridad.
-- [ ] T021 [US2] Integration test concurrente de resolución/publicación: una lectura ve completamente revisión anterior o nueva; no mezcla entradas.
+- [ ] T019 [P] [US2] Contract test del puerto para BASE propio, BASE heredado del año anterior, EXCEPTION prevalente sobre ambos, DEFAULT y fecha sin revisión propia.
+- [ ] T020 [P] [US2] Unit tests: excepción prevalece sobre BASE propio o heredado; resolución consulta la revisión del año anterior; solapamiento BASE entre revisiones anuales levanta error de inconsistencia en vez de elegir prioridad.
+- [ ] T021 [US2] Integration test concurrente de resolución/publicación: una lectura ve revisiones completas del año y año anterior para el mismo `asOf`; no mezcla entradas.
 - [ ] T022 [US2] Integration test de no retroactividad: publicación nueva cambia la resolución de futuros cálculos, pero no actualiza una cotización ya persistida por 005.
 
 ### Implementation for User Story 2
 
 - [ ] T023 [US2] Implementar `ResolveSeasonByDateService.resolve(date, asOf)` con precedencia `EXCEPTION > BASE > DEFAULT`.
-- [ ] T024 [US2] Implementar selección de revisión por año y `asOf`; fallar explícitamente si el catálogo, revisión o referencias están corruptos.
+- [ ] T024 [US2] Implementar selección de revisiones del año de la fecha y el anterior por `asOf`, resolviendo BASE heredado y reportando su año/revisión propietario; fallar explícitamente si el catálogo, revisión o referencias están corruptos.
 - [ ] T025 [US2] Exportar el puerto tipado para 005 y documentar que se usa el mismo instante de snapshot del puerto 009.
 - [ ] T026 [US2] Confirmar que 005 utiliza el resultado por fecha en vez de una clasificación local o enum hardcodeado.
 
@@ -273,14 +277,14 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 - [ ] T027 [P] [US3] Unit tests de `ReplaceSeasonCalendarService`: alta/modificación/borrado mediante reemplazo completo, excepción válida y temporada inexistente.
 - [ ] T028 [P] [US3] Tests de conflictos: rangos base con cualquier día compartido; excepción-excepción duplicada; excepción única sobre base aceptada.
 - [ ] T029 [US3] E2E/contract tests del `PUT`: validación, control `expectedRevision`, 409 en carrera, auth 401/403 y respuesta de revisión.
-- [ ] T030 [US3] Integration test Postgres de dos publicaciones concurrentes con el mismo `expectedRevision`; solo una se activa y la otra recibe conflicto.
+- [ ] T030 [US3] Integration test Postgres de publicaciones concurrentes del mismo año y de años vecinos que intentan crear solapamientos BASE; solo se activa una configuración compatible.
 - [ ] T031 [US3] Integration test de atomicidad: falla al insertar una entrada o auditoría y la revisión activa anterior sigue intacta.
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] Implementar reemplazo completo de un año validando todas las referencias a temporada y conflictos antes de persistir.
+- [ ] T032 [US3] Implementar reemplazo completo del año propietario validando referencias y solapamientos BASE con las revisiones efectivas de los años vecinos antes de persistir.
 - [ ] T033 [US3] Crear nueva `SeasonCalendarRevision` con actor y hora DB, activar atómicamente e inmovilizar revisiones anteriores.
-- [ ] T034 [US3] Implementar control de concurrencia `expectedRevision` y restricciones de BD para solapamientos/duplicados.
+- [ ] T034 [US3] Implementar control de concurrencia `expectedRevision`, serialización de publicaciones de años vecinos y restricciones de BD para solapamientos/duplicados.
 - [ ] T035 [US3] Mapear errores de dominio a respuestas `ApiError` accionables; no aceptar ni publicar resultados parciales.
 
 **Checkpoint**: las configuraciones son versionadas, auditables y solo una revisión íntegra es visible por año/instante.
@@ -291,6 +295,7 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 - [ ] T037 Añadir logs estructurados por `year`, `revision`, `actorId`, resultado y duración; omitir tokens.
 - [ ] T038 Ejecutar pruebas de migración desde BD vacía y validar índices/constraints PostgreSQL para rangos solapados.
 - [ ] T039 Añadir test de arquitectura: `pricing` es el único dueño de escrituras del calendario; 005 solo resuelve/lee; 007/006 no consumen reglas actuales para recalcular snapshots.
+- [ ] T040 Añadir tests de solapamiento BASE entre años vecinos, tanto al publicar el año de inicio como al publicar el año siguiente con una entrada incompatible.
 
 ## Dependencies & Execution Order
 
