@@ -580,7 +580,9 @@ erDiagram
         uuid quote_id FK
         text channel "DIRECT u OTA"
         text ota_id "Solo OTA"
+        text ota_confirmation_code "Solo OTA"
         decimal ota_commission_percentage "Solo OTA"
+        char currency "COP"
         decimal base_lodging_amount "Suma de tarifas base de la cotizacion"
         decimal dynamic_adjustment_amount "lodging_amount menos base_lodging_amount"
         decimal lodging_amount

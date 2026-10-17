@@ -24,7 +24,7 @@ Obtener de la reserva indicada en el evento de check-out sus cotizaciones (`quot
 | Path param `reservationRef` | string, p. ej. `RES-000123`, codificado en URL | [BASE] |
 | Timeout | `MODULE2_TIMEOUT_MS = 500` | [PLAN] |
 | Circuit breaker | `opossum`: se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s | [PLAN] |
-| Reintentos propios | Ninguno; el reintento lo hace la reentrega del evento | [PLAN] |
+| Reintentos propios | Ninguno; el reintento lo hace 010 con la cola de reintento del evento (30 s, hasta 5 veces) | [PLAN] [BASE] |
 
 ```http
 GET /api/reservations/RES-000123
