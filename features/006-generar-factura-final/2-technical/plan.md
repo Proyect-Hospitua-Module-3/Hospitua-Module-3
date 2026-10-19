@@ -113,11 +113,11 @@ test/
 | `stayId` | UUID | Sí | Evento; idempotencia de liquidación y factura |
 | `reservationRef` | string | Sí | Evento; reserva de la estancia |
 | `roomId` | UUID | Sí | Evento; habitación liquidada |
-| `categoryRoom` | string | Sí | Evento; categoría confirmada por Módulo 1, usada por 007 para seleccionar la cotización |
+| `categoryRoom` | string | Sí | Evento; informativo; 007 lo guarda pero no interviene en la elección de la cotización |
 | `checkInDate`, `checkOutDate` | date `YYYY-MM-DD` | Sí | Evento; fechas reales validadas por 010 y revalidadas por 007 |
 | `billingCustomer` | `{ name?, taxId? }` | No en el evento | Datos tributarios que Módulo 1 entrega en el check-out; obligatorios y completos para emitir |
 
-El comando no acepta importes, IVA, comisión, canal, número de factura ni datos migratorios. Los importes/canal provienen de la liquidación inmutable de 007; el IVA proviene de 001; el número lo asigna la persistencia. `billingCustomer` solo se obtiene del evento de check-out y nunca se envía a 007 ni se recupera de la liquidación. Si el evento no incluye ambos campos tributarios completos y no vacíos, la emisión falla antes de consultar IVA o asignar numeración. Un evento posterior con los datos completos puede emitir la factura para una liquidación previamente generada sin modificarla.
+El comando no acepta importes, IVA, comisión, canal, número de factura ni datos migratorios. Los importes/canal provienen de la liquidación inmutable de 007; el IVA proviene de 001; el número lo asigna la persistencia. `billingCustomer` solo se obtiene del evento de check-out y nunca se envía a 007 ni se recupera de la liquidación. Si el evento no incluye ambos campos tributarios completos y no vacíos, 006 devuelve `BILLING_CUSTOMER_DATA_MISSING` como resultado normal antes de consultar IVA o asignar numeración; la liquidación se conserva. Un evento posterior con los datos completos puede emitir la factura para esa liquidación sin modificarla.
 
 ### Puertos y dependencias
 
@@ -156,7 +156,7 @@ export interface InvoiceIssuanceRepositoryPort {
 7. **Emitir atómicamente**: entrega el draft a `issueIfAbsent`. En una transacción serializable por el asignador de números, la infraestructura vuelve a comprobar la factura por estancia, asigna el siguiente número oficial y guarda número + factura + datos de trazabilidad. Si ya existe por una carrera concurrente, devuelve el documento existente. Un rollback revierte tanto el contador como la factura.
 8. **Devolver el documento persistido**: el caso de uso retorna la factura original o recién emitida; la reentrega del evento no crea otro documento ni número.
 
-La persistencia de la liquidación y la de la factura no comparten una transacción distribuida. Si 007 guardó correctamente y falla la emisión, el evento no se confirma; al reintentarse, 007 devuelve la liquidación existente y 006 reintenta la factura. Si la factura se confirmó pero se perdió el ACK, el nuevo intento devuelve la misma factura.
+La persistencia de la liquidación y la de la factura no comparten una transacción distribuida. Si 007 guardó correctamente y una falla transitoria impide emitir, 010 publica el evento a `modulo3.checkout.retry.30s` con `x-retry-count` incrementado y confirma el original solo después de la confirmación del broker y sin `basic.return`. Tras el TTL de 30 s, 007 devuelve la liquidación existente y 006 reintenta la factura. Se realizan hasta 5 reintentos; agotados, el evento se publica a `modulo3.checkout.dlq`. Si la factura se confirmó pero se perdió el ACK, la entrega posterior devuelve la misma factura.
 
 ### Modelo de dominio y persistencia
 
@@ -185,7 +185,7 @@ Las restricciones `UNIQUE(settlement_id)`, `UNIQUE(stay_id)` y `UNIQUE(invoice_n
 
 El consecutivo no se obtiene al validar el check-out, resolver el IVA ni construir el draft. La asignación se efectúa únicamente dentro de `issueIfAbsent`, que serializa brevemente la sección crítica de emisión, revalida `stayId`/`settlementId`, incrementa el último número y persiste el invoice en la misma transacción PostgreSQL. La fila de control del consecutivo se inicializa mediante migración y no se elimina ni reinicia al desplegar.
 
-**Decisión frente al plan base**: el plan base propone una secuencia nativa de PostgreSQL. `nextval()` no se revierte al abortar una transacción y, por tanto, puede dejar huecos; tampoco se debe asumir que orden de asignación equivale a orden de commit bajo concurrencia. Para satisfacer la integridad consecutiva de FR-011/NFR-003 y los casos límite de la spec, 006 usa un contador transaccional bloqueado por fila. La asignación queda serializada y el incremento se revierte si la factura no se confirma. Antes de implementar, se debe reflejar esta excepción en el modelo transversal del plan base para que otros planes no vuelvan a asumir que una secuencia nativa ofrece numeración sin huecos.
+**Justificación técnica**: `nextval()` no se revierte al abortar una transacción y, por tanto, puede dejar huecos; tampoco se debe asumir que el orden de asignación equivale al orden de commit bajo concurrencia. Para satisfacer la integridad consecutiva de FR-011/NFR-003 y los casos límite de la spec, 006 usa un contador transaccional bloqueado por fila. La asignación queda serializada y el incremento se revierte si la factura no se confirma.
 
 La sección crítica debe ser corta y cubrir el segundo chequeo idempotente, actualización del contador e inserción. Fallos de constraint, almacenamiento o commit se reportan explícitamente; no se devuelve una factura simulada ni se confirma el evento. Una factura ya emitida nunca se borra para “reciclar” su número.
 
@@ -195,16 +195,16 @@ La sección crítica debe ser corta y cubrir el segundo chequeo idempotente, act
 
 | Error | `errorCode` | Reintentable | Acción de 010 |
 |---|---|---:|---|
-| `BillingCustomerDataMissingError` | `BILLING_CUSTOMER_DATA_MISSING` | No, requiere corregir datos del evento | Dead-letter; no se asignó número |
+| `BillingCustomerDataMissingError` | `BILLING_CUSTOMER_DATA_MISSING` | No; resultado normal sin emisión | Conservar la liquidación, no asignar número, confirmar el evento y registrar `PROCESSED` con nota en `checkout_event_log`; un evento posterior completo emite la factura |
 | `FinalSettlementNotFoundError` | `FINAL_SETTLEMENT_NOT_FOUND` | No | Dead-letter; no se creó factura |
 | Errores tipados de 007 (reserva/cotización/comisión inválida) | Código original de 007 | No | Dead-letter |
-| `Module2UnavailableError` propagado por 007 | `MODULE2_UNAVAILABLE` | Sí | No ACK; RabbitMQ reentrega |
-| IVA vigente no disponible/error de lectura de 001 | `VAT_RATE_UNAVAILABLE` | Sí | No ACK; no se asignó número |
-| Fallo transitorio de persistencia/commit | `DATABASE_UNAVAILABLE` | Sí | No ACK; transacción revierte contador y factura |
+| `Module2UnavailableError` propagado por 007 | `MODULE2_UNAVAILABLE` | Sí | Publicar a `modulo3.checkout.retry.30s` cada 30 s con `x-retry-count` incrementado, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq` |
+| IVA vigente no disponible/error de lectura de 001 | `VAT_RATE_UNAVAILABLE` | Sí | Publicar a `modulo3.checkout.retry.30s` cada 30 s con `x-retry-count` incrementado, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq`; no se asignó número |
+| Fallo transitorio de persistencia/commit | `DATABASE_UNAVAILABLE` | Sí | Publicar a `modulo3.checkout.retry.30s` cada 30 s con `x-retry-count` incrementado, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq`; la transacción revierte contador y factura |
 | Factura ya existente para la estancia | Sin error | No aplica | Se devuelve la factura existente |
 | Conflicto de idempotencia con factura ganadora concurrente | Sin error | No aplica | Se devuelve la factura ganadora; nunca se crea otra |
 
-Los errores siguen `ApiError` cuando se representen externamente, con mensaje accionable, sin incluir `billingCustomer` ni datos personales en logs. El evento solo se confirma después de que la factura esté persistida o se haya devuelto la existente.
+Los errores siguen `ApiError` cuando se representen externamente, con mensaje accionable, sin incluir `billingCustomer` ni datos personales en logs. El evento se confirma después de que la factura esté persistida o se haya devuelto la existente, o cuando la falta de datos tributarios se registra como resultado normal `PROCESSED`.
 
 ### Observabilidad y privacidad
 
@@ -245,7 +245,7 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 - [ ] T012 [P] [US1] Unit tests de `Invoice`: solo acepta snapshots completos, estado `ISSUED`, moneda coherente y total igual a hospedaje más IVA; no ofrece mutadores.
 - [ ] T013 [P] [US1] Unit tests de `GenerateFinalInvoiceService`: llama a 007, obtiene una liquidación `FINAL`, devuelve factura existente sin consultar IVA, y propaga errores de liquidación.
-- [ ] T014 [P] [US1] Unit tests del flujo de validación tributaria: nombre y documento requeridos desde el evento; ausente/parcial/vacío rechaza antes de IVA/persistencia; evento posterior completo permite emitir para una liquidación existente sin leer ni actualizar datos tributarios en ella.
+- [ ] T014 [P] [US1] Unit tests del flujo de validación tributaria: nombre y documento requeridos desde el evento; ausente/parcial/vacío produce el resultado normal `BILLING_CUSTOMER_DATA_MISSING` antes de IVA/persistencia; evento posterior completo permite emitir para una liquidación existente sin leer ni actualizar datos tributarios en ella.
 - [ ] T015 [P] [US1] Unit tests de cálculo para canal directo: comisión `0.00`, IVA con redondeo half-up, total hospedaje + IVA.
 - [ ] T016 [P] [US1] Unit tests de reenvío: misma estancia ya emitida devuelve número y valores originales incluso si cambió la tasa vigente.
 - [ ] T017 [US1] Integration tests de `PrismaInvoiceIssuanceRepository` con Postgres: emisión, relectura por estancia, rollback y ausencia de incremento cuando falla la inserción.
@@ -253,10 +253,10 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] Implementar validación de `billingCustomer` exclusivamente desde el evento; si falta o es parcial, rechazar antes de leer IVA o persistir factura, sin buscar datos en la liquidación ni combinar fuentes.
+- [ ] T019 [US1] Implementar validación de `billingCustomer` exclusivamente desde el evento; si falta o es parcial, devolver el resultado normal `BILLING_CUSTOMER_DATA_MISSING` antes de leer IVA o persistir factura, sin buscar datos en la liquidación ni combinar fuentes.
 - [ ] T020 [US1] Implementar `GenerateFinalInvoiceService.generate`: idempotencia, invocación de 007, validación tributaria, lectura de 001, cálculo y emisión mediante el puerto.
 - [ ] T021 [US1] Implementar cálculo con `Money`/`decimal.js`, redondeo half-up a dos decimales; no usar `number` de JavaScript para importes.
-- [ ] T022 [US1] Implementar el mapeo de errores para que 010 envíe fallos corregibles a DLQ y reintente indisponibilidad sin ACK.
+- [ ] T022 [US1] Implementar el mapeo de errores para que 010 envíe fallos de negocio no recuperables a DLQ y publique indisponibilidades en la cola retry de 30 s (hasta 5 reintentos) antes de enviarlas a DLQ.
 
 **Checkpoint**: el flujo directo emite una factura una sola vez, sin número cuando falla una precondición.
 
@@ -321,7 +321,7 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 ## Notes
 
 - El total de la factura interpreta el desglose de acuerdo con FR-003/BR-002: `lodgingAmount + vatAmount`. La comisión OTA se muestra para conciliación y no se agrega ni se resta del total cobrado al huésped, aunque FR-010 enumere hospedaje, comisión, IVA y total como campos del desglose.
-- La numeración sin huecos requiere contador transaccional, no `nextval()` de PostgreSQL. Esta excepción al plan base se documenta para que se concilie en la arquitectura compartida antes de implementar la migración.
-- El rechazo por falta de datos tributarios conserva la liquidación ya generada, no reserva número y puede reintentarse al recibir un evento con datos tributarios completos.
+- La numeración sin huecos requiere contador transaccional, no `nextval()` de PostgreSQL, porque el valor de una secuencia no se revierte en un rollback.
+- La falta de datos tributarios es un resultado normal: conserva la liquidación ya generada, no reserva número y deja el evento `PROCESSED` con nota; un evento posterior con datos completos puede emitir la factura.
 - No se implementa aquí emisión correctiva, anulación, reimpresión con nuevo número, endpoint de alta/edición de facturas ni captura interactiva de datos tributarios.
 - Si una regla legal externa impone formato, prefijo, período o resolución de numeración, esos parámetros requieren una decisión regulatoria aparte; este plan cubre la secuencia consecutiva descrita en la spec.

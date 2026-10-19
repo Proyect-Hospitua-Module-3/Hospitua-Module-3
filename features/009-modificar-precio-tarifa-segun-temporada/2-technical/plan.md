@@ -162,7 +162,7 @@ Los errores de dominio se traducen en `ApiError` mediante el filtro compartido. 
 | Conflicto de versión o cambio concurrente no rebasable | `SEASON_RULE_CONFLICT`      |       409 |           No | Transacción revertida             |
 | Falta de autenticación/token inválido                  | `UNAUTHENTICATED`           |       401 |           No | No ejecuta el caso de uso         |
 | Actor no Administrador                                 | `FORBIDDEN`                 |       403 |           No | No ejecuta el caso de uso         |
-| Base de datos no disponible                            | `DATABASE_UNAVAILABLE`      |       503 |           Sí | Rollback completo                 |
+| Base de datos no disponible                            | `UNEXPECTED_ERROR`          |       422 |           Sí | El `ExceptionFilter` global registra el error con id de correlación y lo incluye en el mensaje; rollback completo |
 
 ### Observabilidad y privacidad
 

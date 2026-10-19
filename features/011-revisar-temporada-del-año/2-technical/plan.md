@@ -196,7 +196,7 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 | Calendario/catálogo incoherente o corrupto | `SEASON_CALENDAR_INCONSISTENT` | Error interno de dominio (sin HTTP) | La consulta de 005 falla sin resultado parcial; `GET` administrativo señala el conflicto |
 | JWT ausente/inválido | `UNAUTHENTICATED` | 401 | No ejecuta operación administrativa |
 | Rol distinto de Administrador | `FORBIDDEN` | 403 | No ejecuta operación administrativa |
-| Persistencia temporalmente no disponible | `DATABASE_UNAVAILABLE` | 503 | Rollback completo; reintentable |
+| Persistencia temporalmente no disponible | `UNEXPECTED_ERROR` | 422 | El `ExceptionFilter` global registra el error con id de correlación y lo incluye en el mensaje; rollback completo |
 
 ## Phase 1: Setup (específico de esta feature)
 
