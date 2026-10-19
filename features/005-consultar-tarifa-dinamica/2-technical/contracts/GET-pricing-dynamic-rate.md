@@ -179,7 +179,7 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 | **404** | `BASE_RATE_NOT_FOUND` | Módulo 1 no reporta tarifa base para alguna noche del rango. | No | [SPEC FR-006] [BASE] |
 | **424** | `INVALID_BASE_RATE` | Módulo 1 reporta para alguna noche una tarifa base menor o igual a cero (no cuenta como fallo del circuit breaker). | No | [SPEC FR-006] [BASE] [004] |
 | **424** | `MODULE1_UNAVAILABLE` | Módulo 1 no responde, hay timeout o el circuito está abierto. | Sí | [SPEC NFR-003] [BASE] |
-| **422** | `UNEXPECTED_ERROR` | El calendario de 011 referencia una temporada que no está en el catálogo de 009, no se pueden leer las reglas o el calendario, o hay cualquier otro error inesperado. | No | [PLAN] |
+| **422** | `UNEXPECTED_ERROR` | El calendario de 011 referencia una temporada que no está en el catálogo de 009, no se pueden leer las reglas o el calendario, o hay cualquier otro error inesperado. | Según la causa: sí, si falló temporalmente la lectura de las reglas o del calendario; no, si el calendario es inconsistente con el catálogo. | [PLAN] [009] [011] |
 
 Un error en cualquier noche hace fallar la consulta completa: nunca se devuelve un resultado parcial ni estimado [SPEC FR-006, NFR-003].
 

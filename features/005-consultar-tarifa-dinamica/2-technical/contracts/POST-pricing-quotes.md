@@ -80,7 +80,7 @@ X-Correlation-Id: 4d7e1b2a-9c3f-4a58-8e60-1b2c3d4e5f60
 6. **Qué se guarda**: la cotización (`quoteId`, `roomId`, `checkInDate`, `checkOutDate`, `currency`, `lodgingAmount`) y, por cada noche, `night_date`, `base_rate`, `season_name`, `adjustment_percent` y `rate`, para poder reconstruir cómo se compuso cada valor [SPEC FR-009, NFR-004] [PLAN].
 7. **Todo o nada**: la cotización y todas sus noches se guardan en **una sola transacción**. Si falla el cálculo de cualquier noche o la inserción, no queda ninguna cotización parcial [SPEC FR-015, SC-008] [PLAN].
 8. **Inmutable por diseño**: las tablas `lodging_quote` y `lodging_quote_night` solo reciben `INSERT`; no existe ningún camino de código que las actualice o borre [SPEC FR-013] [PLAN].
-9. **Sin idempotencia**: dos solicitudes idénticas crean dos cotizaciones con `quoteId` distintos. 007 las trata como equivalentes (misma habitación y mismas fechas) [PLAN].
+9. **Sin idempotencia**: dos solicitudes idénticas crean dos cotizaciones con `quoteId` distintos. Si por error una reserva guardara dos de la misma habitación, 007 usa la de menor `quoteId` [PLAN].
 10. **Salida anticipada**: el check-out nunca invoca esta operación; se liquida el valor de la cotización guardada [SPEC FR-014] [PLAN].
 
 ---
@@ -129,7 +129,7 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 | **404** | `BASE_RATE_NOT_FOUND` | Módulo 1 no reporta tarifa base para alguna noche. | No | [SPEC FR-015] [BASE] |
 | **424** | `INVALID_BASE_RATE` | Módulo 1 reporta para alguna noche una tarifa base menor o igual a cero (no cuenta como fallo del circuit breaker). La solicitud completa falla y no se guarda ninguna cotización. | No | [SPEC FR-015] [BASE] [004] |
 | **424** | `MODULE1_UNAVAILABLE` | Módulo 1 no responde, hay timeout o el circuito está abierto. | Sí | [SPEC NFR-003] [BASE] |
-| **422** | `UNEXPECTED_ERROR` | El calendario de 011 referencia una temporada que no está en el catálogo de 009, no se pueden leer las reglas o el calendario, falla la inserción, o hay cualquier otro error inesperado. | No (ver nota) | [PLAN] |
+| **422** | `UNEXPECTED_ERROR` | El calendario de 011 referencia una temporada que no está en el catálogo de 009, no se pueden leer las reglas o el calendario, falla la inserción, o hay cualquier otro error inesperado. | Según la causa: sí, si falló temporalmente la lectura de las reglas o del calendario, o la inserción; no, si el calendario es inconsistente con el catálogo (ver nota). | [PLAN] [009] [011] |
 
 > **Reintentos**: como la operación no es idempotente, reintentar una solicitud cuyo resultado no se conoce (por ejemplo, un timeout del lado de Módulo 2 después de enviarla) puede crear una segunda cotización. Módulo 2 conserva solo los `quoteId` que recibió en una respuesta `200` [PLAN].
 
