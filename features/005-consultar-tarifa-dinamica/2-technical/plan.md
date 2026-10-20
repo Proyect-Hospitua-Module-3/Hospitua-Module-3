@@ -121,7 +121,7 @@ La spec funcional describe solo el comportamiento (se calcula y se guarda, no ca
 - **Qué se guarda por noche**: `night_date`, `base_rate`, `season_name`, `adjustment_percent` y `rate`, para poder reconstruir cómo se compuso cada valor (FR-009, NFR-004). El `base_rate` de cada noche se expone en el puerto `LodgingQuoteQueryPort` para que 007 arme el desglose; 005 no calcula ese desglose (FR-012).
 - **Todo o nada**: la cotización y sus noches se guardan en **una sola transacción**; si falla el cálculo de cualquier noche o la inserción, no queda ninguna cotización parcial.
 - **Salida anticipada**: no hay ninguna llamada a esta feature; `settlement` solo lee la cotización vigente de la reserva (regla de `dependency-cruiser` de T031).
-- **Sin idempotencia**: dos solicitudes idénticas crean dos cotizaciones; 007 las trata como equivalentes (misma habitación y mismas fechas).
+- **Sin idempotencia**: dos solicitudes idénticas crean dos cotizaciones. Si por error una reserva guardara dos de la misma habitación, 007 usa la de menor `quoteId`.
 
 ---
 
@@ -325,7 +325,7 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
   - **`roomId`** identifica la habitación en el `GET`, el `POST` y el puerto `findByIds`, igual que en el plan base, 004 y 007.
   - **`POST /pricing/quotes` solo interno**: se rechaza con 403 cualquier solicitud con JWT, porque Módulo 2 va por red interna sin token; el plan base lo dice pero no define cómo se hace cumplir (FR-016).
   - **Calendario inconsistente** (temporada no encontrada en el catálogo) devuelve 422 `UNEXPECTED_ERROR` porque no hay un `errorCode` específico en el plan base; podría agregarse uno.
-- El `POST` no es idempotente: dos solicitudes idénticas crean dos cotizaciones, y 007 las trata como equivalentes (misma habitación y mismas fechas). No es una decisión a confirmar, solo una consecuencia del diseño.
+- El `POST` no es idempotente: dos solicitudes idénticas crean dos cotizaciones. Si por error una reserva guardara dos de la misma habitación, 007 usa la de menor `quoteId`. No es una decisión a confirmar, solo una consecuencia del diseño.
 - **Dos errores de calendario, a propósito**: `SeasonConfigurationInconsistentError` es la comprobación propia de 005 en el límite con 011 y 009 (el `seasonId` que devuelve `ResolveSeasonByDateUseCase` no está en el snapshot de `GetEffectiveSeasonRulesUseCase`), que exigen los contratos de ambos. Es distinto de `SeasonCalendarInconsistentError` y `SeasonCalendarUnavailableError`, que lanza el propio puerto de 011. En los endpoints de 005 los tres terminan en `422 UNEXPECTED_ERROR`, porque 011 no les define un código HTTP y el plan base no tiene uno específico.
 - Dependencias de otros equipos: 004 y 011 ya definen sus puertos (`GetBaseRateUseCase.execute(roomId, date)` y `ResolveSeasonByDateUseCase.resolve`); con 007 queda confirmar la firma de `LodgingQuoteQueryPort.findByIds` (con `roomId` y `baseRate` por noche), ya acordada en su T002 (T003).
 - Cualquier conflicto entre este plan y la spec funcional (`1-functional/consultar_tarifa_dinamica.md`) se resuelve a favor de la spec, conforme a la nota final de `docs/plan-tecnico-base.md`.

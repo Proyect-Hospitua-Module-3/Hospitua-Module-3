@@ -100,7 +100,7 @@ Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se tra
 | Caso | Respuesta | `errorCode` |
 |---|---|---|
 | OTA con liquidaciones `Final` previas | 200 `{ otaId, percentage, settlementId, settlementDate, historical: true }` | — |
-| OTA sin liquidaciones previas | 200 `{ otaId, historical: false }` (sin `percentage` ni `settlementDate`) | — |
+| OTA sin liquidaciones previas | 200 `{ otaId, historical: false }` (sin `percentage`, `settlementId` ni `settlementDate`) | — |
 | Identificador del canal directo (`DIRECT`), que no es una OTA (FR-006) | 400 | `INVALID_QUERY_PARAMS` |
 | Token inválido o expirado | 401 | `UNAUTHENTICATED` |
 | OTA consultando a otra OTA, o rol distinto a `OTA` | 403 con mensaje genérico, sin confirmar si la otra OTA tiene historial | `FORBIDDEN` |
