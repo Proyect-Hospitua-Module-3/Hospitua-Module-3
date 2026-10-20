@@ -201,8 +201,8 @@ Todos usan `{ errorCode, message, timestamp, path }` del `ApiError` compartido [
 | 409 | `DUPLICATE_SEASON_EXCEPTION` | Más de una excepción para la misma fecha | No |
 | 409 | `SEASON_CALENDAR_CONFLICT` | `expectedRevision` desactualizado o carrera concurrente | No |
 | 422 | `SEASON_NOT_FOUND` | Un `seasonId` no existe en el catálogo de 009 | No |
-| 503 | `SEASON_CALENDAR_UNAVAILABLE` | Fallo temporal al leer calendario/catálogo | Sí |
-| 503 | `DATABASE_UNAVAILABLE` | Fallo temporal de escritura/lectura de PostgreSQL | Sí |
+| 422 | `UNEXPECTED_ERROR` | Fallo inesperado al leer calendario/catálogo; el `ExceptionFilter` global registra el error con id de correlación y lo incluye en el mensaje | Sí |
+| 422 | `UNEXPECTED_ERROR` | Fallo inesperado de escritura/lectura de PostgreSQL; el `ExceptionFilter` global registra el error con id de correlación y lo incluye en el mensaje; la transacción se revirtió | Sí |
 
 ## 7. Garantías para quien llama
 

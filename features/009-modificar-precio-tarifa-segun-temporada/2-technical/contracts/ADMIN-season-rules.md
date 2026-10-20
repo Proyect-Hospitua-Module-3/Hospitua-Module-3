@@ -153,7 +153,7 @@ El cuerpo de error sigue el formato compartido `ApiError`: `{ errorCode, message
 | 409 | `DEFAULT_SEASON_IMMUTABLE` | Se intenta eliminar o renombrar el default | No |
 | 409 | `SEASON_IN_USE` | Una entrada/excepción de calendario referencia la temporada | No |
 | 409 | `SEASON_RULE_CONFLICT` | Conflicto concurrente/temporal al actualizar | No |
-| 503 | `DATABASE_UNAVAILABLE` | Base de datos no disponible; la transacción se revirtió | Sí |
+| 422 | `UNEXPECTED_ERROR` | Fallo inesperado de base de datos; el `ExceptionFilter` global registra el error con id de correlación y lo incluye en el mensaje; la transacción se revirtió | Sí |
 
 Ejemplo:
 
