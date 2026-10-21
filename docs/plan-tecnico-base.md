@@ -141,7 +141,7 @@ Regla arquitectónica de Módulo 3:
 | `POST /auth/login` | Administrador, OTA | — | Login propio de Módulo 3: emite el JWT de usuario |
 | `GET /pricing/dynamic-rate` | Módulo 2, OTA | 005 | Tarifa dinámica por noche de una habitación (`roomId`): tarifa base de esa habitación + regla de temporada |
 | `POST /pricing/quotes` | Módulo 2 | 005 | Cotización del hospedaje de una habitación al crear una reserva: calcula y guarda la tarifa dinámica de cada noche y el total |
-| `GET /api/settlements?reservationRef={ref}&checkInDate={in}&checkOutDate={out}&source={src}&roomId={room}&categoryRoom={type}` | Módulo 1, OTA | 002 | Desglose de la liquidación de una habitación (ruta y parámetros definidos por Módulo 1) |
+| `GET /api/settlements?reservationRef={ref}&checkInDate={in}&checkOutDate={out}&source={src}&roomId={room}&categoryRoom={type}` | Módulo 1, OTA | 002 | Desglose de la liquidación de una habitación para Módulo 1 (ruta y parámetros definidos por Módulo 1). La OTA consulta solo con `reservationRef` y recibe las liquidaciones `Final` de las habitaciones con check-out de su reserva |
 | `GET /ota-commission/{otaId}` | Módulo 2, OTA | 003 | Último porcentaje de comisión aplicado a una OTA (referencial) |
 | `GET /invoices` | Administrador | 008 | Búsqueda de facturas por criterios |
 | `GET /invoices/{id}` | Administrador | 008 | Detalle de solo lectura de una factura |
@@ -195,7 +195,8 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 - Si ya existe la liquidación `Final` de esa habitación, la devuelve.
 - Si todavía no existe, la calcula con la misma lógica de `Generar liquidación` (reserva de Módulo 2 + cotización guardada), **sin persistirla**, y la devuelve como informativa. Como el cálculo es determinista, coincide con la liquidación `Final` que se genera al recibir el evento.
 - Debe responder en menos de 800 ms (objetivo de rendimiento de Módulo 1).
-- `roomId` es obligatorio: con él se elige la cotización de la habitación. `categoryRoom` es informativo.
+- Para Módulo 1, `roomId` es obligatorio: con él se elige la cotización de la habitación. `categoryRoom` es informativo.
+- La OTA consulta solo con `reservationRef`, sin `roomId`: recibe una colección ordenada por `roomId` con las liquidaciones `Final` de las habitaciones que ya tuvieron check-out. No recibe liquidación informativa (ver plan 002).
 - El parámetro `source` (Directo / OTA) es informativo; la fuente de verdad del canal sigue siendo la reserva de Módulo 2.
 - `GET /pricing/dynamic-rate` lo consultan Módulo 2 y la OTA para conocer la tarifa por noche. La parte de tarifa dinámica de una liquidación concreta viaja además en su desglose (ver [Desglose de tarifa dinámica](#desglose-de-tarifa-dinámica-en-la-liquidación)).
 
@@ -235,10 +236,10 @@ Toda excepción o rechazo funcional se traduce a un cuerpo JSON estandarizado:
 ```
 - Errores de dominio tipados por contexto (`InvalidVatRateError`, `OverlappingSeasonError`, `MissingCommissionError`, `SettlementAlreadyExistsError`, etc.), definidos en `domain/errors/` y mapeados a códigos HTTP en el `ExceptionFilter` global (`infrastructure/adapters/in/http/domain-exception.filter.ts`).
 - **HTTP 400**: Errores de validación o datos faltantes (p. ej. porcentaje de IVA inválido, rango de fechas inválido).
-- **HTTP 401 / 403**: JWT ausente o inválido en un endpoint que lo exige / rol no autorizado para el endpoint o para el recurso (p. ej. una OTA consultando una reserva que no intermedió).
+- **HTTP 401 / 403**: JWT ausente o inválido en un endpoint que lo exige / rol no autorizado para el endpoint o para el recurso (p. ej. una OTA consultando la tarifa dinámica de una reserva que no intermedió, o la comisión de otra OTA). Excepción en `GET /api/settlements`: para no revelar si la reserva existe, una OTA que consulta una reserva ajena, directa o sin liquidaciones recibe 404 `SETTLEMENT_NOT_FOUND`.
 - **HTTP 404**: Recurso inexistente (liquidación aún no generada, factura no encontrada, tarifa base no encontrada en Módulo 1).
 - **HTTP 409**: Conflicto con el estado actual (p. ej. temporadas solapadas).
-- **HTTP 424 (Failed Dependency)**: Falla de comunicación con Módulo 1 o Módulo 2 (timeout/5xx de ellos o circuito abierto), distinta de la ausencia del dato (FR-008 de `consultar_tarifa_base.md`). El `ApiError` lleva `errorCode` `MODULE1_UNAVAILABLE` o `MODULE2_UNAVAILABLE` e indica que es reintentable. Ninguna respuesta de Módulo 3 usa códigos 5xx.
+- **HTTP 424 (Failed Dependency)**: Falla de comunicación con Módulo 1 o Módulo 2 (timeout/5xx de ellos o circuito abierto), distinta de la ausencia del dato (FR-008 de `consultar_tarifa_base.md`). El `ApiError` lleva `errorCode` `MODULE1_UNAVAILABLE` o `MODULE2_UNAVAILABLE` e indica que es reintentable. También se usa 424 con `INVALID_BASE_RATE` cuando Módulo 1 responde con una tarifa base menor o igual a cero (no es reintentable). Ninguna respuesta de Módulo 3 usa códigos 5xx.
 - **Sin respuestas 5xx**: no se diseña ni se documenta ningún 5xx en los endpoints. Todo error inesperado es capturado por el `ExceptionFilter` global, registrado con identificador de correlación en logs y devuelto como **HTTP 422** con `errorCode` `UNEXPECTED_ERROR` y un mensaje que incluye el identificador de correlación para que soporte pueda rastrearlo.
 - Todo motivo de rechazo devuelto al actor debe ser específico y accionable (NFR-005 de `generar_liquidacion.md`), nunca un error genérico.
 
