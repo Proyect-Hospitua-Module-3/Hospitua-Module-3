@@ -69,6 +69,28 @@ Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el v
    - **Cuando** se registra el check-out
    - **Entonces** no se genera ninguna cotización; se liquida el valor de la cotización guardada
 
+---
+
+### Historia de usuario 4 - La OTA consulta la tarifa dinámica de las habitaciones de sus reservas (Prioridad: P2)
+
+Como OTA (Booking, Airbnb, Expedia), quiero consultar la tarifa dinámica de cada noche de una habitación de una reserva que yo intermedié, para conocer cómo se compone el valor de hospedaje de esa habitación noche por noche.
+
+**Por qué esta prioridad**: La consulta de Módulo 2 (HU1 y HU2) y la cotización (HU3) sostienen la reserva y la liquidación; la consulta de la OTA es informativa y no bloquea ninguna de ellas. La parte dinámica de una liquidación concreta la OTA también la recibe en `Consultar liquidación`.
+
+**Prueba independiente**: Se puede crear una reserva intermediada por una OTA, consultar como esa OTA la tarifa dinámica de una habitación de la reserva y verificar que recibe el detalle por noche; luego consultar como otra OTA y verificar que la consulta se rechaza.
+
+**Escenarios de aceptación**:
+
+1. **Escenario**: Consulta de una habitación de una reserva propia
+   - **Dado** que la reserva fue intermediada por la OTA y la habitación consultada pertenece a esa reserva
+   - **Cuando** la OTA consulta la tarifa dinámica de esa habitación para una fecha o un rango de fechas
+   - **Entonces** el sistema devuelve el resultado de cada noche, igual al que obtendría Módulo 2 para la misma habitación y fechas
+
+2. **Escenario**: Consulta de una reserva ajena o inexistente
+   - **Dado** que la reserva pertenece al canal directo, fue intermediada por otra OTA, no existe o no incluye la habitación consultada
+   - **Cuando** la OTA consulta la tarifa dinámica
+   - **Entonces** el sistema rechaza la consulta sin devolver ningún resultado y sin revelar si la reserva existe
+
 ### Casos límite
 
 - La habitación consultada no tiene tarifa base registrada en Módulo 1: el sistema rechaza la consulta; no debe devolver una tarifa dinámica calculada sobre una tarifa base en cero o supuesta.
@@ -77,12 +99,14 @@ Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el v
 - Consulta repetida para la misma habitación y fecha sin cambios de configuración: debe devolver siempre el mismo resultado.
 - Rango de fechas de una sola noche: la fecha de fin es la fecha de salida (exclusiva, igual que en el valor de hospedaje); una noche se consulta con fecha de fin = fecha de inicio + 1 día, y el sistema devuelve el resultado de esa única noche. Una fecha de fin igual a la de inicio equivale a cero noches y se rechaza.
 - Solicitud de cotización de un actor distinto a Módulo 2: el sistema rechaza la solicitud.
+- La OTA consulta una habitación que no pertenece a una reserva intermediada por ella: el sistema rechaza la consulta de la misma forma exista o no la reserva (HU4).
+- Módulo 2 no responde al verificar la reserva indicada por la OTA: la consulta falla de forma explícita, sin devolver ningún resultado.
 
 ## Requisitos *(obligatorio)*
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE permitir al actor autorizado (`Módulo 2`) consultar la tarifa dinámica de una habitación para una fecha específica o para un rango de fechas.
+- **FR-001**: El sistema DEBE permitir a los actores autorizados (`Módulo 2` y `OTA`) consultar la tarifa dinámica de una habitación para una fecha específica o para un rango de fechas; la `OTA`, solo para habitaciones de reservas intermediadas por ella.
 - **FR-002**: El sistema DEBE calcular la tarifa dinámica ajustando la tarifa base obtenida de Módulo 1 (mediante `Consultar tarifa base`) según el ajuste numérico configurado para la temporada vigente aplicable a cada noche consultada, conforme a la clasificación que administra el Administrador en `Revisar temporada del año` y a los ajustes definidos en `Modificar precio tarifa según temporada`. El sistema NO DEBE asumir un signo o una magnitud fijos a partir del nombre de la temporada: el valor positivo, negativo o cero ya configurado para esa temporada es lo que determina si el resultado incrementa, decrementa o mantiene la tarifa base, y este cálculo DEBE funcionar de la misma forma tanto para la temporada por defecto (`Regular`) como para cualquier otra temporada que el Administrador configure, por ejemplo `Alta` o `Baja`.
 - **FR-003**: Cuando la consulta cubra un rango de varias noches, el sistema DEBE devolver el resultado de cada noche de forma individual, sin promediar ni aplicar una única temporada a todo el rango.
 - **FR-004**: El sistema DEBE usar la temporada por defecto cuando una fecha consultada no tenga una clasificación de temporada explícita configurada, aplicando el porcentaje de ajuste vigente de esa temporada; NO DEBE suponer que ese ajuste es cero.
@@ -91,8 +115,8 @@ Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el v
 - **FR-007**: El sistema NO DEBE persistir un valor fijo de "tarifa dinámica" para una fecha; cada consulta de tarifa dinámica refleja la configuración de temporada y la tarifa base vigentes en el momento en que se ejecuta. Esto no aplica a la cotización de hospedaje (FR-012 a FR-016), que sí se guarda.
 - **FR-008**: El sistema DEBE rechazar una consulta cuyo rango de fechas sea inválido (fecha de fin anterior o igual a la fecha de inicio; la fecha de fin es la fecha de salida, exclusiva), sin devolver un resultado parcial.
 - **FR-009**: El resultado de la consulta DEBE identificar, para cada noche, la tarifa base de origen, la temporada aplicada y la tarifa dinámica resultante, para que el actor consultante pueda trazar cómo se compuso ese valor (en el caso de Módulo 2, para conocer el precio por noche antes de cotizar).
-- **FR-010**: El sistema DEBE restringir el acceso a `Consultar tarifa dinámica` exclusivamente al actor autorizado (`Módulo 2`).
-- **FR-011**: El sistema NO DEBE aplicar restricciones de visibilidad sobre el resultado de esta consulta; la tarifa dinámica de una fecha y una habitación es la misma para cualquier consulta de `Módulo 2`, dado que no es información específica de una reserva ni de un canal en particular.
+- **FR-010**: El sistema DEBE restringir el acceso a `Consultar tarifa dinámica` a los actores autorizados (`Módulo 2` y `OTA`). A la `OTA` DEBE rechazarle la consulta de cualquier habitación que no pertenezca a una reserva intermediada por ella, sin revelar si la reserva existe.
+- **FR-011**: El resultado de esta consulta NO DEBE variar según el actor; la tarifa dinámica de una fecha y una habitación es la misma para cualquier consulta autorizada, dado que no es información específica de una reserva ni de un canal en particular. La restricción de la `OTA` a sus reservas (FR-010) limita qué habitaciones puede consultar, no el valor que recibe.
 - **FR-012**: El sistema DEBE permitir a `Módulo 2` solicitar la cotización del hospedaje de una habitación al crear una reserva, indicando la habitación, la fecha de entrada y la fecha de salida (exclusiva); Módulo 3 DEBE calcular el valor de cada noche con la tarifa dinámica (FR-002), guardar la cotización y entregar el valor de cada noche y el total. La cotización guardada DEBE conservar y exponer, para cada noche, la tarifa base de origen, para que `Generar liquidación` pueda armar el desglose; el cálculo de ese desglose no es responsabilidad de esta funcionalidad.
 - **FR-013**: El sistema NO DEBE modificar una cotización guardada ni recalcularla, aunque cambien después las reglas de temporada o la tarifa base.
 - **FR-014**: Una salida anticipada NO DEBE generar una cotización.
@@ -102,17 +126,17 @@ Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el v
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
 - **Tarifa dinámica**: Valor resultante de ajustar la tarifa base según la temporada aplicable a una noche específica; se calcula en el momento de la consulta, no se almacena como valor independiente.
-- **Consulta de tarifa**: Solicitud del actor autorizado (`Módulo 2`) identificando la habitación y una fecha o rango de fechas.
+- **Consulta de tarifa**: Solicitud de un actor autorizado (`Módulo 2` u `OTA`) identificando la habitación y una fecha o rango de fechas; la `OTA` identifica además la reserva a la que pertenece la habitación.
 - **Cotización de hospedaje**: Valor de hospedaje de una habitación (valor de cada noche, con su tarifa base de origen, y total), calculado por Módulo 3 a solicitud de Módulo 2 al crear una reserva; no cambia una vez guardada. Es la fuente del valor de hospedaje que usa `Generar liquidación`.
 - **Resultado por noche**: Tarifa base de origen, temporada aplicada y tarifa dinámica resultante para una noche específica dentro del rango consultado.
 
 ### Reglas de negocio
 
 - **BR-001**: La tarifa dinámica es siempre una función de la tarifa base vigente en Módulo 1 y la regla de temporada vigente administrada por el Administrador en el momento de la consulta; no es un valor almacenado de forma independiente.
-- **BR-002**: El acceso a `Consultar tarifa dinámica` está reservado al actor autorizado `Módulo 2` (que la necesita para obtener el valor de hospedaje cotizado por habitación antes de cotizar la reserva).
+- **BR-002**: El acceso a `Consultar tarifa dinámica` está reservado a los actores autorizados: `Módulo 2` (que la necesita para obtener el valor de hospedaje cotizado por habitación antes de cotizar la reserva) y la `OTA`, solo para habitaciones de reservas intermediadas por ella.
 - **BR-003**: Cada noche de una estancia se valora con la temporada que corresponde a esa fecha específica; una estancia que abarca más de una temporada nunca se homogeniza a una sola.
 - **BR-004**: `Consultar tarifa dinámica` es una operación exclusivamente de lectura: no crea ni modifica la tarifa base, la clasificación de temporada, ni ningún registro de liquidación o factura. Crear la cotización de hospedaje (HU3) es una operación distinta, que sí guarda un registro.
-- **BR-005**: A diferencia de `Consultar liquidación`, este caso de uso no segmenta el resultado por reserva ni por canal: la tarifa dinámica de una fecha y una habitación es la misma para `Módulo 2`, no un dato privado de una reserva o canal.
+- **BR-005**: A diferencia de `Consultar liquidación`, este caso de uso no segmenta el resultado por reserva ni por canal: la tarifa dinámica de una fecha y una habitación es la misma para cualquier actor autorizado, no un dato privado de una reserva o canal.
 - **BR-006**: Una cotización guardada no cambia.
 - **BR-007**: El ajuste aplicado a cada noche depende únicamente del valor numérico (positivo, negativo o cero) configurado para la temporada vigente de esa fecha, nunca del nombre o la etiqueta de la temporada; esto rige por igual para la temporada por defecto (`Regular`) y para cualquier otra temporada que el Administrador configure en `Modificar precio tarifa según temporada`, por ejemplo `Alta` o `Baja`.
 - **BR-008**: Solo `Módulo 2` puede solicitar cotizaciones, y únicamente como parte de la creación de una reserva.
@@ -132,7 +156,7 @@ Como Módulo 2 (módulo de reservas), quiero que Módulo 3 calcule y guarde el v
 - **SC-002**: El 100% de las estancias que cruzan más de una temporada reciben el valor correcto por cada noche, verificable sumando manualmente.
 - **SC-003**: El 0% de las consultas devuelve una tarifa dinámica cuando Módulo 1 no reporta una tarifa base válida.
 - **SC-004**: El 100% de las consultas con un rango de fechas inválido son rechazadas sin devolver un resultado parcial.
-- **SC-005**: El 100% de los accesos a `Consultar tarifa dinámica` quedan restringidos al actor autorizado (`Módulo 2`).
+- **SC-005**: El 100% de los accesos a `Consultar tarifa dinámica` quedan restringidos a los actores autorizados (`Módulo 2` y `OTA`), y el 100% de las consultas de una `OTA` sobre habitaciones que no pertenecen a sus reservas son rechazadas.
 - **SC-006**: El 100% de las consultas idénticas (misma fecha, misma habitación, misma configuración vigente) devuelven el mismo resultado.
 - **SC-007**: El 100% de las cotizaciones guardadas conservan su valor aunque cambien después las reglas de temporada o la tarifa base.
 - **SC-008**: El 100% de las solicitudes de cotización inválidas, sin tarifa base o hechas por un actor distinto a `Módulo 2` son rechazadas sin guardar ninguna cotización.

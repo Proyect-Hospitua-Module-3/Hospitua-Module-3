@@ -1,7 +1,7 @@
 # Contrato de puerto interno: Consultar cotizaciones de hospedaje por id
 
 **Proveedor**: Feature 005 Consultar tarifa dinámica
-**Consumidor**: Feature 007 Generar liquidación (`settlement`)
+**Consumidor**: Feature 007 Generar liquidación (`settlement`). También lo usa la propia 005 en `GET /pricing/dynamic-rate` para comprobar que la habitación consultada por una OTA está en las cotizaciones de su reserva ([GET-pricing-dynamic-rate.md](./GET-pricing-dynamic-rate.md), regla 2)
 **Spec proveedor**: [consultar_tarifa_dinamica.md](../../1-functional/consultar_tarifa_dinamica.md)
 **Plan proveedor**: [plan.md](../plan.md)
 **Contrato de creación**: [POST-pricing-quotes.md](./POST-pricing-quotes.md)
