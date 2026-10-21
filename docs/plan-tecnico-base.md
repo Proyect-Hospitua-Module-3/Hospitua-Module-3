@@ -139,7 +139,7 @@ Regla arquitectónica de Módulo 3:
 | Método y Ruta | Consumidor | Feature | Propósito |
 |---|---|---|---|
 | `POST /auth/login` | Administrador, OTA | — | Login propio de Módulo 3: emite el JWT de usuario |
-| `GET /pricing/dynamic-rate` | Módulo 2 | 005 | Tarifa dinámica por noche de una habitación (`roomId`): tarifa base de esa habitación + regla de temporada |
+| `GET /pricing/dynamic-rate` | Módulo 2, OTA | 005 | Tarifa dinámica por noche de una habitación (`roomId`): tarifa base de esa habitación + regla de temporada |
 | `POST /pricing/quotes` | Módulo 2 | 005 | Cotización del hospedaje de una habitación al crear una reserva: calcula y guarda la tarifa dinámica de cada noche y el total |
 | `GET /api/settlements?reservationRef={ref}&checkInDate={in}&checkOutDate={out}&source={src}&roomId={room}&categoryRoom={type}` | Módulo 1, OTA | 002 | Desglose de la liquidación de una habitación (ruta y parámetros definidos por Módulo 1) |
 | `GET /ota-commission/{otaId}` | Módulo 2, OTA | 003 | Último porcentaje de comisión aplicado a una OTA (referencial) |
@@ -176,7 +176,7 @@ Módulo 3 calcula el valor del hospedaje en el momento de la reserva, para que e
 
 #### Desglose de tarifa dinámica en la liquidación
 
-A la OTA solo le interesa qué parte del dinero proviene de la tarifa dinámica, no la tarifa noche por noche. Por eso ese dato viaja en la liquidación y no en un endpoint de tarifas:
+A la OTA le interesa qué parte del dinero de una liquidación proviene de la tarifa dinámica. Además de consultar la tarifa por noche en `GET /pricing/dynamic-rate`, recibe ese dato en la liquidación:
 
 - `baseLodgingAmount` = suma de `base_rate` de las noches de la cotización de la habitación (`lodging_quote_night`).
 - `dynamicAdjustmentAmount` = `lodgingAmount − baseLodgingAmount`: lo que la tarifa dinámica sumó (positivo) o restó (negativo) a la tarifa base. Es informativo.
@@ -197,7 +197,7 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 - Debe responder en menos de 800 ms (objetivo de rendimiento de Módulo 1).
 - `roomId` es obligatorio: con él se elige la cotización de la habitación. `categoryRoom` es informativo.
 - El parámetro `source` (Directo / OTA) es informativo; la fuente de verdad del canal sigue siendo la reserva de Módulo 2.
-- `GET /pricing/dynamic-rate` se mantiene para consultas de tarifa por noche de Módulo 2. La OTA no lo consume: obtiene la parte de tarifa dinámica en el desglose de la liquidación (ver [Desglose de tarifa dinámica](#desglose-de-tarifa-dinámica-en-la-liquidación)).
+- `GET /pricing/dynamic-rate` lo consultan Módulo 2 y la OTA para conocer la tarifa por noche. La parte de tarifa dinámica de una liquidación concreta viaja además en su desglose (ver [Desglose de tarifa dinámica](#desglose-de-tarifa-dinámica-en-la-liquidación)).
 
 ### Autenticación
 
@@ -214,11 +214,13 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 | `POST /auth/login` | Público (Administrador u OTA con sus credenciales) |
 | `/admin/*`, `/invoices*` | Solo JWT con `role = Administrador` |
 | `POST /pricing/quotes` | Solo Módulo 2 (red interna, sin token) |
-| `GET /pricing/dynamic-rate` | Solo Módulo 2 (red interna, sin token) |
+| `GET /pricing/dynamic-rate` | Módulo 2 por la red interna sin token, u OTA con JWT `role = OTA` |
 | `GET /ota-commission/{otaId}`, `GET /api/settlements` | Módulo 1 / Módulo 2 por la red interna sin token, u OTA con JWT `role = OTA` |
 
 - Cada controller declara los roles permitidos con `@Roles(...)` y un Guard valida el claim `role`. En los endpoints compartidos con la OTA, si llega un token se valida y se aplican las reglas de OTA; si no llega, se trata como llamada interna de un módulo.
 - Las reglas que dependen de datos de negocio (p. ej. que la reserva consultada sea de la OTA del token) se validan en el caso de uso, no solo en el Guard.
+- Una OTA solo ve lo suyo en todos los endpoints que comparte: sus liquidaciones, su comisión y la tarifa dinámica de las habitaciones de sus propias reservas. No accede a datos de reservas de otras OTA ni del canal directo.
+  - En `GET /pricing/dynamic-rate`, la OTA envía además `reservationRef`. El caso de uso consulta la reserva a Módulo 2 (`GET /api/reservations/{reservationRef}`, el mismo cliente de `settlement`), comprueba que su `otaId` sea el del token y que el `roomId` consultado corresponda a una de sus cotizaciones (`quoteIds`). Si algo no coincide responde `403 FORBIDDEN`, con el mismo mensaje exista o no la reserva: el 404 de Módulo 2 se traduce a 403 y la OTA nunca recibe `RESERVATION_NOT_FOUND`. Si la OTA no envía `reservationRef`, responde `400 INVALID_QUERY_PARAMS`. Módulo 2 no envía `reservationRef`; si lo envía en una llamada interna (sin token) se ignora, porque esta validación solo aplica con `role = OTA`.
 
 ### Formato Estándar de Error (`ApiError`)
 
