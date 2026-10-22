@@ -9,7 +9,7 @@
 
 Esta feature cubre dos casos de uso del *bounded context* `pricing`, ambos basados en la misma función de cálculo:
 
-1. **`GetDynamicRateUseCase`** (`GET /pricing/dynamic-rate`, solo Módulo 2): para una habitación (`roomId`) y una fecha o rango de fechas, devuelve la tarifa base (propiedad de Módulo 1, vía 004) ajustada por la temporada vigente (catálogo y ajuste de 009, clasificación por fecha de 011), noche por noche. No guarda nada (BR-001, FR-007) y no segmenta el resultado por reserva ni por canal (BR-005).
+1. **`GetDynamicRateUseCase`** (`GET /pricing/dynamic-rate`, Módulo 2 y OTA; la OTA solo para habitaciones de sus reservas): para una habitación (`roomId`) y una fecha o rango de fechas, devuelve la tarifa base (propiedad de Módulo 1, vía 004) ajustada por la temporada vigente (catálogo y ajuste de 009, clasificación por fecha de 011), noche por noche. No guarda nada (BR-001, FR-007) y no segmenta el resultado por reserva ni por canal (BR-005).
 2. **`CreateLodgingQuoteUseCase`** (`POST /pricing/quotes`, solo Módulo 2): calcula la tarifa dinámica de cada noche, guarda una **cotización inmutable** (`lodging_quote` + `lodging_quote_night`) y devuelve `quoteId`, tarifa por noche y total. Es la fuente del valor de hospedaje que lee `settlement` (007) sin recalcularlo.
 
 La tarifa dinámica nunca se guarda; la cotización sí (FR-007).
@@ -21,11 +21,11 @@ Se hereda el stack y las convenciones de `docs/plan-tecnico-base.md` (NestJS 10 
 **Language/Version**: TypeScript 5.x sobre Node.js 20 LTS
 **Primary Dependencies**: NestJS 10.x, Prisma ORM, `decimal.js` a través del VO `Money` (aritmética decimal exacta), `opossum` (circuit breaker, ya usado por el cliente de Módulo 1 de 004)
 **Storage**: PostgreSQL 16 — esta feature es dueña de `lodging_quote` y `lodging_quote_night` (insert-only); para la consulta de tarifa **no** posee tablas: lee, sin escribir, el catálogo de ajustes de 009 y el calendario de 011
-**Testing**: Jest (dominio del cálculo y servicios con puertos mockeados), Supertest + Testcontainers (persistencia de cotizaciones y e2e), stub HTTP de Módulo 1, prueba de contrato del puerto que consume 007
+**Testing**: Jest (dominio del cálculo y servicios con puertos mockeados), Supertest + Testcontainers (persistencia de cotizaciones y e2e), stub HTTP de Módulo 1 y de Módulo 2 (reserva consultada para la OTA), prueba de contrato del puerto que consume 007
 **Target Platform**: servicio backend Linux en contenedor Docker (bounded context `pricing` del monolito modular de Módulo 3)
 **Project Type**: servicio backend único (monolito modular hexagonal), sin frontend en este repositorio
 **Performance Goals**: no bloquear operaciones de front-desk de Módulo 2 (NFR-002). El costo dominante es la llamada a Módulo 1 por noche, por lo que el timeout y el límite de concurrencia de esas llamadas son los parámetros críticos
-**Constraints**: determinismo (NFR-001); si Módulo 1 no responde o no reporta tarifa base para alguna noche, la operación **completa** falla (FR-006, NFR-003), sin resultado parcial ni cotización parcial; cada noche usa su propia temporada (BR-003); el ajuste sale solo del valor numérico configurado, nunca del nombre de la temporada (BR-007); cálculo con `Money` decimal, nunca con `number`; rango con fecha de salida exclusiva (FR-008); cotización inmutable (BR-006, FR-013); solo Módulo 2 consulta (FR-010) y solo Módulo 2 cotiza (BR-008); no se diseña ninguna respuesta 5xx (plan base)
+**Constraints**: determinismo (NFR-001); si Módulo 1 no responde o no reporta tarifa base para alguna noche, la operación **completa** falla (FR-006, NFR-003), sin resultado parcial ni cotización parcial; cada noche usa su propia temporada (BR-003); el ajuste sale solo del valor numérico configurado, nunca del nombre de la temporada (BR-007); cálculo con `Money` decimal, nunca con `number`; rango con fecha de salida exclusiva (FR-008); cotización inmutable (BR-006, FR-013); consultan Módulo 2 y la OTA, esta solo sobre habitaciones de sus reservas (FR-010), y solo Módulo 2 cotiza (BR-008); no se diseña ninguna respuesta 5xx (plan base)
 **Scale/Scope**: 2 endpoints (`GET /pricing/dynamic-rate`, `POST /pricing/quotes`), 2 tablas propias, cardinalidad de hasta N noches por solicitud
 
 ## Project Structure
@@ -57,7 +57,8 @@ src/
 │   │   └── lodging-quote.ts                   # Cotización: quoteId, roomId, fechas, currency, noches (con baseRate), total; inmutable
 │   ├── errors/
 │   │   ├── invalid-date-range.error.ts        # INVALID_DATE_RANGE (fin <= inicio)
-│   │   └── season-configuration-inconsistent.error.ts  # El calendario referencia una temporada que no está en el catálogo (contrato de 009)
+│   │   ├── season-configuration-inconsistent.error.ts  # El calendario referencia una temporada que no está en el catálogo (contrato de 009)
+│   │   └── dynamic-rate-access-denied.error.ts         # La OTA consulta una habitación que no es de sus reservas → 403 FORBIDDEN
 │   └── ports/
 │       ├── in/
 │       │   ├── get-dynamic-rate.use-case.ts       # 005: consulta de tarifa por noche
@@ -68,16 +69,16 @@ src/
 │
 ├── application/
 │   ├── services/pricing/
-│   │   ├── get-dynamic-rate.service.ts        # Compone tarifa base (004) + reglas (009) + calendario (011)
+│   │   ├── get-dynamic-rate.service.ts        # Compone tarifa base (004) + reglas (009) + calendario (011); verifica el acceso de la OTA
 │   │   └── create-lodging-quote.service.ts    # Tarifa dinámica × noches; guarda la cotización
 │   └── dto/pricing/
-│       ├── dynamic-rate.query.ts              # { roomId, checkInDate, checkOutDate }
+│       ├── dynamic-rate.query.ts              # { roomId, checkInDate, checkOutDate, requestingActor, reservationRef? }
 │       └── create-lodging-quote.command.ts    # { roomId, checkInDate, checkOutDate }
 │
 └── infrastructure/
     └── adapters/
         ├── in/http/
-        │   ├── dynamic-rate.controller.ts     # GET /pricing/dynamic-rate (solo llamada interna de Módulo 2, sin token)
+        │   ├── dynamic-rate.controller.ts     # GET /pricing/dynamic-rate (Módulo 2 sin token, u OTA con @Roles("OTA"))
         │   ├── lodging-quote.controller.ts    # POST /pricing/quotes (solo llamada interna de Módulo 2, sin token)
         │   └── dto/                           # DTOs HTTP con class-validator
         └── out/persistence/
@@ -97,10 +98,10 @@ test/
 ├── contract/dynamic-rate.contract.spec.ts
 ├── contract/lodging-quote.contract.spec.ts
 ├── contract/lodging-quote-query.port.spec.ts                         # contrato con 007
-└── e2e/pricing.e2e-spec.ts                                           # 200 / 400 / 403 / 404 / 422 / 424 por endpoint (403 solo en el POST)
+└── e2e/pricing.e2e-spec.ts                                           # 200 / 400 / 401 / 403 / 404 / 422 / 424 por endpoint (401 solo en el GET)
 ```
 
-**Structure Decision**: 005 es una capa de **composición** sobre tres piezas que pertenecen a otras features de `pricing`: la tarifa base de Módulo 1 (004), el catálogo de temporadas y ajustes (009) y el calendario por fecha (011). No reimplementa sus adaptadores. Tiene dos tablas propias solo para la cotización. Esto implica una dependencia de orden explícita: **005 no puede completarse sin que 011, 009 y 004 expongan sus puertos** (ver Dependencies & Execution Order).
+**Structure Decision**: 005 es una capa de **composición** sobre tres piezas que pertenecen a otras features de `pricing`: la tarifa base de Módulo 1 (004), el catálogo de temporadas y ajustes (009) y el calendario por fecha (011). No reimplementa sus adaptadores. Tiene dos tablas propias solo para la cotización. Para el acceso de la OTA reutiliza `ReservationClientPort` de 007 (el mismo cliente de Módulo 2 de `settlement`, como indica el plan base). Esto implica una dependencia de orden explícita: **005 no puede completarse sin que 011, 009 y 004 expongan sus puertos**, y la HU4 además necesita el puerto de 007 (ver Dependencies & Execution Order).
 
 ### Puertos que 005 consume (definidos por otras features)
 
@@ -109,6 +110,7 @@ test/
 | `GetBaseRateUseCase` (`get-base-rate.use-case.ts`) | 004 | `execute(roomId, date)` → `BaseRate` con el importe como `Money` (COP, mayor que cero), o `BaseRateNotFoundError` / `InvalidBaseRateError` / `Module1UnavailableError`; consulta una fecha por llamada | Definido (`execute(roomId, date)`) |
 | `GetEffectiveSeasonRulesUseCase` (`get-effective-season-rules.use-case.ts`) | 009 | `getAll(asOf)` → `{ defaultSeasonId, seasons[{ seasonId, name, adjustmentPercent (decimal firmado -100..100), isDefault }] }`, según `PORT-get-season-rules.md` | Definido |
 | `ResolveSeasonByDateUseCase` (`resolve-season-by-date.use-case.ts`) | 011 | `resolve({ date, asOf })` → `SeasonClassification` con el `seasonId` de la fecha y su `source` (`BASE` \| `EXCEPTION` \| `DEFAULT`); la excepción puntual prevalece sobre BASE propio o heredado de la revisión del año anterior y, sin asignación, devuelve el `defaultSeasonId` de 009 con `source = DEFAULT`. El resultado identifica también el año/revisión propietario de la entrada. Falla con `SeasonCalendarInconsistentError` o `SeasonCalendarUnavailableError`, según `PORT-resolve-season-by-date.md` | Definido |
+| `ReservationClientPort` (`reservation.client.port.ts`) | 007 | Solo para la OTA (HU4): `getReservation(reservationRef)` → `{ reservationRef, quoteIds, channel, otaId?, … }` con `GET /api/reservations/{reservationRef}` de Módulo 2 (timeout y circuit breaker de 007), o `ReservationNotFoundError` / `Module2UnavailableError` | Definido |
 
 ### Cotización de hospedaje: detalles técnicos
 
@@ -131,7 +133,9 @@ La spec funcional describe solo el comportamiento (se calcula y se guarda, no ca
 
 Parámetros: `roomId`, y `checkInDate` + `checkOutDate` (fecha de salida **exclusiva**) o, para una sola noche, `date` (equivale a `checkInDate = date` y `checkOutDate = date + 1 día`).
 
-Autorización: llamada interna de Módulo 2 sin token (FR-010, BR-002).
+La OTA envía además `reservationRef` (obligatorio para ella; en una llamada interna se ignora).
+
+Autorización (FR-010, BR-002, plan base "Autorización por rol"): Módulo 2 por la red interna sin token, u OTA con JWT `role = OTA`. El controller usa `@Roles("OTA")` cuando llega token; sin token, la llamada es interna. La regla "la OTA solo consulta habitaciones de sus reservas" se valida en el caso de uso: después de validar el rango y antes de calcular, consulta la reserva a Módulo 2 (`ReservationClientPort`), exige que sea de canal `OTA`, que su `otaId` sea el del token y que alguna de sus cotizaciones (`LodgingQuoteQueryPort.findByIds`) tenga el `roomId` consultado; si no, `DynamicRateAccessDeniedError` → 403. El 404 de Módulo 2 también termina en 403, con el mismo mensaje.
 
 ```json
 {
@@ -158,7 +162,10 @@ Autorización: **solo llamada interna de Módulo 2 sin token**. Si la solicitud 
 | Módulo 1 reporta para alguna noche una tarifa base menor o igual a cero (`InvalidBaseRateError` de 004; no cuenta para el circuit breaker) (FR-006) | 424 | `INVALID_BASE_RATE` |
 | Módulo 1 no responde, timeout o circuito abierto (NFR-003) | 424 | `MODULE1_UNAVAILABLE` |
 | Rango inválido: fin anterior o igual al inicio (FR-008, FR-015) | 400 | `INVALID_DATE_RANGE` |
-| Parámetros faltantes o con formato inválido | 400 | `INVALID_QUERY_PARAMS` |
+| Parámetros faltantes o con formato inválido; en el `GET`, también la OTA sin `reservationRef` | 400 | `INVALID_QUERY_PARAMS` |
+| `GET`: token inválido o expirado | 401 | `UNAUTHENTICATED` |
+| `GET`: token con rol distinto a `OTA`, u OTA consultando una habitación que no es de sus reservas (reserva de otra OTA, del canal directo, inexistente o sin esa habitación), con el mismo mensaje en todos los casos | 403 | `FORBIDDEN` |
+| `GET`: Módulo 2 no responde al verificar la reserva de la OTA (`Module2UnavailableError`) | 424 | `MODULE2_UNAVAILABLE` |
 | OTA o Administrador llamando a `POST /pricing/quotes` | 403 | `FORBIDDEN` |
 | Calendario inconsistente con el catálogo de temporadas | 422 | `UNEXPECTED_ERROR` |
 | Error inesperado | 422 | `UNEXPECTED_ERROR` |
@@ -266,25 +273,48 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 
 ---
 
-## Phase 6: Casos límite (NFR-001, NFR-003, NFR-004)
+## Phase 6: User Story 4 — La OTA consulta la tarifa dinámica de las habitaciones de sus reservas (Prioridad: P2)
+
+**Goal**: Permitir a la OTA el mismo `GET /pricing/dynamic-rate` que usa Módulo 2, solo para habitaciones de reservas intermediadas por ella, sin revelar si una reserva ajena existe.
+
+**Independent Test**: como una OTA, consultar una habitación de una reserva propia y verificar que recibe el mismo resultado que Módulo 2; consultar una habitación de una reserva de otra OTA y una reserva inexistente y verificar que ambas responden 403 con el mismo cuerpo.
+
+### Tests for User Story 4
+
+- [ ] T032 [P] [US4] Unit test de `GetDynamicRateService` con actor OTA: reserva con `otaId` igual al del token y una cotización con el `roomId` consultado → mismo resultado que para Módulo 2 (FR-001, FR-011)
+- [ ] T033 [P] [US4] Unit test de rechazos de la OTA → `DynamicRateAccessDeniedError`, sin invocar 004, 009 ni 011: reserva de otra OTA, reserva del canal directo, `roomId` que no está en las cotizaciones de la reserva y `ReservationNotFoundError` de Módulo 2 (FR-010, SC-005)
+- [ ] T034 [P] [US4] Unit test: `Module2UnavailableError` al consultar la reserva hace fallar la consulta completa, sin resultado (casos límite); con actor interno (Módulo 2) no se consulta la reserva y se ignora `reservationRef` si llega
+- [ ] T035 [US4] Test e2e de `GET /pricing/dynamic-rate`: OTA con reserva propia → 200; OTA con reserva ajena o inexistente → 403 con el mismo cuerpo; OTA sin `reservationRef` → 400 `INVALID_QUERY_PARAMS`; token inválido o expirado → 401; token `Administrador` → 403; Módulo 2 no disponible → 424 `MODULE2_UNAVAILABLE`; sin token → llamada interna permitida
+
+### Implementation for User Story 4
+
+- [ ] T036 [US4] Extender `DynamicRateController`: con token, validar con `RolesGuard` que `role = OTA`, extraer el claim `otaId` y exigir `reservationRef` (si falta, 400 `INVALID_QUERY_PARAMS`); sin token, tratar la llamada como interna e ignorar `reservationRef` (plan base, Autorización por rol). Pasar el actor y `reservationRef` al caso de uso
+- [ ] T037 [US4] Inyectar por token `ReservationClientPort` de 007 en `pricing.module.ts` y, en `GetDynamicRateService`, aplicar la regla de alcance de la OTA (FR-010, BR-002) después de validar el rango y **antes** de tocar 004, 009 y 011: `ReservationClientPort.getReservation(reservationRef)`, exigir que la reserva sea de canal `OTA` con `otaId` igual al del token y que `LodgingQuoteQueryPort.findByIds(quoteIds)` incluya una cotización con el `roomId` consultado; si no, `DynamicRateAccessDeniedError`. Traducir `ReservationNotFoundError` a `DynamicRateAccessDeniedError` y propagar `Module2UnavailableError`
+- [ ] T038 [US4] Crear `DynamicRateAccessDeniedError` y registrarlo en el `ExceptionFilter` global → 403 `FORBIDDEN`, con el mismo mensaje accionable en todos los casos (por ejemplo, "No tiene permiso para consultar la tarifa de esta habitación."), sin confirmar ni negar la existencia de la reserva; confirmar que `Module2UnavailableError` → 424 `MODULE2_UNAVAILABLE`
+
+**Checkpoint**: la OTA consulta la tarifa dinámica de las habitaciones de sus reservas y nunca la de una reserva ajena, ni siquiera por un mensaje de error distinto.
+
+---
+
+## Phase 7: Casos límite (NFR-001, NFR-003, NFR-004)
 
 **Purpose**: Cubrir los casos límite de la spec que no son consecuencia directa de las fases anteriores.
 
-- [ ] T032 [P] Unit test de determinismo: la misma fecha, habitación y configuración vigente devuelven siempre el mismo resultado en invocaciones sucesivas (NFR-001, SC-006), sin estado mutable entre llamadas
-- [ ] T033 Confirmar que esta feature no introduce ningún caché con TTL que pueda devolver una tarifa base o una temporada desactualizada: cada consulta refleja la configuración vigente al ejecutarse
-- [ ] T034 Verificar que el resultado de cada noche permite trazar `baseRate` de origen, temporada aplicada y `dynamicRate` resultante (FR-009, NFR-004), y que cada noche de una cotización guarda esos mismos datos y `LodgingQuoteQueryPort` expone el `baseRate` de cada noche (FR-012)
-- [ ] T035 Unit test de un rango de una sola noche con `date`: equivale a `checkOutDate = checkInDate + 1 día` y devuelve exactamente una noche
+- [ ] T039 [P] Unit test de determinismo: la misma fecha, habitación y configuración vigente devuelven siempre el mismo resultado en invocaciones sucesivas (NFR-001, SC-006), sin estado mutable entre llamadas
+- [ ] T040 Confirmar que esta feature no introduce ningún caché con TTL que pueda devolver una tarifa base o una temporada desactualizada: cada consulta refleja la configuración vigente al ejecutarse
+- [ ] T041 Verificar que el resultado de cada noche permite trazar `baseRate` de origen, temporada aplicada y `dynamicRate` resultante (FR-009, NFR-004), y que cada noche de una cotización guarda esos mismos datos y `LodgingQuoteQueryPort` expone el `baseRate` de cada noche (FR-012)
+- [ ] T042 Unit test de un rango de una sola noche con `date`: equivale a `checkOutDate = checkInDate + 1 día` y devuelve exactamente una noche
 
 **Checkpoint**: todos los casos límite de la spec están representados en código y pruebas.
 
 ---
 
-## Phase 7: Polish & Cross-Cutting Concerns
+## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T036 Documentación OpenAPI de `GET /pricing/dynamic-rate` y `POST /pricing/quotes` (parámetros, forma de las respuestas y todos los códigos de error)
-- [ ] T037 Contract test consumidor contra el contrato REST de Módulo 1 que define 004, para detectar cambios incompatibles antes de integrar
-- [ ] T038 Revisar el timeout, el umbral del circuito y el límite de concurrencia con datos reales de latencia de Módulo 1, cuando exista un entorno compartido
-- [ ] T039 Logging estructurado de cada cotización (`quoteId`, `roomId`, rango, total, duración), sin datos personales del huésped
+- [ ] T043 Documentación OpenAPI de `GET /pricing/dynamic-rate` y `POST /pricing/quotes` (parámetros, forma de las respuestas y todos los códigos de error)
+- [ ] T044 Contract test consumidor contra el contrato REST de Módulo 1 que define 004, para detectar cambios incompatibles antes de integrar
+- [ ] T045 Revisar el timeout, el umbral del circuito y el límite de concurrencia con datos reales de latencia de Módulo 1, cuando exista un entorno compartido
+- [ ] T046 Logging estructurado de cada cotización (`quoteId`, `roomId`, rango, total, duración), sin datos personales del huésped
 
 ---
 
@@ -297,8 +327,9 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 - **User Story 1 (Phase 3)**: depende de Foundational. Es la base del resto.
 - **User Story 2 (Phase 4)**: depende de Phase 3; extiende el servicio al caso multi-noche.
 - **User Story 3 (Phase 5)**: depende de Phase 3 y 4 (reutiliza el cálculo por noche y por rango).
-- **Casos límite (Phase 6)**: depende de Phases 3 a 5.
-- **Polish (Phase 7)**: depende de Phases 3 a 6.
+- **User Story 4 (Phase 6)**: depende de Phase 3 y 4 (reutiliza el mismo servicio y controller), y de `ReservationClientPort` de 007; mientras no exista, se desarrolla con dobles de prueba.
+- **Casos límite (Phase 7)**: depende de Phases 3 a 6.
+- **Polish (Phase 8)**: depende de Phases 3 a 7.
 - **Consumidores de esta feature**: 007 necesita `lodging_quote` y `LodgingQuoteQueryPort` para leer el valor de hospedaje; por eso el plan base ubica 005 antes de `settlement` (Phase 3 antes de Phase 4).
 
 ### User Story Dependencies
@@ -306,6 +337,7 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 - **User Story 1 (P1)**: puede comenzar después de Foundational; no depende de otras historias.
 - **User Story 2 (P1)**: depende de US1 (extiende el mismo servicio), pero se prueba de forma independiente con un rango.
 - **User Story 3 (P1)**: reutiliza el cálculo de US1 y US2, pero escribe en tablas propias y es verificable por separado.
+- **User Story 4 (P2)**: agrega el acceso de la OTA sobre el servicio de US1 y US2; es verificable por separado con un doble de Módulo 2.
 
 ### Within Each User Story
 
@@ -318,12 +350,14 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 
 - [Story] mapea cada tarea a su historia de usuario para trazabilidad con la spec funcional.
 - La regla más importante de este plan es el **fail-fast sin resultado parcial**, tanto en la consulta como en la cotización (T017, T020, T024, T025).
+- La OTA usa el mismo `GET` que Módulo 2 y recibe el mismo resultado; lo único que cambia es la verificación previa de que la habitación pertenece a una reserva suya (FR-010, FR-011). Igual que en 003, el 403 lleva el mismo mensaje exista o no el dato ajeno.
 - `calculate-dynamic-rate` es deliberadamente **agnóstico al nombre de la temporada**: recibe el `adjustmentPercent` ya configurado en 009 (porcentaje firmado de -100.00 a +100.00) y aplica `baseRate × (1 + adjustmentPercent / 100)`. `Regular` es la temporada por defecto (no eliminable); su porcentaje de ajuste es el vigente en 009 y no se supone cero; el Administrador puede crear otras temporadas sin cambiar este código (FR-002, FR-004, BR-007).
 - Un único snapshot de reglas por solicitud (`asOf` capturado una vez): un cambio concurrente de una regla no se mezcla dentro de una misma consulta ni de una misma cotización.
 - Decisiones de diseño que no vienen de la spec ni del plan base (quedan documentadas aquí y en los contratos, y cambiarlas no altera la spec funcional):
   - **Parámetros del `GET`**: `checkInDate` y `checkOutDate` (iguales a los del `POST`), más `date` para una noche; el plan base no define los parámetros del `GET`.
   - **`roomId`** identifica la habitación en el `GET`, el `POST` y el puerto `findByIds`, igual que en el plan base, 004 y 007.
   - **`POST /pricing/quotes` solo interno**: se rechaza con 403 cualquier solicitud con JWT, porque Módulo 2 va por red interna sin token; el plan base lo dice pero no define cómo se hace cumplir (FR-016).
+  - **Orden de las validaciones del `GET` para la OTA**: primero parámetros y rango (sin llamar a nadie), después el acceso de la OTA y solo entonces el cálculo; así una OTA sin acceso nunca provoca llamadas a Módulo 1. El plan base no fija este orden.
   - **Calendario inconsistente** (temporada no encontrada en el catálogo) devuelve 422 `UNEXPECTED_ERROR` porque no hay un `errorCode` específico en el plan base; podría agregarse uno.
 - El `POST` no es idempotente: dos solicitudes idénticas crean dos cotizaciones. Si por error una reserva guardara dos de la misma habitación, 007 usa la de menor `quoteId`. No es una decisión a confirmar, solo una consecuencia del diseño.
 - **Dos errores de calendario, a propósito**: `SeasonConfigurationInconsistentError` es la comprobación propia de 005 en el límite con 011 y 009 (el `seasonId` que devuelve `ResolveSeasonByDateUseCase` no está en el snapshot de `GetEffectiveSeasonRulesUseCase`), que exigen los contratos de ambos. Es distinto de `SeasonCalendarInconsistentError` y `SeasonCalendarUnavailableError`, que lanza el propio puerto de 011. En los endpoints de 005 los tres terminan en `422 UNEXPECTED_ERROR`, porque 011 no les define un código HTTP y el plan base no tiene uno específico.
