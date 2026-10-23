@@ -370,7 +370,7 @@ src/
     │   │   ├── http/                             # Controllers REST (sin lógica de negocio)
     │   │   │   ├── dynamic-rate.controller.ts            # GET /pricing/dynamic-rate
 │   │   │   ├── lodging-quote.controller.ts           # POST /pricing/quotes
-    │   │   │   ├── season-admin.controller.ts            # GET/PUT /admin/season-rules, GET /admin/season-calendar
+    │   │   │   ├── season-admin.controller.ts            # GET/POST /admin/season-rules, PUT/DELETE /admin/season-rules/{seasonId}, GET/PUT /admin/season-calendar
     │   │   │   ├── ota-commission.controller.ts          # GET /ota-commission/{otaId}
     │   │   │   ├── settlements.controller.ts             # GET /api/settlements (definitiva o informativa)
     │   │   │   ├── invoices-admin.controller.ts          # GET /invoices, /invoices/{id}, /invoices/summary

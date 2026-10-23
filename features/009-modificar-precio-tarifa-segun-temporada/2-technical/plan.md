@@ -108,7 +108,7 @@ test/
 
 ### Adaptadores de entrada
 
-Las rutas administrativas son privadas a Módulo 3 y requieren `JwtAuthGuard`, `RolesGuard` y rol `Administrador`, conforme al plan base. Se concreta la matriz base `GET/PUT /admin/season-rules` con operaciones de catálogo y una ruta identificada por temporada para actualización/borrado:
+Las rutas administrativas son privadas a Módulo 3 y requieren `JwtAuthGuard`, `RolesGuard` y rol `Administrador`, conforme al plan base. Se detallan las operaciones de catálogo definidas en la matriz del plan base:
 
 | Método y ruta                           | Propósito                                                              | Respuesta                       |
 | --------------------------------------- | ---------------------------------------------------------------------- | ------------------------------- |
@@ -175,7 +175,7 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 - [ ] T001 Confirmar que el proyecto base tiene `PricingModule`, `PrismaService`, `Money`, JWT/roles y `ApiError` configurados.
 - [ ] T002 Coordinar con 011 el identificador estable de temporada usado por `season_calendar_entry` y el puerto de solo lectura para detectar referencias antes de borrar una temporada.
 - [ ] T003 Coordinar con 005 la firma `GetEffectiveSeasonRulesUseCase` y la semántica de `adjustmentPercent` para el cálculo por noche.
-- [ ] T004 Alinear la matriz OpenAPI base `GET/PUT /admin/season-rules` con las operaciones de catálogo que requiere FR-001 (`GET`, `POST`, `PUT` por ID y `DELETE` por ID).
+- [ ] T004 Alinear el contrato REST administrativo con la matriz final del catálogo (`GET /admin/season-rules`, `POST /admin/season-rules`, `PUT /admin/season-rules/{seasonId}` y `DELETE /admin/season-rules/{seasonId}`), confirmando payloads, códigos de error y ejemplos de respuesta.
 
 **Checkpoint**: los límites de propiedad `009`/`011`/`005` y los contratos de integración están acordados.
 
@@ -287,5 +287,4 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 - El porcentaje firmado y rango `-100..100` quedan fijados para este plan: `-100` produce tarifa cero y `+100` como máximo duplica la base. Si el negocio cambia el rango, deberán cambiar en conjunto validación, contrato y pruebas.
 - El default se trata como la temporada reservada `Regular` exigida por la lógica de 005, incluso si las temporadas adicionales tienen nombres comerciales libres; su ajuste puede no ser neutro y sigue validado por el rango firmado.
 - El calendario estacional es propiedad de 011; 009 no redefine la precedencia de excepciones puntuales ni la estructura de los períodos.
-- La matriz de contratos REST del plan base enumera `GET/PUT /admin/season-rules`; esta feature necesita completar las operaciones de creación y borrado previstas por FR-001. Acordar esa ampliación de OpenAPI antes de implementar.
 - El cambio de regla no recalcula la cotización guardada, liquidación ni factura. La aplicación efectiva es solo para operaciones de cálculo que comiencen después del instante de confirmación.

@@ -6,7 +6,7 @@
 
 **Etiquetas de origen**: `[SPEC]` proviene de la especificación funcional, `[BASE]` del plan técnico base, `[PLAN]` del plan técnico 009 y `[CONV]` es una convención técnica de este contrato.
 
-El Administrador mantiene el catálogo y los ajustes por temporada en Módulo 3. Este contrato concreta y amplía la entrada `GET/PUT /admin/season-rules` del plan base para cubrir creación y eliminación que requiere FR-001. No administra las fechas de calendario ni sus excepciones, que son propiedad de 011.
+El Administrador mantiene el catálogo y los ajustes por temporada en Módulo 3. Este contrato detalla las operaciones `GET`, `POST`, `PUT` y `DELETE` de `/admin/season-rules` definidas en la matriz del plan base y requeridas por FR-001. No administra las fechas de calendario ni sus excepciones, que son propiedad de 011.
 
 ## 1. Propósito
 
