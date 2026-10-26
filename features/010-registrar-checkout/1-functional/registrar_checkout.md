@@ -34,6 +34,11 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero proces
    - **Cuando** el sistema intenta procesar el evento
    - **Entonces** reintenta el evento según la política de reintentos y, agotado el límite, lo enruta a revisión manual conservando cualquier liquidación existente
 
+5. **Escenario**: Salida el mismo día de la entrada
+   - **Dado** que la fecha de salida es igual a la fecha de entrada
+   - **Cuando** el sistema procesa el evento
+   - **Entonces** valida el rango e incluye a `Generar liquidación`, que usa el valor de la cotización guardada
+
 ---
 
 ### Historia de usuario 2 - Rechazar eventos inválidos y omitir datos migratorios (Prioridad: P1)
@@ -51,8 +56,8 @@ Como sistema de Facturación, Consumos y Liquidación, quiero rechazar los event
    - **Cuando** el sistema lo procesa
    - **Entonces** rechaza el evento, registra el motivo y lo enruta a revisión manual sin incluir a `Generar liquidación`
 
-2. **Escenario**: Rango de fechas invertido o igual
-   - **Dado** que la fecha de entrada es igual o posterior a la fecha de salida
+2. **Escenario**: Rango de fechas invertido
+   - **Dado** que la fecha de entrada es posterior a la fecha de salida
    - **Cuando** el sistema procesa el evento
    - **Entonces** rechaza el evento, registra el motivo, lo enruta a revisión manual y no incluye a `Generar liquidación`
 
@@ -100,11 +105,11 @@ Como sistema de Facturación, Consumos y Liquidación, quiero reconocer reenvío
 
 ### Casos límite
 
-- **Falla temporal del procesamiento**: el sistema no genera resultados parciales. Tras el primer intento, el evento se reintenta hasta cinco veces más, con 30 segundos entre reintentos; agotado ese límite, pasa a revisión manual y conserva cualquier liquidación existente.
-- **IVA vigente no configurado o no disponible al emitir la factura**: la liquidación se conserva, no se emite factura ni se asigna numeración, y se aplica la política de reintentos de NFR-005, de acuerdo con la regla de IVA vigente definida en `Actualizar porcentaje de IVA`.
-- **Reserva con varias habitaciones**: se recibe un evento por habitación y se genera una liquidación por cada habitación con check-out, según lo definido en `Generar liquidación`.
-- **Error de `Generar liquidación` o de `Generar factura final` que no se resuelve reintentando**: no se completa el procesamiento, se registra el motivo y el evento se enruta a revisión manual conservando cualquier liquidación existente.
-- **Procesamiento asíncrono del check-out**: recibir el evento no implica que la liquidación `Final` esté disponible de inmediato; una consulta puede mostrar la informativa hasta que exista la `Final`, nunca un estado intermedio.
+- Falla temporal del procesamiento: el sistema no genera resultados parciales. Tras el primer intento, el evento se reintenta hasta cinco veces más, con 30 segundos entre reintentos; agotado ese límite, pasa a revisión manual y conserva cualquier liquidación existente.
+- IVA vigente no configurado o no disponible al emitir la factura: la liquidación se conserva, no se emite factura ni se asigna numeración, y se aplica la política de reintentos de NFR-005, de acuerdo con la regla de IVA vigente definida en `Actualizar porcentaje de IVA`.
+- Reserva con varias habitaciones: se recibe un evento por habitación y se genera una liquidación por cada habitación con check-out, según lo definido en `Generar liquidación`.
+- Error de `Generar liquidación` o de `Generar factura final` que no se resuelve reintentando: no se completa el procesamiento, se registra el motivo y el evento se enruta a revisión manual conservando cualquier liquidación existente.
+- Procesamiento asíncrono del check-out: recibir el evento no implica que la liquidación `Final` esté disponible de inmediato; una consulta puede mostrar la informativa hasta que exista la `Final`, nunca un estado intermedio.
 
 ## Requisitos *(obligatorio)*
 
@@ -112,7 +117,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero reconocer reenvío
 
 - **FR-001**: El sistema DEBE recibir y procesar el evento externo `Registrar Check-out` emitido por el actor `Módulo 1`.
 - **FR-002**: El sistema DEBE validar que el evento contenga como mínimo: identificador UUID único del evento, identificador UUID de la estancia, identificador de la reserva, identificador de la habitación, tipo de habitación, fecha real de entrada y fecha real de salida. Los datos tributarios del cliente responsable de la facturación pueden estar ausentes o incompletos y NO DEBEN impedir la validación del evento; cuando estén presentes, DEBEN entregarse a `Generar factura final`.
-- **FR-003**: El sistema DEBE validar que la fecha de entrada sea anterior a la fecha de salida.
+- **FR-003**: El sistema DEBE validar que la fecha de entrada no sea posterior a la fecha de salida. Una salida el mismo día de la entrada es válida y se liquida con el valor de la cotización guardada.
 - **FR-004**: El sistema DEBE incluir (`<<include>>`) a `Generar liquidación` tras validar satisfactoriamente el evento, entregándole los datos de la estancia recibidos.
 - **FR-005**: El sistema DEBE rechazar el evento sin incluir a `Generar liquidación` cuando falte algún dato obligatorio o alguno no sea válido, sin contar los datos tributarios, cuya ausencia o incompletitud solo impide emitir la factura.
 - **FR-006**: Los registros de Módulo 3 NO DEBEN contener datos de control migratorio ni archivos .TXT de SIRE. El evento enviado a revisión manual puede conservar su contenido original, pero Módulo 3 no usa ni expone esos datos. Esta separación respeta la frontera de responsabilidad con Módulo 2.

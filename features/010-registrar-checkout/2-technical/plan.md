@@ -7,7 +7,7 @@
 
 ## Summary
 
-El contexto `checkout-ingestion` consume `habitacion.checkout`, valida el sobre y coordina `GenerateSettlementUseCase` (007) seguido de `GenerateFinalInvoiceUseCase` (006). La auditoría registra el estado por `eventId`; `stayId` asegura la idempotencia de negocio [SPEC FR-001–FR-010, BR-004].
+El contexto `checkout-ingestion` consume `facturacion.checkout`, valida el sobre y coordina `GenerateSettlementUseCase` (007) seguido de `GenerateFinalInvoiceUseCase` (006). La auditoría registra el estado por `eventId`; `stayId` asegura la idempotencia de negocio [SPEC FR-001–FR-010, BR-004].
 
 ## Technical Context
 
@@ -203,7 +203,7 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 - [ ] T002 Definir `CheckoutEventLog`, sus estados y `CheckoutEventLogRepositoryPort`. Agregar el modelo `CheckoutEventLog` a `prisma/schema.prisma` con la migración correspondiente y `UNIQUE` parcial sobre `event_id`. Definir en `domain/ports/out/checkout-message-publisher.port.ts` las operaciones de publicación a retry y DLQ.
 - [ ] T003 Implementar `registerIfAbsent(...)` con deduplicación atómica por `eventId`.
 - [ ] T004 Implementar las transiciones de auditoría (`markProcessed`, `markRejected`, `markDeadLetter` y `registerUnrecognizedEnvelopeRejection`) mediante las operaciones de `CheckoutEventLogRepositoryPort`.
-- [ ] T005 Configurar la topología RabbitMQ y el manejo de ack manual conforme al Plan Base. Declarar `modulo3.checkout.retry.30s` durable, sin binding a `hospitua.events`, con `x-message-ttl: 30000`, `x-dead-letter-exchange: ""` y `x-dead-letter-routing-key: modulo3.checkout`; declarar `modulo3.checkout.dlq` durable y sin binding a `hospitua.events`; no declarar `hospitua.events.dlx`; mantener la cola principal sin argumentos nuevos. Configurar publicaciones persistentes por el exchange por defecto con `mandatory` activado; hacer ack del original solo tras publisher confirm y ausencia de `basic.return`, y hacer nack con reencolado si la publicación falla, es devuelta o no se confirma. Configurar el adaptador RabbitMQ de `CheckoutMessagePublisherPort` para publicar por el exchange por defecto, con mensajes persistentes y `mandatory`; resolver cada promesa solo tras publisher confirm y sin `basic.return`, y rechazarla en cualquier otro caso.
+- [ ] T005 Configurar la topología RabbitMQ y el manejo de ack manual conforme al Plan Base. Declarar `modulo3.checkout.retry.30s` durable, sin binding a `hospitua.events`, con `x-message-ttl: 30000`, `x-dead-letter-exchange: ""` y `x-dead-letter-routing-key: modulo3.checkout`; declarar `modulo3.checkout.dlq` durable y sin binding a `hospitua.events`; no declarar `hospitua.events.dlx`; mantener la cola principal sin argumentos nuevos; declarar el binding de `modulo3.checkout` a `facturacion.checkout` en el exchange `hospitua.events`. Configurar publicaciones persistentes por el exchange por defecto con `mandatory` activado; hacer ack del original solo tras publisher confirm y ausencia de `basic.return`, y hacer nack con reencolado si la publicación falla, es devuelta o no se confirma. Configurar el adaptador RabbitMQ de `CheckoutMessagePublisherPort` para publicar por el exchange por defecto, con mensajes persistentes y `mandatory`; resolver cada promesa solo tras publisher confirm y sin `basic.return`, y rechazarla en cualquier otro caso.
 
 **Checkpoint**: La auditoría, los puertos de publicación y la topología están disponibles para las historias.
 
@@ -237,7 +237,7 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 ### Tests for User Story 2
 
-- [ ] T010 [US2] Pruebas unitarias de validación del sobre, lista blanca y fechas; validar `occurredAt` con `Z` y `-05:00`, y rechazar valores sin offset o con formato inválido. Cubrir también una estancia de una sola noche (fecha de salida el día posterior a la de entrada) y verificar que la validación y el registro no consultan a otros módulos.
+- [ ] T010 [US2] Pruebas unitarias de validación del sobre, lista blanca y fechas; validar `occurredAt` con `Z` y `-05:00`, y rechazar valores sin offset o con formato inválido. Cubrir también una estancia de una sola noche (fecha de salida el día posterior a la de entrada), una salida el mismo día de la entrada, que es válida, y una salida anterior a la entrada, que se rechaza, y verificar que la validación y el registro no consultan a otros módulos.
 - [ ] T011 [US2] Contract test del evento, campos de lista blanca, ejemplos y matriz de resultados del contrato; aceptar ambos formatos de `occurredAt` (`Z` y offset `-05:00`).
 
 ### Implementation for User Story 2
