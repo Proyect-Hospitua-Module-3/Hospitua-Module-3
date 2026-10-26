@@ -103,6 +103,7 @@ Como `Módulo 1` o como OTA identificada con su propia identidad, quiero recibir
 - Cambian las reglas de temporada o la tarifa base entre la consulta informativa y el check-out: ambas liquidaciones conservan el valor de la cotización guardada.
 - Una reserva cancelada antes del check-out nunca tiene liquidación `Final` porque no hubo check-out; la OTA recibe que no existe liquidación. La liquidación informativa se calcula con los datos que devuelve Módulo 2; Módulo 3 no evalúa el estado de la reserva.
 - El resultado de la consulta contiene datos de control migratorio: el sistema no los expone.
+- Salida anticipada o salida el mismo día de la entrada: la liquidación informativa usa el valor de la cotización guardada y coincide con la `Final`; las fechas reales no modifican el valor de hospedaje.
 
 ## Requisitos *(obligatorio)*
 

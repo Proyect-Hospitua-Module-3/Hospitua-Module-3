@@ -226,4 +226,5 @@ Los adaptadores de liquidación y factura, el cálculo informativo, la reutiliza
 
 ## Notes
 
-Los puertos de liquidación existentes en 007 se reutilizan. 002 agrega únicamente las consultas descritas aquí y no administra índices ni escritura de liquidaciones.
+- Los puertos de liquidación existentes en 007 se reutilizan. 002 agrega únicamente las consultas descritas aquí y no administra índices ni escritura de liquidaciones.
+- Las fechas reales de entrada y salida que envía Módulo 1 se ignoran porque el valor de hospedaje sale de la cotización guardada (FR-002 y BR-004 de `generar_liquidacion.md`): una salida anticipada no cambia la liquidación informativa, que coincide con la `Final`.
