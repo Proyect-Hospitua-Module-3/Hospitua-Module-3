@@ -32,44 +32,42 @@ Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálcul
 
 **Por qué esta prioridad**: Sin una tarifa base válida, no se puede calcular la tarifa dinámica ni cotizar el hospedaje.
 
-**Prueba independiente**: Se puede solicitar un cálculo con tarifa inexistente, con Módulo 1 sin respuesta, con un importe inutilizable o con datos de entrada inválidos y verificar que el cálculo se detiene sin producir un valor.
+**Prueba independiente**: Se puede solicitar un cálculo con una habitación inexistente, con Módulo 1 sin respuesta, con un importe inutilizable o con datos de entrada inválidos y verificar que el cálculo se detiene sin producir un valor.
 
 **Escenarios de aceptación**:
 
-1. **Escenario**: No existe tarifa para la noche
-   - **Dado** que Módulo 1 no tiene tarifa base para la habitación identificada por su `roomId` y la noche solicitados
-   - **Cuando** Módulo 3 consulta la tarifa
-   - **Entonces** el cálculo que requiere esa tarifa se detiene y no usa un valor sustituto
-
-2. **Escenario**: Módulo 1 no responde
-   - **Dado** que Módulo 1 no responde a la consulta de tarifa base
+1. **Escenario**: Módulo 1 no responde o responde con un error
+   - **Dado** que Módulo 1 no responde a la consulta de tarifa base o responde con un error
    - **Cuando** Módulo 3 intenta obtener la tarifa
    - **Entonces** el cálculo que requiere esa tarifa se detiene y no produce un resultado parcial
 
-3. **Escenario**: La respuesta de Módulo 1 es inutilizable
+2. **Escenario**: La respuesta de Módulo 1 es inutilizable
    - **Dado** que Módulo 1 devuelve un importe no numérico, una respuesta con estructura inválida, datos requeridos ausentes o datos de tipo incorrecto
    - **Cuando** Módulo 3 interpreta la respuesta
    - **Entonces** informa una falla de dependencia y detiene el cálculo que requiere esa tarifa, sin devolver valores parciales ni sustitutos
 
-4. **Escenario**: El importe numérico no es positivo
+3. **Escenario**: El importe numérico no es positivo
    - **Dado** que Módulo 1 devuelve un importe numérico igual o menor que cero
    - **Cuando** Módulo 3 interpreta la respuesta
    - **Entonces** informa que la tarifa es inválida y detiene el cálculo que la requiere, sin devolver un valor sustituto
 
-5. **Escenario**: Consulta con datos de entrada inválidos
+4. **Escenario**: Consulta con datos de entrada inválidos
    - **Dado** que la consulta llega con un `roomId` que no tiene formato UUID o con una fecha inválida
    - **Cuando** Módulo 3 valida la solicitud
    - **Entonces** rechaza la consulta sin consultar a Módulo 1 y el cálculo que requiere esa tarifa se detiene, sin usar un valor sustituto
 
+5. **Escenario**: La habitación no existe en Módulo 1
+   - **Dado** que Módulo 1 informa que la habitación identificada por su `roomId` no existe
+   - **Cuando** Módulo 3 consulta la tarifa
+   - **Entonces** informa que la habitación no fue encontrada y el cálculo que requiere esa tarifa se detiene, sin usar un valor sustituto
+
 ### Casos límite
 
 - Un cambio posterior de tarifa base no altera la cotización de hospedaje ya guardada.
-- Módulo 1 responde después de 500 ms: se trata como falta de respuesta y se
-  informa una falla de dependencia, sin esperar más.
+- Módulo 1 responde después de 500 ms: se trata como falta de respuesta y se informa una falla de dependencia, sin esperar más.
 - Estancia de una sola noche: se consulta únicamente la tarifa de la fecha de entrada.
 - Módulo 1 devuelve una moneda distinta de COP: se trata como falla de dependencia.
-- Módulo 1 responde con un `roomId` o una fecha distintos de los consultados:
-  se trata como falla de dependencia.
+- Módulo 1 responde con un `roomId` o una fecha distintos de los consultados: se trata como falla de dependencia.
 
 ## Requisitos *(obligatorio)*
 
@@ -78,16 +76,16 @@ Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálcul
 - **FR-001**: Módulo 3 DEBE consultar a Módulo 1 la tarifa base aplicable a una habitación identificada por su `roomId` y una fecha, y recibir su importe en COP.
 - **FR-002**: Módulo 3 NO DEBE almacenar una copia propia de la tarifa base como fuente de cálculos futuros; cada consulta refleja el dato vigente que proporciona Módulo 1.
 - **FR-003**: Módulo 3 DEBE resolver de forma independiente cada fecha consultada con el importe que Módulo 1 devuelve para esa fecha, sin reutilizar el importe de otra fecha ni conservar copias. El cálculo de la tarifa dinámica y las cotizaciones DEBEN consultar la tarifa base de cada noche de la estancia, desde la fecha de entrada inclusiva hasta la fecha de salida exclusiva.
-- **FR-004**: Cuando Módulo 1 no tenga tarifa para la habitación identificada por su `roomId` y la noche solicitados, Módulo 3 DEBE detener el cálculo invocante e informar la ausencia, sin devolver un valor sustituto.
+- **FR-004**: Cuando Módulo 1 informe que la habitación identificada por su `roomId` no existe, Módulo 3 DEBE detener el cálculo invocante e informar que la habitación no fue encontrada, sin devolver un valor sustituto.
 - **FR-005**: Módulo 3 NO DEBE modificar, corregir ni completar la configuración de tarifa base de Módulo 1; la consulta es de solo lectura.
-- **FR-006**: Módulo 3 DEBE distinguir la ausencia de tarifa, una tarifa inválida por tener un importe numérico no positivo y una falla de dependencia por falta de respuesta o una respuesta con estructura inválida, datos requeridos ausentes o de tipo incorrecto. En todos esos casos, DEBE detener el cálculo que requiere la tarifa sin devolver valores parciales ni sustitutos.
+- **FR-006**: Módulo 3 DEBE distinguir una habitación no encontrada, una tarifa inválida por tener un importe numérico no positivo y una falla de dependencia por falta de respuesta o una respuesta con estructura inválida, datos requeridos ausentes o de tipo incorrecto. En todos esos casos, DEBE detener el cálculo que requiere la tarifa sin devolver valores parciales ni sustitutos.
 - **FR-007**: Módulo 3 DEBE rechazar una consulta con un `roomId` que no tenga formato UUID o una fecha inválida sin consultar a Módulo 1.
 
 ### Entidades clave
 
 - **Tarifa base**: Importe en COP de una noche para una habitación identificada por su `roomId`, administrado por Módulo 1.
 - **Habitación**: Unidad identificada por su `roomId`, para la que se consulta el importe.
-- **Resultado de consulta de tarifa base**: Importe devuelto por Módulo 1 o resultado funcional de ausencia de tarifa, tarifa inválida o falla de dependencia.
+- **Resultado de consulta de tarifa base**: Importe devuelto por Módulo 1 o resultado funcional de habitación no encontrada, tarifa inválida o falla de dependencia.
 
 ### Reglas de negocio
 
@@ -107,7 +105,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálcul
 ### Resultados medibles
 
 - **SC-001**: El 100% de las consultas con tarifa disponible devuelve el importe comunicado por Módulo 1.
-- **SC-002**: El 100% de las consultas sin tarifa disponible detiene el cálculo y no devuelve un importe sustituto.
+- **SC-002**: El 100% de las consultas con una habitación no encontrada detiene el cálculo y no devuelve un importe sustituto.
 - **SC-003**: El 100% de las consultas sin respuesta de Módulo 1, con importes no numéricos o con respuestas de estructura inválida, datos requeridos ausentes o de tipo incorrecto se trata como falla de dependencia; los importes numéricos no positivos se informan como tarifa inválida. En todos los casos, el cálculo se detiene sin propagar el importe ni devolver valores parciales o sustitutos.
 - **SC-004**: El 0% de las consultas persiste una copia propia de la configuración de tarifa base.
 - **SC-005**: El 100% de las fechas consultadas se resuelve de forma independiente con el importe devuelto por Módulo 1 para esa fecha, sin reutilizar el de otra fecha ni conservar copias; el cálculo de la tarifa dinámica y las cotizaciones consultan cada noche de la estancia desde la fecha de entrada inclusiva hasta la fecha de salida exclusiva.
