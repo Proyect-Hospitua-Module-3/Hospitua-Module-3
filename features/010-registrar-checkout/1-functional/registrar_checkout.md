@@ -73,11 +73,11 @@ Como sistema de Facturación, Consumos y Liquidación, quiero rechazar los event
 
 ---
 
-### Historia de usuario 3 - Mantener idempotencia y completar datos tributarios (Prioridad: P2)
+### Historia de usuario 3 - Mantener idempotencia de la estancia (Prioridad: P2)
 
-Como sistema de Facturación, Consumos y Liquidación, quiero reconocer reenvíos y eventos nuevos de una misma estancia, para conservar una sola liquidación y emitir la factura cuando existan datos tributarios completos.
+Como sistema de Facturación, Consumos y Liquidación, quiero reconocer reenvíos y eventos nuevos de una misma estancia, para conservar una sola liquidación y una sola factura.
 
-**Por qué esta prioridad**: La idempotencia evita duplicados y permite que un evento nuevo de la misma estancia complete los datos requeridos para facturar sin alterar la liquidación existente.
+**Por qué esta prioridad**: La idempotencia evita duplicados y permite reutilizar la liquidación existente ante un evento nuevo de la misma estancia con los mismos datos de check-out.
 
 **Prueba independiente**: Se puede procesar un evento, reenviarlo o recibir otro de la misma estancia, y verificar que la liquidación se reutiliza y que los datos de check-out contradictorios se rechazan.
 
@@ -88,17 +88,12 @@ Como sistema de Facturación, Consumos y Liquidación, quiero reconocer reenvío
    - **Cuando** el sistema procesa el evento
    - **Entonces** no lo rechaza, genera la liquidación y `Generar factura final` no emite la factura
 
-2. **Escenario**: Evento posterior con datos tributarios completos
-   - **Dado** que ya existe la liquidación de una estancia y Módulo 1 envía un evento con un identificador de evento nuevo, los mismos datos de check-out y los datos tributarios completos
-   - **Cuando** el sistema procesa el evento
-   - **Entonces** `Generar liquidación` devuelve la liquidación existente sin recalcularla y `Generar factura final` emite la factura
-
-3. **Escenario**: Reenvío del mismo evento
+2. **Escenario**: Reenvío del mismo evento
    - **Dado** que Módulo 1 reenvía el mismo evento de check-out ya procesado
    - **Cuando** el sistema lo recibe de nuevo
    - **Entonces** no lo reprocesa ni genera liquidaciones o facturas duplicadas
 
-4. **Escenario**: Evento nuevo con datos de check-out contradictorios
+3. **Escenario**: Evento nuevo con datos de check-out contradictorios
    - **Dado** que ya existe una liquidación para la estancia y se recibe un evento nuevo con datos de check-out contradictorios
    - **Cuando** el sistema lo procesa
    - **Entonces** rechaza el evento y conserva la liquidación original
@@ -123,12 +118,12 @@ Como sistema de Facturación, Consumos y Liquidación, quiero reconocer reenvío
 - **FR-006**: Los registros de Módulo 3 NO DEBEN contener datos de control migratorio ni archivos .TXT de SIRE. El evento enviado a revisión manual puede conservar su contenido original, pero Módulo 3 no usa ni expone esos datos. Esta separación respeta la frontera de responsabilidad con Módulo 2.
 - **FR-007**: El sistema NO DEBE modificar estados físicos de ocupación de habitaciones ni controlar disponibilidad de inventario; esa transición es responsabilidad exclusiva de `Módulo 1`.
 - **FR-008**: El sistema DEBE registrar en la auditoría el motivo y enrutar a revisión manual los eventos rechazados por datos obligatorios faltantes o inválidos, los eventos para los que `Generar liquidación` o `Generar factura final` informan un error que no se resuelve reintentando y los eventos que agotan el límite de reintentos.
-- **FR-009**: Después de generar la liquidación, el procesamiento del check-out DEBE dar lugar a `Generar factura final`, conforme a lo definido en esa funcionalidad. La emisión requiere datos tributarios completos y su resultado financiero y contenido corresponden a `Generar factura final`; si los datos faltan o están incompletos, la factura no se emite. Para permitir su emisión, Módulo 1 puede enviar un evento posterior de la misma estancia con un identificador de evento nuevo, los mismos datos de check-out y los datos tributarios completos.
+- **FR-009**: Después de generar la liquidación, el procesamiento del check-out DEBE dar lugar a `Generar factura final`, conforme a lo definido en esa funcionalidad. La emisión requiere datos tributarios completos y su resultado financiero y contenido corresponden a `Generar factura final`; si los datos faltan o están incompletos, la factura no se emite.
 - **FR-010**: Cuando `Generar liquidación` o `Generar factura final` no puedan completarse por una falla temporal, el sistema DEBE reintentar el evento según la política de reintentos y, agotado el límite, enrutarlo a revisión manual conservando cualquier liquidación existente. Qué se considera falla temporal lo define cada una de esas funcionalidades.
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*
 
-- **Evento `Registrar Check-out`**: Mensaje de `Módulo 1` con un identificador UUID único del evento, el identificador UUID de la estancia, la reserva, la habitación, el tipo de habitación y las fechas reales de entrada y salida. Los datos tributarios del cliente pueden estar ausentes o incompletos; Módulo 1 puede enviar otro evento de la misma estancia con un identificador nuevo, los mismos datos de check-out y los datos tributarios completos.
+- **Evento `Registrar Check-out`**: Mensaje de `Módulo 1` con un identificador UUID único del evento, el identificador UUID de la estancia, la reserva, la habitación, el tipo de habitación y las fechas reales de entrada y salida. Los datos tributarios del cliente pueden estar ausentes o incompletos; si lo están, no se emite la factura para esa estancia.
 - **Estancia**: Ocupación física de una habitación, identificada por un UUID único que permite relacionar el check-out con una sola liquidación y una sola factura.
 - **Registro de auditoría**: Registro de cada evento recibido con su resultado de validación y, para los rechazos, el motivo.
 - **Revisión manual**: Destino de los eventos rechazados por datos faltantes o inválidos, por un error de `Generar liquidación` o de `Generar factura final` que no se resuelve reintentando o por agotar los reintentos.
@@ -137,7 +132,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero reconocer reenvío
 
 - **BR-001**: `Registrar Check-out` es el único evento que inicia el procesamiento de Módulo 3 para una estancia y lo emite `Módulo 1`.
 - **BR-002**: Todo evento válido incluye (`<<include>>`) a `Generar liquidación`; después de generarla, el procesamiento da lugar a `Generar factura final` conforme a FR-009. `Registrar Check-out` no determina el resultado financiero ni el contenido de la factura.
-- **BR-003**: Si falta o es inválido un dato obligatorio de la estancia, el sistema no incluye a `Generar liquidación`. La ausencia o incompletitud de datos tributarios no invalida el evento: la liquidación se genera, pero no se emite la factura hasta que Módulo 1 envíe un evento posterior de la misma estancia con un identificador de evento nuevo, los mismos datos de check-out y los datos tributarios completos.
+- **BR-003**: Si falta o es inválido un dato obligatorio de la estancia, el sistema no incluye a `Generar liquidación`. La ausencia o incompletitud de datos tributarios no invalida el evento: la liquidación se genera y no se emite la factura.
 - **BR-004**: El identificador UUID de la estancia es la clave de negocio para su procesamiento y la idempotencia. El reenvío del mismo evento —con el mismo identificador único de evento— no se reprocesa; un evento nuevo de la misma estancia —con un identificador de evento distinto— y con los mismos datos de check-out incluye a `Generar liquidación`, que devuelve la existente sin recalcular. Si sus datos de check-out son contradictorios, se rechaza y se conserva la liquidación original. Nunca existen dos liquidaciones ni dos facturas para una estancia.
 - **BR-005**: El evento no informa canal, valor de hospedaje, OTA ni comisión; esos datos se obtienen de la reserva consultada a Módulo 2 y de la cotización guardada, según las reglas de `Generar liquidación`.
 
@@ -155,7 +150,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero reconocer reenvío
 
 - **SC-001**: El 100% de los eventos válidos de `Registrar Check-out` incluyen a `Generar liquidación` con los datos recibidos y, después de generarla, dan lugar a `Generar factura final`.
 - **SC-002**: El 100% de los eventos con datos obligatorios inválidos o incompletos (sin contar los datos tributarios) son rechazados sin incluir a `Generar liquidación`.
-- **SC-003**: El 100% de los eventos con datos tributarios ausentes o incompletos no se rechaza y genera la liquidación, sin emitir factura mientras falten datos completos; Módulo 1 puede enviar un evento posterior de la misma estancia con un identificador de evento nuevo, los mismos datos de check-out y los datos tributarios completos para permitir emitirla.
+- **SC-003**: El 100% de los eventos con datos tributarios ausentes o incompletos no se rechaza, genera la liquidación y no emite la factura.
 - **SC-004**: El 0% de los registros de Módulo 3 contiene datos migratorios. El evento enviado a revisión manual puede conservar su contenido original, pero Módulo 3 no usa ni expone esos datos.
 - **SC-005**: El 100% de los reenvíos del mismo evento no se reprocesa ni genera liquidaciones o facturas duplicadas.
 - **SC-006**: El 100% de los eventos rechazados registra el motivo del rechazo en la auditoría y se enruta a revisión manual.
