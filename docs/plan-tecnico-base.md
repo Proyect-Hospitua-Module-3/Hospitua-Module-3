@@ -21,7 +21,7 @@ El stack descrito (arquitectura hexagonal + NestJS + PostgreSQL + RabbitMQ) es e
 ## Technical Context
 
 - **Language/Version**: TypeScript 5.x sobre Node.js 20 LTS
-- **Primary Dependencies**: NestJS 10.x, Prisma ORM, `@nestjs/microservices` (`Transport.RMQ`), Passport-JWT, `@nestjs/jwt`, bcrypt, `@nestjs/terminus`
+- **Primary Dependencies**: NestJS 10.x, Prisma ORM, `@nestjs/microservices` (`Transport.RMQ`), `@nestjs/axios`, `opossum`, Passport-JWT, `@nestjs/jwt`, bcrypt, `@nestjs/terminus`
 - **Architecture**: Hexagonal (Puertos y Adaptadores), una sola capa `domain/`, `application/` e `infrastructure/`, con los *bounded contexts* internos como subcarpetas
 - **Storage**: PostgreSQL 16
 - **Build Tool**: Nest CLI (`nest new` para el scaffolding)
@@ -51,7 +51,7 @@ El stack descrito (arquitectura hexagonal + NestJS + PostgreSQL + RabbitMQ) es e
 | Migraciones de Base de Datos | Prisma Migrate | Versionamiento del esquema (`prisma/migrations/`) dentro del mismo stack del ORM |
 | Mensajería | `@nestjs/microservices` (`Transport.RMQ`) | Consumer del evento `Registrar Check-out` con ack manual |
 | Autenticación y Autorización | Login propio (`@nestjs/jwt` + bcrypt), Passport-JWT + Guards de NestJS | Emisión y validación del JWT de usuario y control de acceso por rol (`Administrador`, `OTA`) |
-| Resiliencia de llamadas salientes | Timeout + circuit breaker (evaluar `@nestjs/terminus` u opossum) | Una caída de Módulo 1 o Módulo 2 detiene el proceso en vez de bloquear indefinidamente (NFR-003 de `consultar_tarifa_dinamica.md`) |
+| Resiliencia de llamadas salientes | Timeout + circuit breaker (`opossum`) | Una caída de Módulo 1 o Módulo 2 detiene el proceso en vez de bloquear indefinidamente (NFR-003 de `consultar_tarifa_dinamica.md`) |
 | Health checks | `@nestjs/terminus` | Estado de la API, Postgres y RabbitMQ |
 | Lint de arquitectura | `dependency-cruiser` (cuando sea posible) | Validar automáticamente las reglas de dependencia entre capas |
 | Calidad de código | ESLint + Prettier, husky/lint-staged | Formato y lint uniformes antes de cada commit |
@@ -87,11 +87,11 @@ Regla arquitectónica de Módulo 3:
 - **Routing Key consumida por Módulo 3**:
   - `facturacion.checkout`: evento `Registrar Check-out` publicado por Módulo 1 al confirmar el Check-Out, como mensaje aparte del que publica para Módulo 2 con `habitacion.checkout` (ese lleva datos migratorios de los huéspedes que Módulo 3 no debe recibir). Módulo 1 encola ambos en su outbox, en la misma transacción. Módulo 3 lo recibe en su propia cola durable (`modulo3.checkout`) enlazada solo a `facturacion.checkout`; nunca se enlaza a `habitacion.checkout`.
 - **Consumer**: `infrastructure/adapters/in/messaging/checkout-registered.consumer.ts` — valida el payload mínimo (FR-002 de `registrar_checkout.md`), y si es válido invoca el caso de uso `RegisterCheckoutUseCase`, que a su vez incluye `GenerateSettlementUseCase`.
-- **Idempotencia**: se usa el `stayId` del evento como clave (una estancia = una habitación de la reserva); `settlement` tiene una restricción de unicidad por estancia, de modo que un reenvío del mismo evento (BR-006 de `registrar_checkout.md`) siempre resuelve al mismo resultado sin duplicar.
+- **Idempotencia**: se usa el `stayId` del evento como clave (una estancia = una habitación de la reserva); `settlement` tiene una restricción de unicidad por estancia, de modo que un reenvío del mismo evento (BR-004 de `registrar_checkout.md`) siempre resuelve al mismo resultado sin duplicar.
 - **Ack**: manual (`noAck: false`), confirmado solo después de persistir el resultado (liquidación + factura, si corresponde), para garantizar *at-least-once* sin perder eventos ante una caída a mitad de proceso.
 - **Reintentos y dead-letter** (detalle en el plan 010): las publicaciones a retry y DLQ son persistentes, por el exchange por defecto, con `mandatory`; el original solo se confirma (ack) tras el publisher confirm y sin `basic.return`, y en cualquier otro caso se hace nack con reencolado.
   - **Falla transitoria** (`MODULE2_UNAVAILABLE`, `VAT_RATE_UNAVAILABLE`, `DATABASE_UNAVAILABLE`): se publica a `modulo3.checkout.retry.30s` (durable, TTL 30 s, vuelve a `modulo3.checkout`) con `x-retry-count` incrementado, hasta 5 reintentos; agotados, va a la DLQ.
-  - **Dead-letter** (`modulo3.checkout.dlq`, durable, sin binding a `hospitua.events`): eventos con datos obligatorios inválidos (FR-006 de `registrar_checkout.md`), errores de negocio no recuperables (`RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION`, `SETTLEMENT_ALREADY_EXISTS`, `FINAL_SETTLEMENT_NOT_FOUND`) y reintentos agotados. Quedan para revisión manual, no se reintentan indefinidamente.
+  - **Dead-letter** (`modulo3.checkout.dlq`, durable, sin binding a `hospitua.events`): eventos con datos obligatorios inválidos (FR-005 y FR-008 de `registrar_checkout.md`), errores de negocio no recuperables (`RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION`, `SETTLEMENT_ALREADY_EXISTS`, `FINAL_SETTLEMENT_NOT_FOUND`) y reintentos agotados. Quedan para revisión manual, no se reintentan indefinidamente.
   - **Datos tributarios ausentes o incompletos** (`BILLING_CUSTOMER_DATA_MISSING`): no es un error; la liquidación se conserva, no se emite factura y el evento se confirma. Módulo 1 publica un solo evento por estancia y no envía uno posterior; Módulo 3 no corrige facturas, por lo que esa estancia queda sin factura.
   - Estos códigos son resultados de mensajería y auditoría (`checkout_event_log`), no respuestas HTTP.
 - **Estructura estándar del mensaje (`EventEnvelope<T>`)**, la misma envoltura que usa Módulo 1 para sus eventos (acordada con Módulo 1). El `payload` solo trae hechos físicos de la estancia; los datos de canal, OTA y hospedaje se obtienen de Módulo 2 y de la cotización guardada en `pricing`:
@@ -120,13 +120,13 @@ Regla arquitectónica de Módulo 3:
   - `roomId` permite elegir la cotización de esa habitación entre los `quoteIds` de la reserva. `categoryRoom` (tipo de habitación, nombre que usa Módulo 1) es informativo: no interviene en la elección de la cotización, porque habitaciones del mismo tipo pueden tener tarifas base distintas.
   - El evento no trae `channel`, `lodgingAmount` ni datos de la OTA: el canal y los datos OTA se consultan a Módulo 2 y el hospedaje se toma de la cotización guardada (ver [regla 5](#reglas-transversales-de-arquitectura)).
   - `billingCustomer` es opcional: si llega, se entrega a `Generar factura final` (006); `settlement` no lo recibe ni lo guarda. Su ausencia no invalida el evento (FR-002). Módulo 1 la envía siempre con el titular de la estancia; si faltan datos no se emite factura para esa estancia (no hay segundo evento ni corrección en Módulo 3).
-  - El `payload` nunca incluye datos migratorios ni SIRE (FR-007, NFR-003).
+  - El `payload` nunca incluye datos migratorios ni SIRE (FR-006, NFR-003).
   - `eventId` queda registrado en `checkout_event_log` para trazabilidad (NFR-004).
 
 ### Resiliencia ante fallos externos
 
 - Llamadas salientes a Módulo 1 y Módulo 2 con **timeout explícito + circuit breaker**, para que una caída de otro módulo detenga el proceso en vez de bloquear indefinidamente (NFR-003 de `consultar_tarifa_dinamica.md`).
-- Manejo diferenciado de dos fallos distintos al consultar la tarifa base (FR-008 de `consultar_tarifa_base.md`): *ausencia de tarifa* (respuesta 404/negocio) vs. *falla de comunicación* (timeout/5xx). Ninguno de los dos se sustituye por un valor supuesto.
+- Manejo diferenciado de dos fallos distintos al consultar la tarifa base (FR-004 y FR-006 de `consultar_tarifa_base.md`): *habitación inexistente* (404 `ROOM_NOT_FOUND`, no reintentable y no cuenta para el circuit breaker) vs. *falla de comunicación* (timeout/5xx). Ninguno de los dos se sustituye por un valor supuesto.
 - Al procesar el check-out, se distinguen los mismos dos fallos al consultar la reserva a Módulo 2: *reserva o cotización inexistente* (404) → el evento va a dead-letter para revisión manual; *falla de comunicación* (timeout/5xx o circuito abierto) → el evento va a la cola de reintento (30 s, hasta 5 veces) y, agotados, a dead-letter. En ningún caso se genera la liquidación con datos supuestos.
 - El evento de check-out solo se confirma (ack) tras persistir; si el proceso cae a mitad, RabbitMQ lo reentrega y la idempotencia evita duplicados.
 
@@ -228,7 +228,7 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 Toda excepción o rechazo funcional se traduce a un cuerpo JSON estandarizado:
 ```json
 {
-  "errorCode": "INVALID_VAT_RATE | INVALID_BASE_RATE | INVALID_SEASON | INVALID_SEASON_ADJUSTMENT | SEASON_NOT_FOUND | SEASON_NAME_CONFLICT | DEFAULT_SEASON_IMMUTABLE | SEASON_IN_USE | SEASON_RULE_CONFLICT | INVALID_CALENDAR_RANGE | OVERLAPPING_SEASON_CALENDAR | DUPLICATE_SEASON_EXCEPTION | SEASON_CALENDAR_CONFLICT | SEASON_CALENDAR_NOT_FOUND | MISSING_COMMISSION | SETTLEMENT_NOT_FOUND | INVOICE_NOT_FOUND | BASE_RATE_NOT_FOUND | MODULE1_UNAVAILABLE | RESERVATION_NOT_FOUND | QUOTE_NOT_FOUND | MODULE2_UNAVAILABLE | INVALID_COMMISSION | SETTLEMENT_ALREADY_EXISTS | MISSING_SEARCH_CRITERIA | INVALID_DATE_RANGE | INVALID_QUERY_PARAMS | UNAUTHENTICATED | FORBIDDEN | UNEXPECTED_ERROR",
+  "errorCode": "INVALID_VAT_RATE | INVALID_BASE_RATE | INVALID_SEASON | INVALID_SEASON_ADJUSTMENT | SEASON_NOT_FOUND | SEASON_NAME_CONFLICT | DEFAULT_SEASON_IMMUTABLE | SEASON_IN_USE | SEASON_RULE_CONFLICT | INVALID_CALENDAR_RANGE | OVERLAPPING_SEASON_CALENDAR | DUPLICATE_SEASON_EXCEPTION | SEASON_CALENDAR_CONFLICT | SEASON_CALENDAR_NOT_FOUND | MISSING_COMMISSION | SETTLEMENT_NOT_FOUND | INVOICE_NOT_FOUND | ROOM_NOT_FOUND | MODULE1_UNAVAILABLE | RESERVATION_NOT_FOUND | QUOTE_NOT_FOUND | MODULE2_UNAVAILABLE | INVALID_COMMISSION | SETTLEMENT_ALREADY_EXISTS | MISSING_SEARCH_CRITERIA | INVALID_DATE_RANGE | INVALID_QUERY_PARAMS | UNAUTHENTICATED | FORBIDDEN | UNEXPECTED_ERROR",
   "message": "Descripción legible y accionable de la regla violada o contingencia.",
   "timestamp": "2026-09-28T10:30:00Z",
   "path": "/admin/vat-rate"
@@ -237,9 +237,9 @@ Toda excepción o rechazo funcional se traduce a un cuerpo JSON estandarizado:
 - Errores de dominio tipados por contexto (`InvalidVatRateError`, `OverlappingSeasonError`, `MissingCommissionError`, `SettlementAlreadyExistsError`, etc.), definidos en `domain/errors/` y mapeados a códigos HTTP en el `ExceptionFilter` global (`infrastructure/adapters/in/http/domain-exception.filter.ts`).
 - **HTTP 400**: Errores de validación o datos faltantes (p. ej. porcentaje de IVA inválido, rango de fechas inválido).
 - **HTTP 401 / 403**: JWT ausente o inválido en un endpoint que lo exige / rol no autorizado para el endpoint o para el recurso (p. ej. una OTA consultando la tarifa dinámica de una reserva que no intermedió, o la comisión de otra OTA). Excepción en `GET /api/settlements`: para no revelar si la reserva existe, una OTA que consulta una reserva ajena, directa o sin liquidaciones recibe 404 `SETTLEMENT_NOT_FOUND`.
-- **HTTP 404**: Recurso inexistente (liquidación aún no generada, factura no encontrada, tarifa base no encontrada en Módulo 1).
+- **HTTP 404**: Recurso inexistente (liquidación aún no generada, factura no encontrada, habitación no encontrada en Módulo 1 (`ROOM_NOT_FOUND`)).
 - **HTTP 409**: Conflicto con el estado actual (p. ej. temporadas solapadas).
-- **HTTP 424 (Failed Dependency)**: Falla de comunicación con Módulo 1 o Módulo 2 (timeout/5xx de ellos o circuito abierto), distinta de la ausencia del dato (FR-008 de `consultar_tarifa_base.md`). El `ApiError` lleva `errorCode` `MODULE1_UNAVAILABLE` o `MODULE2_UNAVAILABLE` e indica que es reintentable. También se usa 424 con `INVALID_BASE_RATE` cuando Módulo 1 responde con una tarifa base menor o igual a cero (no es reintentable). Ninguna respuesta de Módulo 3 usa códigos 5xx.
+- **HTTP 424 (Failed Dependency)**: Falla de comunicación con Módulo 1 o Módulo 2 (timeout/5xx de ellos o circuito abierto), distinta de la habitación inexistente (FR-004 y FR-006 de `consultar_tarifa_base.md`). El `ApiError` lleva `errorCode` `MODULE1_UNAVAILABLE` o `MODULE2_UNAVAILABLE` e indica que es reintentable. También se usa 424 con `INVALID_BASE_RATE` cuando Módulo 1 responde con una tarifa base menor o igual a cero (no es reintentable). Ninguna respuesta de Módulo 3 usa códigos 5xx.
 - **Sin respuestas 5xx**: no se diseña ni se documenta ningún 5xx en los endpoints. Todo error inesperado es capturado por el `ExceptionFilter` global, registrado con identificador de correlación en logs y devuelto como **HTTP 422** con `errorCode` `UNEXPECTED_ERROR` y un mensaje que incluye el identificador de correlación para que soporte pueda rastrearlo.
 - Todo motivo de rechazo devuelto al actor debe ser específico y accionable (NFR-005 de `generar_liquidacion.md`), nunca un error genérico.
 
