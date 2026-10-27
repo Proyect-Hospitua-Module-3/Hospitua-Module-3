@@ -193,7 +193,7 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 | **400** | `INVALID_DATE_RANGE` | `checkOutDate` anterior o igual a `checkInDate`. | No | [SPEC FR-008] [PLAN] |
 | **401** | `UNAUTHENTICATED` | El token es inválido o expiró. Sin token no aplica: es una llamada interna. | No | [BASE] |
 | **403** | `FORBIDDEN` | El token no es de rol `OTA`, o la OTA consulta una habitación que no pertenece a una reserva suya (reserva de otra OTA, del canal directo, inexistente o sin esa habitación). Mismo mensaje en todos los casos. | No | [SPEC FR-010, SC-005] [BASE] |
-| **404** | `BASE_RATE_NOT_FOUND` | Módulo 1 no reporta tarifa base para alguna noche del rango. | No | [SPEC FR-006] [BASE] |
+| **404** | `ROOM_NOT_FOUND` | Módulo 1 informa que la habitación consultada no existe (no cuenta como fallo del circuit breaker). | No | [SPEC FR-006] [BASE] [004] |
 | **424** | `INVALID_BASE_RATE` | Módulo 1 reporta para alguna noche una tarifa base menor o igual a cero (no cuenta como fallo del circuit breaker). | No | [SPEC FR-006] [BASE] [004] |
 | **424** | `MODULE1_UNAVAILABLE` | Módulo 1 no responde, hay timeout o el circuito está abierto. | Sí | [SPEC NFR-003] [BASE] |
 | **424** | `MODULE2_UNAVAILABLE` | Solo en consultas de la OTA: Módulo 2 no responde al verificar la reserva, hay timeout o el circuito está abierto. | Sí | [SPEC casos límite] [BASE] [007] |

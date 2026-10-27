@@ -25,7 +25,7 @@ Se hereda el stack y las convenciones de `docs/plan-tecnico-base.md` (NestJS 10 
 **Target Platform**: servicio backend Linux en contenedor Docker (bounded context `pricing` del monolito modular de Módulo 3)
 **Project Type**: servicio backend único (monolito modular hexagonal), sin frontend en este repositorio
 **Performance Goals**: no bloquear operaciones de front-desk de Módulo 2 (NFR-002). El costo dominante es la llamada a Módulo 1 por noche, por lo que el timeout y el límite de concurrencia de esas llamadas son los parámetros críticos
-**Constraints**: determinismo (NFR-001); si Módulo 1 no responde o no reporta tarifa base para alguna noche, la operación **completa** falla (FR-006, NFR-003), sin resultado parcial ni cotización parcial; cada noche usa su propia temporada (BR-003); el ajuste sale solo del valor numérico configurado, nunca del nombre de la temporada (BR-007); cálculo con `Money` decimal, nunca con `number`; rango con fecha de salida exclusiva (FR-008); cotización inmutable (BR-006, FR-013); consultan Módulo 2 y la OTA, esta solo sobre habitaciones de sus reservas (FR-010), y solo Módulo 2 cotiza (BR-008); no se diseña ninguna respuesta 5xx (plan base)
+**Constraints**: determinismo (NFR-001); si Módulo 1 no responde o informa que la habitación no existe, la operación **completa** falla (FR-006, NFR-003), sin resultado parcial ni cotización parcial; cada noche usa su propia temporada (BR-003); el ajuste sale solo del valor numérico configurado, nunca del nombre de la temporada (BR-007); cálculo con `Money` decimal, nunca con `number`; rango con fecha de salida exclusiva (FR-008); cotización inmutable (BR-006, FR-013); consultan Módulo 2 y la OTA, esta solo sobre habitaciones de sus reservas (FR-010), y solo Módulo 2 cotiza (BR-008); no se diseña ninguna respuesta 5xx (plan base)
 **Scale/Scope**: 2 endpoints (`GET /pricing/dynamic-rate`, `POST /pricing/quotes`), 2 tablas propias, cardinalidad de hasta N noches por solicitud
 
 ## Project Structure
@@ -107,7 +107,7 @@ test/
 
 | Puerto | Dueño | Qué usa 005 | Estado |
 |---|---|---|---|
-| `GetBaseRateUseCase` (`get-base-rate.use-case.ts`) | 004 | `execute(roomId, date)` → `BaseRate` con el importe como `Money` (COP, mayor que cero), o `BaseRateNotFoundError` / `InvalidBaseRateError` / `Module1UnavailableError`; consulta una fecha por llamada | Definido (`execute(roomId, date)`) |
+| `GetBaseRateUseCase` (`get-base-rate.use-case.ts`) | 004 | `execute(roomId, date)` → `BaseRate` con el importe como `Money` (COP, mayor que cero), o `RoomNotFoundError` / `InvalidBaseRateError` / `Module1UnavailableError`; consulta una fecha por llamada | Definido (`execute(roomId, date)`) |
 | `GetEffectiveSeasonRulesUseCase` (`get-effective-season-rules.use-case.ts`) | 009 | `getAll(asOf)` → `{ defaultSeasonId, seasons[{ seasonId, name, adjustmentPercent (decimal firmado -100..100), isDefault }] }`, según `PORT-get-season-rules.md` | Definido |
 | `ResolveSeasonByDateUseCase` (`resolve-season-by-date.use-case.ts`) | 011 | `resolve({ date, asOf })` → `SeasonClassification` con el `seasonId` de la fecha y su `source` (`BASE` \| `EXCEPTION` \| `DEFAULT`); la excepción puntual prevalece sobre BASE propio o heredado de la revisión del año anterior y, sin asignación, devuelve el `defaultSeasonId` de 009 con `source = DEFAULT`. El resultado identifica también el año/revisión propietario de la entrada. Falla con `SeasonCalendarInconsistentError` o `SeasonCalendarUnavailableError`, según `PORT-resolve-season-by-date.md` | Definido |
 | `ReservationClientPort` (`reservation.client.port.ts`) | 007 | Solo para la OTA (HU4): `getReservation(reservationRef)` → `{ reservationRef, quoteIds, channel, otaId?, … }` con `GET /api/reservations/{reservationRef}` de Módulo 2 (timeout y circuit breaker de 007), o `ReservationNotFoundError` / `Module2UnavailableError` | Definido |
@@ -158,7 +158,7 @@ Autorización: **solo llamada interna de Módulo 2 sin token**. Si la solicitud 
 
 | Caso | HTTP | `errorCode` |
 |---|---|---|
-| Tarifa base no reportada por Módulo 1 para alguna noche (FR-006) | 404 | `BASE_RATE_NOT_FOUND` |
+| Módulo 1 informa que la habitación no existe (`RoomNotFoundError` de 004; no cuenta para el circuit breaker) (FR-006) | 404 | `ROOM_NOT_FOUND` |
 | Módulo 1 reporta para alguna noche una tarifa base menor o igual a cero (`InvalidBaseRateError` de 004; no cuenta para el circuit breaker) (FR-006) | 424 | `INVALID_BASE_RATE` |
 | Módulo 1 no responde, timeout o circuito abierto (NFR-003) | 424 | `MODULE1_UNAVAILABLE` |
 | Rango inválido: fin anterior o igual al inicio (FR-008, FR-015) | 400 | `INVALID_DATE_RANGE` |
@@ -218,7 +218,7 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 
 - [ ] T012 [US1] Implementar `GetDynamicRateService` para una noche: captura `asOf` una sola vez, obtiene un único snapshot con `GetEffectiveSeasonRulesUseCase.getAll(asOf)`, resuelve la clasificación de la fecha con `ResolveSeasonByDateUseCase.resolve({ date, asOf })` de 011, usando ese mismo `asOf`, y calcula con `calculate-dynamic-rate`
 - [ ] T013 [US1] Implementar `DynamicRateController` (`GET /pricing/dynamic-rate`) aceptando `roomId` y `date`; llamada interna de Módulo 2 sin token
-- [ ] T014 [US1] Mapear `BaseRateNotFoundError` → 404 `BASE_RATE_NOT_FOUND`, `InvalidBaseRateError` → 424 `INVALID_BASE_RATE` y `Module1UnavailableError` → 424 `MODULE1_UNAVAILABLE` en el `ExceptionFilter` global, con mensajes específicos y accionables
+- [ ] T014 [US1] Mapear `RoomNotFoundError` → 404 `ROOM_NOT_FOUND`, `InvalidBaseRateError` → 424 `INVALID_BASE_RATE` y `Module1UnavailableError` → 424 `MODULE1_UNAVAILABLE` en el `ExceptionFilter` global, con mensajes específicos y accionables
 
 **Checkpoint**: Módulo 2 puede consultar el precio de una noche con el ajuste de temporada correcto.
 
@@ -234,7 +234,7 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 
 - [ ] T015 [P] [US2] Unit test de `GetDynamicRateService` con un rango multi-noche que cruza dos temporadas: un resultado por noche, cada uno con su propia temporada, y un total igual a la suma (BR-003)
 - [ ] T016 [P] [US2] Unit test: `checkInDate >= checkOutDate` → `InvalidDateRangeError` inmediato, sin invocar ningún puerto (FR-008)
-- [ ] T017 [US2] Unit test: si **cualquier** noche falla en `GetBaseRateUseCase` (tarifa no reportada, tarifa menor o igual a cero o Módulo 1 no disponible), la consulta completa falla sin devolver las noches que sí tuvieron éxito (FR-006, NFR-003)
+- [ ] T017 [US2] Unit test: si **cualquier** noche falla en `GetBaseRateUseCase` (habitación no encontrada, tarifa menor o igual a cero o Módulo 1 no disponible), la consulta completa falla sin devolver las noches que sí tuvieron éxito (FR-006, NFR-003)
 - [ ] T018 [US2] Integration test con Testcontainers: rango de 5 o más noches cruzando temporada baja → alta, contra el cálculo manual esperado (SC-002)
 
 ### Implementation for User Story 2
@@ -257,7 +257,7 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 ### Tests for User Story 3
 
 - [ ] T023 [P] [US3] Unit test de `CreateLodgingQuoteService`: reutiliza el cálculo por noche, el total es la suma exacta de las noches y la cotización se guarda una sola vez (FR-012)
-- [ ] T024 [P] [US3] Unit test de rechazos sin guardar nada: tarifa base no reportada, tarifa base menor o igual a cero (`INVALID_BASE_RATE`), Módulo 1 no disponible y rango inválido (FR-015)
+- [ ] T024 [P] [US3] Unit test de rechazos sin guardar nada: habitación no encontrada (`ROOM_NOT_FOUND`), tarifa base menor o igual a cero (`INVALID_BASE_RATE`), Módulo 1 no disponible y rango inválido (FR-015)
 - [ ] T025 [US3] Integration test con Testcontainers: guardar una cotización y verificar `lodging_quote` y `lodging_quote_night`; cambiar la regla de temporada y verificar que los valores guardados no cambian (SC-007); verificar que una falla a mitad de la inserción no deja una cotización parcial (transacción)
 - [ ] T026 [US3] Contract test `POST /pricing/quotes`: 200 con `{ quoteId, currency, nightlyRates, lodgingAmount }`; 400, 404 y 424 con el `errorCode` correspondiente; y 403 `FORBIDDEN` cuando la solicitud trae un JWT de OTA o de Administrador (BR-008, FR-016)
 - [ ] T027 [US3] Contract test de `LodgingQuoteQueryPort.findByIds` contra lo que consume el plan de 007: devuelve `roomId`, `lodgingAmount`, la moneda y el `quoteId` de cada cotización y, por noche, `baseRate`, `seasonName`, `adjustmentPercent` y `rate`
