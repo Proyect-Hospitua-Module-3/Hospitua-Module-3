@@ -203,7 +203,9 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 - [ ] T002 Definir `CheckoutEventLog`, sus estados y `CheckoutEventLogRepositoryPort`. Agregar el modelo `CheckoutEventLog` a `prisma/schema.prisma` con la migración correspondiente y `UNIQUE` parcial sobre `event_id`. Definir en `domain/ports/out/checkout-message-publisher.port.ts` las operaciones de publicación a retry y DLQ.
 - [ ] T003 Implementar `registerIfAbsent(...)` con deduplicación atómica por `eventId`.
 - [ ] T004 Implementar las transiciones de auditoría (`markProcessed`, `markRejected`, `markDeadLetter` y `registerUnrecognizedEnvelopeRejection`) mediante las operaciones de `CheckoutEventLogRepositoryPort`.
-- [ ] T005 Configurar la topología RabbitMQ y el manejo de ack manual conforme al Plan Base. Declarar `modulo3.checkout.retry.30s` durable, sin binding a `hospitua.events`, con `x-message-ttl: 30000`, `x-dead-letter-exchange: ""` y `x-dead-letter-routing-key: modulo3.checkout`; declarar `modulo3.checkout.dlq` durable y sin binding a `hospitua.events`; no declarar `hospitua.events.dlx`; mantener la cola principal sin argumentos nuevos; declarar el binding de `modulo3.checkout` a `facturacion.checkout` en el exchange `hospitua.events`. Configurar publicaciones persistentes por el exchange por defecto con `mandatory` activado; hacer ack del original solo tras publisher confirm y ausencia de `basic.return`, y hacer nack con reencolado si la publicación falla, es devuelta o no se confirma. Configurar el adaptador RabbitMQ de `CheckoutMessagePublisherPort` para publicar por el exchange por defecto, con mensajes persistentes y `mandatory`; resolver cada promesa solo tras publisher confirm y sin `basic.return`, y rechazarla en cualquier otro caso.
+- [ ] T005 Configurar la topología RabbitMQ conforme al Plan Base. Declarar `modulo3.checkout.retry.30s` durable, sin binding a `hospitua.events`, con `x-message-ttl: 30000`, `x-dead-letter-exchange: ""` y `x-dead-letter-routing-key: modulo3.checkout`; declarar `modulo3.checkout.dlq` durable y sin binding a `hospitua.events`; no declarar `hospitua.events.dlx`; mantener la cola principal sin argumentos nuevos; declarar el binding de `modulo3.checkout` a `facturacion.checkout` en el exchange `hospitua.events`.
+- [ ] T006 Configurar el adaptador RabbitMQ de `CheckoutMessagePublisherPort` para publicar por el exchange por defecto, con mensajes persistentes y `mandatory`; resolver cada promesa solo tras publisher confirm y sin `basic.return`, y rechazarla en cualquier otro caso.
+- [ ] T007 Configurar el manejo de ack manual: hacer ack del original solo tras publisher confirm y ausencia de `basic.return`, y hacer nack con reencolado si la publicación falla, es devuelta o no se confirma.
 
 **Checkpoint**: La auditoría, los puertos de publicación y la topología están disponibles para las historias.
 
@@ -217,13 +219,13 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 ### Tests for User Story 1
 
-- [ ] T006 [US1] Pruebas de integración con Testcontainers para PostgreSQL y RabbitMQ: auditoría atómica, deduplicación, ack, publicación a DLQ con ack, `DATABASE_UNAVAILABLE`, `FINAL_SETTLEMENT_NOT_FOUND` y `UNEXPECTED_ERROR`. Verificar publicaciones persistentes a retry y DLQ con `mandatory`, publisher confirm y `basic.return`; una publicación devuelta, fallida o no confirmada debe causar nack con reencolado del original. Verificar que el servicio confirma la publicación antes de escribir el estado terminal y que una publicación fallida deja el registro reconocible en `PENDING` y resulta en `NACK_REQUEUE`. Verificar que un `eventId` presente sin formato UUID se trata como sobre no reconocible, y que, si falla la escritura del estado tras confirmar la publicación a la DLQ, la reentrega repite la publicación. Verificar que una falla de escritura de la auditoría anterior a cualquier publicación a la DLQ, incluida la de `registerIfAbsent(...)`, sigue la ruta de retry y que el registro se crea cuando una reentrega logra escribirlo.
-- [ ] T007 [US1] Pruebas e2e del flujo de check-out completo y del flujo sin factura por datos tributarios incompletos. Cubrir también el evento posterior con datos tributarios completos que emite la factura, y verificar que el procesamiento no modifica la ocupación, disponibilidad ni bloqueo físico de la habitación.
+- [ ] T008 [US1] Pruebas de integración con Testcontainers para PostgreSQL y RabbitMQ: auditoría atómica, deduplicación, ack, publicación a DLQ con ack, `DATABASE_UNAVAILABLE`, `FINAL_SETTLEMENT_NOT_FOUND` y `UNEXPECTED_ERROR`. Verificar publicaciones persistentes a retry y DLQ con `mandatory`, publisher confirm y `basic.return`; una publicación devuelta, fallida o no confirmada debe causar nack con reencolado del original. Verificar que el servicio confirma la publicación antes de escribir el estado terminal y que una publicación fallida deja el registro reconocible en `PENDING` y resulta en `NACK_REQUEUE`. Verificar que un `eventId` presente sin formato UUID se trata como sobre no reconocible, y que, si falla la escritura del estado tras confirmar la publicación a la DLQ, la reentrega repite la publicación. Verificar que una falla de escritura de la auditoría anterior a cualquier publicación a la DLQ, incluida la de `registerIfAbsent(...)`, sigue la ruta de retry y que el registro se crea cuando una reentrega logra escribirlo.
+- [ ] T009 [US1] Pruebas e2e del flujo de check-out completo y del flujo sin factura por datos tributarios incompletos. Cubrir también el evento posterior con datos tributarios completos que emite la factura, y verificar que el procesamiento no modifica la ocupación, disponibilidad ni bloqueo físico de la habitación.
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] Implementar `RegisterCheckoutService` (puerto `RegisterCheckoutUseCase`) con la secuencia 007 y 006, incluyendo la respuesta normal sin emisión de factura.
-- [ ] T009 [US1] Implementar el consumer adaptador con ack/nack según el resultado tipado. El servicio publica a retry o DLQ por medio de `CheckoutMessagePublisherPort`; el adaptador de publicación conserva cuerpo y headers e incorpora el `x-retry-count` calculado por el servicio para retry. El consumer solo traduce `ACK` a ack y `NACK_REQUEUE` a nack con reencolado.
+- [ ] T010 [US1] Implementar `RegisterCheckoutService` (puerto `RegisterCheckoutUseCase`) con la secuencia 007 y 006, incluyendo la respuesta normal sin emisión de factura.
+- [ ] T011 [US1] Implementar el consumer adaptador con ack/nack según el resultado tipado. El servicio publica a retry o DLQ por medio de `CheckoutMessagePublisherPort`; el adaptador de publicación conserva cuerpo y headers e incorpora el `x-retry-count` calculado por el servicio para retry. El consumer solo traduce `ACK` a ack y `NACK_REQUEUE` a nack con reencolado.
 
 **Checkpoint**: Un evento válido genera la liquidación y da lugar a la factura final cuando corresponde.
 
@@ -237,12 +239,12 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 ### Tests for User Story 2
 
-- [ ] T010 [US2] Pruebas unitarias de validación del sobre, lista blanca y fechas; validar `occurredAt` con `Z` y `-05:00`, y rechazar valores sin offset o con formato inválido. Cubrir también una estancia de una sola noche (fecha de salida el día posterior a la de entrada), una salida el mismo día de la entrada, que es válida, y una salida anterior a la entrada, que se rechaza, y verificar que la validación y el registro no consultan a otros módulos.
-- [ ] T011 [US2] Contract test del evento, campos de lista blanca, ejemplos y matriz de resultados del contrato; aceptar ambos formatos de `occurredAt` (`Z` y offset `-05:00`).
+- [ ] T012 [US2] Pruebas unitarias de validación del sobre, lista blanca y fechas; validar `occurredAt` con `Z` y `-05:00`, y rechazar valores sin offset o con formato inválido. Cubrir también una estancia de una sola noche (fecha de salida el día posterior a la de entrada), una salida el mismo día de la entrada, que es válida, y una salida anterior a la entrada, que se rechaza, y verificar que la validación y el registro no consultan a otros módulos.
+- [ ] T013 [US2] Contract test del evento, campos de lista blanca, ejemplos y matriz de resultados del contrato; aceptar ambos formatos de `occurredAt` (`Z` y offset `-05:00`).
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] Implementar validación del `EventEnvelope` y reconstrucción de payload por lista blanca.
+- [ ] T014 [US2] Implementar validación del `EventEnvelope` y reconstrucción de payload por lista blanca.
 
 **Checkpoint**: Los eventos con datos obligatorios inválidos se rechazan y los datos migratorios se omiten.
 
@@ -256,7 +258,9 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 ### Tests for User Story 3
 
-- [ ] T013 [US3] Pruebas unitarias de orquestación: generación de liquidación y factura, datos tributarios incompletos, reuso idempotente y contradicción de estancia. Verificar que el servicio espera la confirmación de publicación a DLQ antes de escribir el estado terminal y que, si la publicación falla, devuelve `NACK_REQUEUE` y conserva `PENDING`.
+- [ ] T015 [US3] Pruebas unitarias de orquestación: generación de liquidación y factura, datos tributarios incompletos, reuso idempotente y contradicción de estancia. Verificar que el servicio espera la confirmación de publicación a DLQ antes de escribir el estado terminal y que, si la publicación falla, devuelve `NACK_REQUEUE` y conserva `PENDING`.
+
+### Implementation for User Story 3
 
 El registro atómico por `eventId`, las transiciones de auditoría y `RegisterCheckoutService` implementan esta historia mediante las tareas existentes de deduplicación, auditoría y orquestación.
 
@@ -268,10 +272,10 @@ El registro atómico por `eventId`, las transiciones de auditoría y `RegisterCh
 
 **Purpose**: Verificar recuperación, privacidad y reintentos del procesamiento asíncrono.
 
-- [ ] T014 Documentar la recuperación manual desde DLQ: corregir la causa, cambiar `DEAD_LETTER` a `PENDING` y publicar el mensaje a `modulo3.checkout` mediante el exchange por defecto, con `mandatory`, y esperar confirmación y ausencia de `basic.return` antes de finalizar la recuperación. La publicación lleva `x-retry-count` en 0, para iniciar un nuevo ciclo de reintentos.
-- [ ] T015 Verificar privacidad: `checkout_event_log.payload` no contiene `billingCustomer.name` ni `billingCustomer.taxId` y conserva solamente `has_billing_customer`; comprobar además la unicidad por estancia y ausencia de duplicados. Verificar también que el payload persistido no contiene datos migratorios y que `has_billing_customer` es `true` cuando llega el objeto `billingCustomer`, aunque esté incompleto.
-- [ ] T016 Probar la cola `modulo3.checkout.retry.30s`, su TTL de 30 s y la reentrega para fallas transitorias. Verificar que eventos nuevos de `hospitua.events` no llegan a retry; que al vencer el TTL el mensaje vuelve solo a `modulo3.checkout`; que `x-retry-count` gobierna el límite y `x-death` no lo determina; y que las publicaciones directas persistentes usan `mandatory`, publisher confirm y manejo de `basic.return`. Verificar que un `x-retry-count` ausente, no entero o negativo se trata como 0.
-- [ ] T017 Probar el límite de 5 reintentos y que el fallo siguiente registre el código del fallo actual en auditoría y enrute el evento a DLQ. Verificar que cada publicación a retry incrementa `x-retry-count`; al llegar a 5, la falla siguiente publica a DLQ, registra `DEAD_LETTER` y registra el código del fallo actual en `error_code` solo después de confirmación; si la publicación falla, se conserva `PENDING` y se hace nack con reencolado.
+- [ ] T016 Documentar la recuperación manual desde DLQ: corregir la causa, cambiar `DEAD_LETTER` a `PENDING` y publicar el mensaje a `modulo3.checkout` mediante el exchange por defecto, con `mandatory`, y esperar confirmación y ausencia de `basic.return` antes de finalizar la recuperación. La publicación lleva `x-retry-count` en 0, para iniciar un nuevo ciclo de reintentos.
+- [ ] T017 Verificar privacidad: `checkout_event_log.payload` no contiene `billingCustomer.name` ni `billingCustomer.taxId` y conserva solamente `has_billing_customer`; comprobar además la unicidad por estancia y ausencia de duplicados. Verificar también que el payload persistido no contiene datos migratorios y que `has_billing_customer` es `true` cuando llega el objeto `billingCustomer`, aunque esté incompleto.
+- [ ] T018 Probar la cola `modulo3.checkout.retry.30s`, su TTL de 30 s y la reentrega para fallas transitorias. Verificar que eventos nuevos de `hospitua.events` no llegan a retry; que al vencer el TTL el mensaje vuelve solo a `modulo3.checkout`; que `x-retry-count` gobierna el límite y `x-death` no lo determina; y que las publicaciones directas persistentes usan `mandatory`, publisher confirm y manejo de `basic.return`. Verificar que un `x-retry-count` ausente, no entero o negativo se trata como 0.
+- [ ] T019 Probar el límite de 5 reintentos y que el fallo siguiente registre el código del fallo actual en auditoría y enrute el evento a DLQ. Verificar que cada publicación a retry incrementa `x-retry-count`; al llegar a 5, la falla siguiente publica a DLQ, registra `DEAD_LETTER` y registra el código del fallo actual en `error_code` solo después de confirmación; si la publicación falla, se conserva `PENDING` y se hace nack con reencolado.
 
 ---
 
@@ -279,14 +283,14 @@ El registro atómico por `eventId`, las transiciones de auditoría y `RegisterCh
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: T001 precede a T002–T005.
-- **Foundational (Phase 2)**: T002–T005 preceden a las pruebas de las historias.
-- **User Stories (Phases 3–5)**: las pruebas T006, T007, T010, T011 y T013 preceden a la implementación T008, T009 y T012.
-- **Polish (Phase 6)**: T014 documenta la recuperación manual; T015–T017 cierran las verificaciones de privacidad y reintentos.
+- **Setup (Phase 1)**: T001 precede a T002–T007.
+- **Foundational (Phase 2)**: T002–T007 preceden a las pruebas de las historias.
+- **User Stories (Phases 3–5)**: las pruebas T008, T009, T012, T013 y T015 preceden a la implementación T010, T011 y T014.
+- **Polish (Phase 6)**: T016 documenta la recuperación manual; T017–T019 cierran las verificaciones de privacidad y reintentos.
 
 ### User Story Dependencies
 
-- **User Story 1 (P1)**: T008 requiere T012 (US2), porque `RegisterCheckoutService` usa la validación del sobre; también requiere las exportaciones de `GenerateSettlementUseCase` de 007 y `GenerateFinalInvoiceUseCase` de 006.
+- **User Story 1 (P1)**: T010 requiere T014 (US2), porque `RegisterCheckoutService` usa la validación del sobre; también requiere las exportaciones de `GenerateSettlementUseCase` de 007 y `GenerateFinalInvoiceUseCase` de 006.
 - **User Story 2 (P1)**: valida el sobre y la lista blanca antes de coordinar servicios de negocio.
 - **User Story 3 (P2)**: reutiliza el registro por `eventId` y la idempotencia por `stayId` para completar datos tributarios sin duplicar la liquidación.
 

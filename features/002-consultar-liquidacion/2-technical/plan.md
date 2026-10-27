@@ -188,6 +188,8 @@ Cada lectura se ejecuta como transacción `READ ONLY`. Si el check-out se proces
 
 - [ ] T017 [US3] Pruebas de integración de `READ ONLY` y lectura concurrente sin estado intermedio.
 
+### Implementation for User Story 3
+
 Los adaptadores de liquidación y factura, el cálculo informativo, la reutilización del puerto de 007 y el servicio de consulta de las historias 1 y 2 implementan esta historia.
 
 **Checkpoint**: Las consultas concurrentes devuelven únicamente el resultado permitido para cada actor.
