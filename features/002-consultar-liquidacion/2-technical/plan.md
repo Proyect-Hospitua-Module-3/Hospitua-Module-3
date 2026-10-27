@@ -109,6 +109,7 @@ interface SettlementInvoiceQueryPort {
 | Cotización inexistente | `QUOTE_NOT_FOUND` | 404 |
 | Módulo 2 no disponible | `MODULE2_UNAVAILABLE` | 424 |
 | Comisión ausente o inválida | `MISSING_COMMISSION` / `INVALID_COMMISSION` | 409 |
+| Error inesperado | `UNEXPECTED_ERROR` | 422 |
 
 ### Consistencia
 
@@ -188,6 +189,8 @@ Cada lectura se ejecuta como transacción `READ ONLY`. Si el check-out se proces
 
 - [ ] T017 [US3] Pruebas de integración de `READ ONLY` y lectura concurrente sin estado intermedio.
 
+### Implementation for User Story 3
+
 Los adaptadores de liquidación y factura, el cálculo informativo, la reutilización del puerto de 007 y el servicio de consulta de las historias 1 y 2 implementan esta historia.
 
 **Checkpoint**: Las consultas concurrentes devuelven únicamente el resultado permitido para cada actor.
@@ -226,4 +229,5 @@ Los adaptadores de liquidación y factura, el cálculo informativo, la reutiliza
 
 ## Notes
 
-Los puertos de liquidación existentes en 007 se reutilizan. 002 agrega únicamente las consultas descritas aquí y no administra índices ni escritura de liquidaciones.
+- Los puertos de liquidación existentes en 007 se reutilizan. 002 agrega únicamente las consultas descritas aquí y no administra índices ni escritura de liquidaciones.
+- Las fechas reales de entrada y salida que envía Módulo 1 se ignoran porque el valor de hospedaje sale de la cotización guardada (FR-002 y BR-004 de `generar_liquidacion.md`): una salida anticipada no cambia la liquidación informativa, que coincide con la `Final`.
