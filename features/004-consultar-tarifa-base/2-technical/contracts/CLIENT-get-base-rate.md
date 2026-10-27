@@ -57,7 +57,7 @@ Respuesta `200`:
 | Otro `4xx` | `MODULE1_UNAVAILABLE` | Sí | Sí | [PLAN] |
 | Timeout, `5xx`, error de red o circuito abierto | `MODULE1_UNAVAILABLE` | Sí | Sí | [SPEC NFR-002] [PLAN] |
 
-El cuerpo estructurado de error sigue la forma `ApiError` del Plan Base. Módulo 3 no sustituye una respuesta inválida por un importe predeterminado [SPEC FR-004, FR-006]. Una respuesta malformada lanza `MalformedBaseRateResponseError` en el adaptador, cuenta como fallo del circuit breaker y se traduce a `MODULE1_UNAVAILABLE`; un importe decimal en texto menor o igual a cero lanza `InvalidBaseRateError`, no cuenta como fallo del circuit breaker y se traduce a `INVALID_BASE_RATE` [PLAN].
+El cuerpo estructurado de error sigue la forma `ApiError` del Plan Base. Los campos adicionales del cuerpo, tanto en la respuesta `200` como en `ApiError` (por ejemplo `details`), se ignoran y no cuentan como cuerpo malformado. Módulo 3 no sustituye una respuesta inválida por un importe predeterminado [SPEC FR-004, FR-006]. Una respuesta malformada lanza `MalformedBaseRateResponseError` en el adaptador, cuenta como fallo del circuit breaker y se traduce a `MODULE1_UNAVAILABLE`; un importe decimal en texto menor o igual a cero lanza `InvalidBaseRateError`, no cuenta como fallo del circuit breaker y se traduce a `INVALID_BASE_RATE` [PLAN].
 
 ## 5. Garantías del cliente
 
@@ -67,4 +67,4 @@ El cuerpo estructurado de error sigue la forma `ApiError` del Plan Base. Módulo
 
 ## 6. Contract test
 
-El contract test `test/contract/pricing/module1-base-rate.contract.spec.ts` verifica el cuerpo de éxito con `roomId` (UUID), `date`, `baseRate` decimal en texto positivo y `currency: COP`; el `404` con `ApiError` y `errorCode` `ROOM_NOT_FOUND`; el importe decimal en texto menor o igual a cero como `INVALID_BASE_RATE`; y respuestas malformadas, `404` sin `ROOM_NOT_FOUND`, otros `4xx`, timeout, `5xx`, error de red y circuito abierto como `MODULE1_UNAVAILABLE`. Verifica también que solo los errores de dependencia cuentan como fallo del circuit breaker [PLAN].
+El contract test `test/contract/pricing/module1-base-rate.contract.spec.ts` verifica el cuerpo de éxito con `roomId` (UUID), `date`, `baseRate` decimal en texto positivo y `currency: COP`; el `404` con `ApiError` y `errorCode` `ROOM_NOT_FOUND`; el importe decimal en texto menor o igual a cero como `INVALID_BASE_RATE`; y respuestas malformadas, `404` sin `ROOM_NOT_FOUND`, otros `4xx`, timeout, `5xx`, error de red y circuito abierto como `MODULE1_UNAVAILABLE`. Verifica que los campos adicionales del cuerpo, en el `200` y en el `ApiError`, no cambian el resultado. Verifica también que solo los errores de dependencia cuentan como fallo del circuit breaker [PLAN].
