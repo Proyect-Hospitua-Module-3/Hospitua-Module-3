@@ -122,7 +122,7 @@ test/
 
 ### Entrada del caso de uso
 
-`GenerateSettlementCommand`, armado por 010 a partir del evento `habitacion.checkout` del plan base:
+`GenerateSettlementCommand`, armado por 010 a partir del evento `facturacion.checkout` del plan base:
 
 | Campo | Tipo | Obligatorio | Origen |
 |---|---|---|---|
@@ -133,7 +133,7 @@ test/
 | `categoryRoom` | string | Sí | Evento — tipo de habitación (nombre de Módulo 1); informativo: se guarda, pero no interviene en la elección de la cotización, porque habitaciones del mismo tipo pueden tener tarifas base distintas (FR-016) |
 | `checkInDate`, `checkOutDate` | date | Sí | Evento — fechas **reales** (FR-016) |
 
-010 ya validó formato y fechas (FR-002/FR-003 de `registrar_checkout.md`); 007 vuelve a construir `DateRange` para no depender de esa validación.
+010 ya validó formato y fechas (FR-002/FR-003 de `registrar_checkout.md`); 007 vuelve a construir `DateRange` (admite fechas iguales: la salida el mismo día es válida) para no depender de esa validación.
 
 007 no recibe `billingCustomer`: 010 entrega los datos tributarios directamente a 006 y `settlement` no los guarda (plan base).
 

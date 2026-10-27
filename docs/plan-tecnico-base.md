@@ -85,14 +85,14 @@ Regla arquitectónica de Módulo 3:
 
 - **Exchange**: `hospitua.events` (Tipo: `topic`), compartido entre los 3 módulos, con routing keys por evento (acordado con Módulo 1 y Módulo 2).
 - **Routing Key consumida por Módulo 3**:
-  - `habitacion.checkout`: evento `Registrar Check-out` publicado por Módulo 1 al confirmar el Check-Out. Es el mismo evento que consume Módulo 2; Módulo 3 lo recibe en su propia cola durable (`modulo3.checkout`) enlazada a esa routing key, de modo que cada módulo procesa su copia de forma independiente.
+  - `facturacion.checkout`: evento `Registrar Check-out` publicado por Módulo 1 al confirmar el Check-Out, como mensaje aparte del que publica para Módulo 2 con `habitacion.checkout` (ese lleva datos migratorios de los huéspedes que Módulo 3 no debe recibir). Módulo 1 encola ambos en su outbox, en la misma transacción. Módulo 3 lo recibe en su propia cola durable (`modulo3.checkout`) enlazada solo a `facturacion.checkout`; nunca se enlaza a `habitacion.checkout`.
 - **Consumer**: `infrastructure/adapters/in/messaging/checkout-registered.consumer.ts` — valida el payload mínimo (FR-002 de `registrar_checkout.md`), y si es válido invoca el caso de uso `RegisterCheckoutUseCase`, que a su vez incluye `GenerateSettlementUseCase`.
 - **Idempotencia**: se usa el `stayId` del evento como clave (una estancia = una habitación de la reserva); `settlement` tiene una restricción de unicidad por estancia, de modo que un reenvío del mismo evento (BR-006 de `registrar_checkout.md`) siempre resuelve al mismo resultado sin duplicar.
 - **Ack**: manual (`noAck: false`), confirmado solo después de persistir el resultado (liquidación + factura, si corresponde), para garantizar *at-least-once* sin perder eventos ante una caída a mitad de proceso.
 - **Reintentos y dead-letter** (detalle en el plan 010): las publicaciones a retry y DLQ son persistentes, por el exchange por defecto, con `mandatory`; el original solo se confirma (ack) tras el publisher confirm y sin `basic.return`, y en cualquier otro caso se hace nack con reencolado.
   - **Falla transitoria** (`MODULE2_UNAVAILABLE`, `VAT_RATE_UNAVAILABLE`, `DATABASE_UNAVAILABLE`): se publica a `modulo3.checkout.retry.30s` (durable, TTL 30 s, vuelve a `modulo3.checkout`) con `x-retry-count` incrementado, hasta 5 reintentos; agotados, va a la DLQ.
   - **Dead-letter** (`modulo3.checkout.dlq`, durable, sin binding a `hospitua.events`): eventos con datos obligatorios inválidos (FR-006 de `registrar_checkout.md`), errores de negocio no recuperables (`RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION`, `SETTLEMENT_ALREADY_EXISTS`, `FINAL_SETTLEMENT_NOT_FOUND`) y reintentos agotados. Quedan para revisión manual, no se reintentan indefinidamente.
-  - **Datos tributarios ausentes o incompletos** (`BILLING_CUSTOMER_DATA_MISSING`): no es un error; la liquidación se conserva, no se emite factura y el evento se confirma. Un evento posterior de la estancia con datos completos emite la factura.
+  - **Datos tributarios ausentes o incompletos** (`BILLING_CUSTOMER_DATA_MISSING`): no es un error; la liquidación se conserva, no se emite factura y el evento se confirma. Módulo 1 publica un solo evento por estancia y no envía uno posterior; Módulo 3 no corrige facturas, por lo que esa estancia queda sin factura.
   - Estos códigos son resultados de mensajería y auditoría (`checkout_event_log`), no respuestas HTTP.
 - **Estructura estándar del mensaje (`EventEnvelope<T>`)**, la misma envoltura que usa Módulo 1 para sus eventos (acordada con Módulo 1). El `payload` solo trae hechos físicos de la estancia; los datos de canal, OTA y hospedaje se obtienen de Módulo 2 y de la cotización guardada en `pricing`:
   ```json
@@ -116,10 +116,10 @@ Regla arquitectónica de Módulo 3:
   }
   ```
   - El evento es **por habitación**: una reserva con varias habitaciones genera un check-out (y una liquidación) por cada una.
-  - Campos obligatorios del `payload`: `stayId`, `reservationRef`, `roomId`, `categoryRoom`, `checkInDate` y `checkOutDate` reales (`checkOutDate` posterior a `checkInDate`, FR-003 de `registrar_checkout.md`).
+  - Campos obligatorios del `payload`: `stayId`, `reservationRef`, `roomId`, `categoryRoom`, `checkInDate` y `checkOutDate` reales (`checkOutDate` igual o posterior a `checkInDate`: la salida el mismo día es válida y se liquida como cualquier estancia).
   - `roomId` permite elegir la cotización de esa habitación entre los `quoteIds` de la reserva. `categoryRoom` (tipo de habitación, nombre que usa Módulo 1) es informativo: no interviene en la elección de la cotización, porque habitaciones del mismo tipo pueden tener tarifas base distintas.
   - El evento no trae `channel`, `lodgingAmount` ni datos de la OTA: el canal y los datos OTA se consultan a Módulo 2 y el hospedaje se toma de la cotización guardada (ver [regla 5](#reglas-transversales-de-arquitectura)).
-  - `billingCustomer` es opcional: si llega, se entrega a `Generar factura final` (006); `settlement` no lo recibe ni lo guarda. Su ausencia no invalida el evento (FR-002). Si faltan datos, la factura se emite con un evento posterior de la misma estancia que los traiga completos.
+  - `billingCustomer` es opcional: si llega, se entrega a `Generar factura final` (006); `settlement` no lo recibe ni lo guarda. Su ausencia no invalida el evento (FR-002). Módulo 1 la envía siempre con el titular de la estancia; si faltan datos no se emite factura para esa estancia (no hay segundo evento ni corrección en Módulo 3).
   - El `payload` nunca incluye datos migratorios ni SIRE (FR-007, NFR-003).
   - `eventId` queda registrado en `checkout_event_log` para trazabilidad (NFR-004).
 
@@ -156,7 +156,7 @@ Todos estos endpoints son adaptadores de entrada en `infrastructure/adapters/in/
 
 | Servicio Externo | Método y Ruta | Propósito |
 |---|---|---|
-| **Módulo 1** | `GET /rooms/{roomId}/base-rate?date=YYYY-MM-DD` | Consulta de la tarifa base usada por `pricing` para `Consultar tarifa base` |
+| **Módulo 1** | `GET /api/rooms/{roomId}/base-rate?date=YYYY-MM-DD` | Consulta de la tarifa base usada por `pricing` para `Consultar tarifa base` |
 | **Módulo 2** | `GET /api/reservations/{reservationRef}` | Datos de la reserva usados por `settlement`: `quoteIds`, `channel` y, si es OTA, `otaId`, `otaConfirmationCode` y `otaCommissionPercentage` |
 
 Ambos contratos están acordados con Módulo 1 y Módulo 2.
@@ -190,7 +190,7 @@ A la OTA le interesa qué parte del dinero de una liquidación proviene de la ta
 
 #### Consulta de liquidación desde Módulo 1
 
-Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de confirmar la salida y publicar `habitacion.checkout` (paso 4). Por eso `GET /api/settlements`:
+Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de confirmar la salida y publicar `facturacion.checkout` (paso 4). Por eso `GET /api/settlements`:
 
 - Si ya existe la liquidación `Final` de esa habitación, la devuelve.
 - Si todavía no existe, la calcula con la misma lógica de `Generar liquidación` (reserva de Módulo 2 + cotización guardada), **sin persistirla**, y la devuelve como informativa. Como el cálculo es determinista, coincide con la liquidación `Final` que se genera al recibir el evento.
@@ -387,7 +387,7 @@ src/
     │   │   │       ├── roles.guard.ts                    # Valida el claim role (Administrador, OTA)
     │   │   │       └── roles.decorator.ts                # @Roles("Administrador") / @Roles("OTA")
     │   │   └── messaging/                        # Consumers RabbitMQ
-    │   │       └── checkout-registered.consumer.ts       # habitacion.checkout (ack manual, DLQ)
+    │   │       └── checkout-registered.consumer.ts       # facturacion.checkout (ack manual, DLQ)
     │   └── out/                                  # Adaptadores Secundarios / Driven (Salida)
     │       ├── persistence/                      # Prisma + PostgreSQL
     │       │   ├── prisma.service.ts             # PrismaClient como provider de NestJS
@@ -702,7 +702,7 @@ Cada plan técnico de feature (`features/NNN-.../2-technical/plan.md`) debe indi
 
 **CRÍTICO**: Ningún plan de feature puede comenzar su implementación hasta completar satisfactoriamente esta fase base.
 
-- [ ] T006 [P] Implementar Value Objects compartidos (`Money`, `DateRange`, `Channel`) en `src/domain/model/shared/`
+- [ ] T006 [P] Implementar Value Objects compartidos (`Money`, `DateRange`, `Channel`) en `src/domain/model/shared/`; `DateRange` admite fechas iguales (un solo día) y cada feature agrega su propio mínimo (005 exige al menos una noche)
 - [ ] T007 [P] Implementar el error base de dominio y el filtro de excepciones global en `src/domain/errors/` y `src/infrastructure/adapters/in/http/`
 - [ ] T008 Configurar la conexión a PostgreSQL con Prisma (`prisma/schema.prisma`, `PrismaService`) y Prisma Migrate
 - [ ] T009 Configurar la conexión a RabbitMQ (módulo de mensajería NestJS, exchange `hospitua.events`, colas y dead-letter)

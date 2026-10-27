@@ -23,7 +23,7 @@ Solo pueden inyectarlo `checkout-ingestion` (010) y `billing` (006); ningún con
 
 ### `GenerateSettlementCommand`
 
-010 lo arma a partir del `payload` del evento `habitacion.checkout`; 006 lo arma con los mismos datos de check-out del evento que recibe de 010, sin `billingCustomer` [BASE] [PLAN].
+010 lo arma a partir del `payload` del evento `facturacion.checkout`; 006 lo arma con los mismos datos de check-out del evento que recibe de 010, sin `billingCustomer` [BASE] [PLAN].
 
 | Campo | Tipo | Obligatorio | Descripción | Origen |
 |---|---|---|---|---|
@@ -33,7 +33,7 @@ Solo pueden inyectarlo `checkout-ingestion` (010) y `billing` (006); ningún con
 | `roomId` | UUID | Sí | Habitación liquidada; con él se elige su cotización entre los `quoteIds` de la reserva | [BASE] [SPEC FR-016, FR-020] |
 | `categoryRoom` | string | Sí | Tipo de habitación confirmado por Módulo 1; informativo: se guarda, pero no interviene en la elección de la cotización | [BASE] [SPEC FR-016] |
 | `checkInDate` | date `YYYY-MM-DD` | Sí | Fecha **real** de entrada | [SPEC FR-016] |
-| `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha **real** de salida; posterior a `checkInDate` | [SPEC FR-016] |
+| `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha **real** de salida; igual o posterior a `checkInDate` (la salida el mismo día es válida) | [SPEC FR-016] |
 
 El comando nunca trae `channel`, `lodgingAmount`, datos de la OTA ni `billingCustomer`: los datos tributarios los entrega 010 directamente a 006 y `settlement` no los guarda [BASE] [SPEC BR-012]. El canal y la comisión salen de la reserva de Módulo 2 y el hospedaje de la cotización guardada [BASE] [SPEC BR-010].
 
@@ -55,7 +55,7 @@ El comando nunca trae `channel`, `lodgingAmount`, datos de la OTA ni `billingCus
 
 Se ejecutan en este orden; la primera que falla detiene el proceso y no se guarda nada.
 
-1. **Validación del comando**: los campos obligatorios deben venir y `checkOutDate` debe ser posterior a `checkInDate`. 007 revalida las fechas con `DateRange` aunque 010 ya lo haya hecho [PLAN] [SPEC BR-007].
+1. **Validación del comando**: los campos obligatorios deben venir y `checkOutDate` debe ser igual o posterior a `checkInDate`. 007 revalida las fechas con `DateRange` aunque 010 ya lo haya hecho [PLAN] [SPEC BR-007].
 2. **Idempotencia**: se busca la liquidación por `stayId` [SPEC FR-011] [PLAN].
    - Existe y `reservationRef`, `roomId`, `categoryRoom`, `checkInDate` y `checkOutDate` coinciden con el comando → devuelve la existente sin llamar a Módulo 2 ni recalcular [SPEC HU1 escenarios 3 y 4].
    - Existe con algún dato distinto → `SETTLEMENT_ALREADY_EXISTS`; la original no cambia [SPEC FR-010, HU3 escenario 2].
@@ -156,7 +156,7 @@ Un comando con campos obligatorios faltantes o fechas inconsistentes es un error
   "errorCode": "MISSING_COMMISSION",
   "message": "La reserva RES-000123 es de la OTA 'booking' pero Módulo 2 no informó el porcentaje de comisión. No se generó la liquidación de la estancia c3a9e1b2-5f4d-4e6a-8b7c-1d2e3f4a5b6c.",
   "timestamp": "2026-12-23T11:04:58Z",
-  "path": "habitacion.checkout"
+  "path": "facturacion.checkout"
 }
 ```
 
