@@ -91,7 +91,7 @@ test/
 2. Si el sobre es reconocible (JSON válido con un `eventId` con formato UUID), `registerIfAbsent(...)` registra atómicamente el mensaje con estado `PENDING` o devuelve el registro existente por `eventId`.
 3. Se valida el sobre, la lista blanca y los datos mínimos. Si el JSON es inválido o el sobre no es reconocible, se sigue el flujo de publicación a DLQ y auditoría descrito para ese caso. Si el evento reconocible con `eventId` tiene campos inválidos, se publica a DLQ con las reglas de confirmación; tras la confirmación y sin `basic.return`, se registra `REJECTED` con `INVALID_CHECKOUT_EVENT`.
 4. Un evento válido ejecuta `GenerateSettlementUseCase` de 007 y, después, `GenerateFinalInvoiceUseCase` de 006. 006 vuelve a invocar 007 internamente; la idempotencia por `stayId` devuelve la liquidación existente sin duplicarla.
-5. 010 entrega `billingCustomer` solo a 006, nunca a 007. Si falta o está incompleto, 006 produce `BillingCustomerDataMissingError`; 010 conserva la liquidación, confirma el evento y marca `PROCESSED` con la nota definida en el contrato. Un evento nuevo para la misma estancia, con los mismos datos de check-out y datos tributarios completos, reutiliza la liquidación existente y permite emitir la factura.
+5. 010 entrega `billingCustomer` solo a 006, nunca a 007. Si falta o está incompleto, 006 produce `BillingCustomerDataMissingError`; 010 conserva la liquidación, confirma el evento y marca `PROCESSED` con la nota definida en el contrato.
 
 ### Puertos y dependencias
 
@@ -220,7 +220,7 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 ### Tests for User Story 1
 
 - [ ] T008 [US1] Pruebas de integración con Testcontainers para PostgreSQL y RabbitMQ: auditoría atómica, deduplicación, ack, publicación a DLQ con ack, `DATABASE_UNAVAILABLE`, `FINAL_SETTLEMENT_NOT_FOUND` y `UNEXPECTED_ERROR`. Verificar publicaciones persistentes a retry y DLQ con `mandatory`, publisher confirm y `basic.return`; una publicación devuelta, fallida o no confirmada debe causar nack con reencolado del original. Verificar que el servicio confirma la publicación antes de escribir el estado terminal y que una publicación fallida deja el registro reconocible en `PENDING` y resulta en `NACK_REQUEUE`. Verificar que un `eventId` presente sin formato UUID se trata como sobre no reconocible, y que, si falla la escritura del estado tras confirmar la publicación a la DLQ, la reentrega repite la publicación. Verificar que una falla de escritura de la auditoría anterior a cualquier publicación a la DLQ, incluida la de `registerIfAbsent(...)`, sigue la ruta de retry y que el registro se crea cuando una reentrega logra escribirlo.
-- [ ] T009 [US1] Pruebas e2e del flujo de check-out completo y del flujo sin factura por datos tributarios incompletos. Cubrir también el evento posterior con datos tributarios completos que emite la factura, y verificar que el procesamiento no modifica la ocupación, disponibilidad ni bloqueo físico de la habitación.
+- [ ] T009 [US1] Pruebas e2e del flujo de check-out completo y del flujo sin factura por datos tributarios incompletos; verificar que el procesamiento no modifica la ocupación, disponibilidad ni bloqueo físico de la habitación.
 
 ### Implementation for User Story 1
 
@@ -250,9 +250,9 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 ---
 
-## Phase 5: User Story 3 - Mantener idempotencia y completar datos tributarios (Priority: P2)
+## Phase 5: User Story 3 - Mantener idempotencia de la estancia (Priority: P2)
 
-**Goal**: Reconocer reenvíos y eventos nuevos de una misma estancia, conservar una sola liquidación y permitir emitir la factura cuando existan datos tributarios completos.
+**Goal**: Reconocer reenvíos y eventos nuevos de una misma estancia y conservar una sola liquidación y una sola factura.
 
 **Independent Test**: Se puede procesar un evento, reenviarlo o recibir otro de la misma estancia, y verificar que la liquidación se reutiliza y que los datos de check-out contradictorios se rechazan.
 
@@ -264,7 +264,7 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 El registro atómico por `eventId`, las transiciones de auditoría y `RegisterCheckoutService` implementan esta historia mediante las tareas existentes de deduplicación, auditoría y orquestación.
 
-**Checkpoint**: La liquidación existente se reutiliza y los datos tributarios completos permiten emitir la factura sin duplicar la liquidación.
+**Checkpoint**: La liquidación existente se reutiliza sin recalcularla y los datos de check-out contradictorios se rechazan sin alterar la liquidación original.
 
 ---
 
@@ -292,7 +292,7 @@ El registro atómico por `eventId`, las transiciones de auditoría y `RegisterCh
 
 - **User Story 1 (P1)**: T010 requiere T014 (US2), porque `RegisterCheckoutService` usa la validación del sobre; también requiere las exportaciones de `GenerateSettlementUseCase` de 007 y `GenerateFinalInvoiceUseCase` de 006.
 - **User Story 2 (P1)**: valida el sobre y la lista blanca antes de coordinar servicios de negocio.
-- **User Story 3 (P2)**: reutiliza el registro por `eventId` y la idempotencia por `stayId` para completar datos tributarios sin duplicar la liquidación.
+- **User Story 3 (P2)**: reutiliza el registro por `eventId` y la idempotencia por `stayId` para evitar duplicar la liquidación.
 
 ### Within Each User Story
 
