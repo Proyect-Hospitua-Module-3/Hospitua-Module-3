@@ -3,7 +3,7 @@
 **Date**: 2026-10-09
 **Spec**: [registrar_checkout.md](../1-functional/registrar_checkout.md)
 **Proyecto base**: [plan-tecnico-base.md](../../../docs/plan-tecnico-base.md)
-**Contrato**: [EVENT-habitacion-checkout.md](contracts/EVENT-habitacion-checkout.md)
+**Contrato**: [EVENT-facturacion-checkout.md](contracts/EVENT-facturacion-checkout.md)
 
 ## Summary
 
@@ -32,7 +32,7 @@ features/010-registrar-checkout/
 └── 2-technical/
     ├── plan.md
     └── contracts/
-        └── EVENT-habitacion-checkout.md
+        └── EVENT-facturacion-checkout.md
 ```
 
 ### Source Code (repository root)
@@ -178,7 +178,7 @@ Los eventos con JSON inválido o sobre no reconocible se publican persistentemen
 
 Las fallas transitorias con `x-retry-count` menor que 5 se publican persistentemente a `modulo3.checkout.retry.30s` mediante el exchange por defecto, con el contador incrementado, `mandatory` activado y confirmación del broker antes del ack del original. La cola retry es durable, no tiene binding a `hospitua.events` y usa `x-message-ttl: 30000`, `x-dead-letter-exchange: ""` y `x-dead-letter-routing-key: modulo3.checkout`. `x-retry-count` es un entero no negativo; si está ausente, no es un entero o es negativo, se interpreta como 0. El broker puede agregar `x-death` al devolver el mensaje por TTL, pero `x-death` no determina el límite de reintentos. Cuando el contador es 5, el siguiente fallo publica persistentemente a `modulo3.checkout.dlq` mediante el exchange por defecto con `mandatory`; tras confirmación y ausencia de `basic.return`, se registra el código del fallo actual en `error_code`, el motivo en `reason` y el estado `DEAD_LETTER`. Las fallas de escritura de la auditoría de 010, incluida la de `registerIfAbsent(...)`, se tratan como `DATABASE_UNAVAILABLE` y siguen la misma ruta de retry; el registro se crea o se actualiza cuando una reentrega logra escribirlo. Se exceptúa la escritura del estado posterior a una publicación confirmada a la DLQ, que se rige por el nack con reencolado descrito a continuación. Los errores terminales y payloads inválidos se publican persistentemente a la DLQ mediante el exchange por defecto con `mandatory`. La DLQ es durable y no tiene binding a `hospitua.events`; no se declara `hospitua.events.dlx`. Una publicación devuelta con `basic.return` o no confirmada se trata como fallida y causa nack con reencolado del mensaje original. Si la publicación a la DLQ se confirma y falla la escritura del estado, el mensaje original recibe nack con reencolado y la reentrega repite la publicación: un evento reconocible encuentra su registro en `PENDING` y un sobre irreconocible se evalúa de nuevo como tal. La DLQ puede recibir una copia duplicada; la revisión manual la descarta por `eventId` cuando existe y, en un sobre irreconocible, por ser idéntica al mensaje original. La recuperación manual corrige la causa, cambia el registro a `PENDING` y publica el mensaje a `modulo3.checkout` mediante el exchange por defecto con `x-retry-count` en 0, para iniciar un nuevo ciclo de reintentos. `modulo3.checkout.dlq` es el destino de la revisión manual definida en la spec [SPEC FR-008, FR-010].
 
-La lista de códigos de auditoría y acciones se define en [EVENT-habitacion-checkout.md](contracts/EVENT-habitacion-checkout.md). `INVALID_CHECKOUT_EVENT` es código de auditoría y no un error HTTP.
+La lista de códigos de auditoría y acciones se define en [EVENT-facturacion-checkout.md](contracts/EVENT-facturacion-checkout.md). `INVALID_CHECKOUT_EVENT` es código de auditoría y no un error HTTP.
 
 ### Observabilidad y privacidad
 
@@ -239,7 +239,7 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 ### Tests for User Story 2
 
-- [ ] T012 [US2] Pruebas unitarias de validación del sobre, lista blanca y fechas; validar `occurredAt` con `Z` y `-05:00`, y rechazar valores sin offset o con formato inválido. Cubrir también una estancia de una sola noche (fecha de salida el día posterior a la de entrada), una salida el mismo día de la entrada, que es válida, y una salida anterior a la entrada, que se rechaza, y verificar que la validación y el registro no consultan a otros módulos.
+- [ ] T012 [US2] Pruebas unitarias de validación del sobre, lista blanca y fechas; validar `occurredAt` con `Z` y `-05:00`, y rechazar valores sin offset o con formato inválido. Cubrir también una estancia de una sola noche (fecha de salida el día posterior a la de entrada), una salida el mismo día de la entrada, que es válida, y una salida anterior a la entrada, que se rechaza, y verificar que la validación y el registro no consultan a otros módulos; repetir la validación con el mismo evento y verificar que produce el mismo resultado.
 - [ ] T013 [US2] Contract test del evento, campos de lista blanca, ejemplos y matriz de resultados del contrato; aceptar ambos formatos de `occurredAt` (`Z` y offset `-05:00`).
 
 ### Implementation for User Story 2
