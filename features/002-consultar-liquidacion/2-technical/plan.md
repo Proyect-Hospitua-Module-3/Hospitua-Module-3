@@ -109,6 +109,7 @@ interface SettlementInvoiceQueryPort {
 | Cotización inexistente | `QUOTE_NOT_FOUND` | 404 |
 | Módulo 2 no disponible | `MODULE2_UNAVAILABLE` | 424 |
 | Comisión ausente o inválida | `MISSING_COMMISSION` / `INVALID_COMMISSION` | 409 |
+| Error inesperado | `UNEXPECTED_ERROR` | 422 |
 
 ### Consistencia
 

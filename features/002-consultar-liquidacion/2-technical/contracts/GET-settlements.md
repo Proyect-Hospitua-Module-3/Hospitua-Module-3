@@ -15,7 +15,7 @@ Permite a Módulo 1 consultar una liquidación informativa o final de una habita
 
 ### Ruta y autenticación
 
-`GET /api/settlements` [BASE]. Una petición sin cabecera `Authorization` es la llamada interna de Módulo 1 y exige `reservationRef` y `roomId`; si falta alguno de esos dos parámetros responde `400 INVALID_QUERY_PARAMS` sin información financiera [SPEC FR-013]. `categoryRoom` es opcional e informativo para Módulo 1; su ausencia no impide la consulta. Una petición con cabecera `Authorization` valida el token y requiere `role = OTA` y claim `otaId`; cualquier otro rol recibe `403 FORBIDDEN` [BASE].
+`GET /api/settlements` [BASE]. Una petición sin cabecera `Authorization` es la llamada interna de Módulo 1 y exige `reservationRef` y `roomId`; si falta alguno de esos dos parámetros responde `400 INVALID_QUERY_PARAMS` sin información financiera [SPEC FR-013]. `categoryRoom` es opcional e informativo para Módulo 1; su ausencia no impide la consulta. Una petición con cabecera `Authorization` valida el token y requiere `role = OTA` y claim `otaId`; cualquier otro rol recibe `403 FORBIDDEN` [BASE]. El 95% de las consultas responde en menos de 800 ms en condiciones normales [SPEC NFR-001].
 
 ### Parámetros
 
@@ -42,6 +42,8 @@ Authorization: Bearer <token OTA>
 ```
 
 ## 3. Respuesta
+
+`200 OK`
 
 ### Respuesta de Módulo 1
 
@@ -120,7 +122,7 @@ Devuelve todas las liquidaciones `FINAL` de habitaciones de la reserva que ya tu
 | `otaId` | string o null | Identidad de OTA si aplica; `null` cuando `channel = DIRECT`. |
 | `currency` | string | `COP`. |
 | `breakdown` | objeto | `baseLodgingAmount`, `dynamicAdjustmentAmount`, `lodgingAmount`, `otaCommissionPercentage`, `otaCommissionAmount`, `netIncome`. En una `FINAL`, `lodgingAmount`, `baseLodgingAmount` y `dynamicAdjustmentAmount` salen de la liquidación de 007; en una informativa, `lodgingAmount` sale de la cotización de 005, `baseLodgingAmount` es la suma de `baseRate` de sus noches y `dynamicAdjustmentAmount = lodgingAmount − baseLodgingAmount`. Los tres importes son decimales en texto y siempre se cumple `lodgingAmount = baseLodgingAmount + dynamicAdjustmentAmount`. En canal `DIRECT` también se informan ambos importes y se mantiene esta igualdad; `otaCommissionPercentage` es `null`, `otaCommissionAmount` es `"0.00"` y `netIncome` es igual a `lodgingAmount`. El ingreso neto OTA es hospedaje menos comisión y no incluye IVA. |
-| `invoice` | objeto o null | Subconjunto de factura 006/008: `invoiceId`, `invoiceNumber`, `issuedAt`, `vatRateApplied`, `vatAmount`, `totalAmount`, `status`. Nulo si no hay factura emitida o si es informativa. |
+| `invoice` | objeto o null | Subconjunto de factura 006/008: `invoiceId`, `invoiceNumber`, `issuedAt`, `vatRateApplied`, `vatAmount`, `totalAmount`, `status`. Nulo si no hay factura emitida o si es informativa. Los tipos de estos campos son los definidos en [UC-generate-final-invoice.md](../../../006-generar-factura-final/2-technical/contracts/UC-generate-final-invoice.md). |
 | `generatedAt` | fecha y hora ISO 8601 | Momento del cálculo o generación. |
 
 Para Módulo 1, una consulta sin liquidación final calcula en memoria una informativa a partir de `SettlementCalculator` de 007, la reserva obtenida por `ReservationClientPort` y la cotización seleccionada por `roomId`: se pasan a `LodgingQuoteQueryPort.findByIds` los `quoteIds` de la reserva. No la persiste. Para OTA, no se devuelve una informativa [SPEC FR-009, FR-011].
@@ -148,3 +150,4 @@ Los errores siguen la estructura `ApiError` del Plan Base.
 | 424 | `MODULE2_UNAVAILABLE` | Módulo 2 no responde o entrega una respuesta no utilizable durante el cálculo informativo. |
 | 409 | `MISSING_COMMISSION` | Reserva OTA sin comisión requerida para el cálculo informativo. |
 | 409 | `INVALID_COMMISSION` | Comisión de la reserva OTA inválida para el cálculo informativo. |
+| 422 | `UNEXPECTED_ERROR` | Error inesperado; el `ExceptionFilter` global lo registra con identificador de correlación. |

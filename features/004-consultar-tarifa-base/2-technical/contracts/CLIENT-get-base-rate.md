@@ -17,10 +17,16 @@ Define la llamada saliente que realiza el contexto `pricing` de Módulo 3 para o
 | Método y ruta | `GET {MODULE1_BASE_URL}/api/rooms/{roomId}/base-rate?date=YYYY-MM-DD` |
 | Autenticación | Sin token, comunicación interna [BASE] |
 | `roomId` | UUID de la habitación en la ruta; Módulo 3 inserta el `roomId`, ya validado como UUID, en la ruta sin transformarlo [PLAN] |
-| `date` | Fecha consultada, formato `YYYY-MM-DD` |
+| `date` | Fecha consultada, obligatoria, formato `YYYY-MM-DD` |
 | Objetivo de Módulo 1 | p95 < 200 ms, acordado con Módulo 1 |
 | Timeout | `MODULE1_TIMEOUT_MS = 500` [SPEC NFR-002] [PLAN] |
 | Circuit breaker | opossum: se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s [PLAN] |
+
+Ejemplo:
+
+```http
+GET /api/rooms/550e8400-e29b-41d4-a716-446655440000/base-rate?date=2026-10-08
+```
 
 ## 3. Respuesta esperada
 
