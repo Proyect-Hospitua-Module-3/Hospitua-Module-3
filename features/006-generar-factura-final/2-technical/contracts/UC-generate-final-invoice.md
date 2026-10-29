@@ -16,8 +16,14 @@ Emitir un documento fiscal definitivo para una liquidación `FINAL`, con número
 
 ```ts
 // src/domain/ports/in/generate-final-invoice.use-case.ts
-generate(command: GenerateFinalInvoiceCommand): Promise<Invoice>
+generate(command: GenerateFinalInvoiceCommand): Promise<GenerateFinalInvoiceResult>
+
+export type GenerateFinalInvoiceResult =
+  | { status: 'ISSUED'; invoice: Invoice } // emitida ahora o recuperada por idempotencia
+  | { status: 'NOT_ISSUED'; reason: 'BILLING_CUSTOMER_DATA_MISSING' };
 ```
+
+La falta de datos tributarios no es un error: se devuelve como `NOT_ISSUED`. Los errores (sección 5) se lanzan como excepciones tipadas [PLAN].
 
 Solo `checkout-ingestion` (010) recibe permiso de inyección del caso de uso. No hay controller ni operación REST pública [SPEC FR-001] [PLAN].
 
@@ -37,7 +43,7 @@ El comando incluye los campos de check-out del evento más el `billingCustomer` 
 | `billingCustomer.name` | string | Opcional en el evento; obligatorio para emitir | Nombre o razón social, no vacío | [SPEC FR-008] |
 | `billingCustomer.taxId` | string | Opcional en el evento; obligatorio para emitir | Identificación tributaria/documento fiscal, no vacío | [SPEC FR-008] |
 
-El evento puede omitir los datos tributarios y 007 genera la liquidación sin recibirlos ni persistirlos. Para emitir, ambos campos de `billingCustomer` del evento deben estar completos. Un objeto ausente, parcial o con valores en blanco se rechaza; 006 no lee esos datos de la liquidación ni los combina con otra fuente. Un nuevo evento con datos completos puede emitir factura para una liquidación ya generada sin actualizarla [SPEC FR-008, FR-009, BR-004] [PLAN].
+El evento puede omitir los datos tributarios y 007 genera la liquidación sin recibirlos ni persistirlos. Para emitir, ambos campos de `billingCustomer` del evento deben estar completos. Un objeto ausente, parcial o con valores en blanco produce `NOT_ISSUED`; 006 no lee esos datos de la liquidación ni los combina con otra fuente. La estancia queda sin factura: Módulo 1 publica un solo evento por estancia y no envía uno posterior [SPEC FR-008, FR-009, BR-004] [BASE] [PLAN].
 
 El comando no permite establecer `lodgingAmount`, `channel`, comisión, porcentaje/importe de IVA, número, total, moneda ni estado de factura. Nunca contiene ni persiste datos migratorios [SPEC FR-003, FR-013].
 
@@ -62,16 +68,16 @@ El comando no permite establecer `lodgingAmount`, `channel`, comisión, porcenta
 ## 3. Reglas de procesamiento
 
 1. **Validación**: requiere los campos estructurales del comando y fechas válidas. Una entrada incompleta falla antes de I/O [PLAN].
-2. **Factura existente**: busca por `stayId`. Si ya hay factura `ISSUED`, devuelve exactamente la factura persistida con su número; no consulta nuevamente 001, no recalcula y no modifica el documento [SPEC FR-006, FR-007] [BASE].
-3. **Liquidación `FINAL`**: llama a `GenerateSettlementUseCase.generate` (007) con `eventId`, `stayId`, `reservationRef`, `roomId`, `categoryRoom` y las fechas; no envía `billingCustomer`. Recibe liquidación existente o recién generada de forma idempotente [SPEC FR-001] [007].
-4. **Datos tributarios del evento**: valida nombre/razón social y documento fiscal del `billingCustomer` recibido en el evento antes de solicitar el IVA o asignar número. Sin ambos campos completos → resultado normal `BILLING_CUSTOMER_DATA_MISSING`; la liquidación puede permanecer guardada, no se crea factura ni se reserva consecutivo. No consulta datos tributarios en la liquidación ni los mezcla con otra fuente [SPEC FR-008, FR-009].
-5. **IVA vigente**: consume `GetCurrentVatRateUseCase.getCurrent()` de 001. El valor leído se congela en `vatRateApplied`; una actualización posterior nunca cambia la factura [SPEC FR-002, BR-005] [001].
+2. **Factura existente**: busca por `stayId`. Si ya hay factura `ISSUED`, devuelve `{ status: 'ISSUED', invoice }` con exactamente la factura persistida y su número; no consulta nuevamente 001, no recalcula y no modifica el documento [SPEC FR-006, FR-007] [BASE].
+3. **Liquidación `FINAL`**: llama a `GenerateSettlementUseCase.generate` (007) con `eventId`, `stayId`, `reservationRef`, `roomId`, `categoryRoom` y las fechas; no envía `billingCustomer`. Recibe liquidación existente o recién generada de forma idempotente. Como guarda de integridad, comprueba que esté en `FINAL` y sea del `stayId` del comando; si no, lanza `FinalSettlementNotFoundError` [SPEC FR-001, FR-009] [007].
+4. **Datos tributarios del evento**: valida nombre/razón social y documento fiscal del `billingCustomer` recibido en el evento antes de solicitar el IVA o asignar número. Sin ambos campos completos → `{ status: 'NOT_ISSUED', reason: 'BILLING_CUSTOMER_DATA_MISSING' }`; la liquidación permanece guardada, no se crea factura ni se reserva consecutivo. No consulta datos tributarios en la liquidación ni los mezcla con otra fuente [SPEC FR-008, FR-009].
+5. **IVA vigente**: consume `GetCurrentVatRateUseCase.getCurrent()` de 001. El valor leído se congela en `vatRateApplied`; una actualización posterior nunca cambia la factura. Si nunca se registró un porcentaje, 001 lanza `VatRateNotConfiguredError`; si la lectura falla de forma transitoria, `VatRateUnavailableError` [SPEC FR-002, BR-005] [001].
 6. **Cálculo**: emplea `Money`/`decimal.js`, sin `number` binario para importes y con redondeo half-up a 2 decimales [BASE] [PLAN]:
    - `vatAmount = lodgingAmount × vatRateApplied / 100`.
    - `totalAmount = lodgingAmount + vatAmount`.
    - `otaCommissionAmount` y `netIncome` se copian de la liquidación; no se recalculan en 006.
    - La comisión OTA es una referencia para conciliación con la OTA y no forma parte del total cobrado al cliente [SPEC FR-003, FR-004, BR-002].
-7. **Emisión transaccional**: `issueIfAbsent` vuelve a buscar por estancia/liquidación bajo el bloqueo del contador. Si no existe, incrementa el consecutivo transaccional e inserta la factura en la misma transacción. Si ya existe por una carrera, devuelve esa factura [SPEC FR-005, FR-007, FR-011] [PLAN].
+7. **Emisión transaccional**: `issueIfAbsent` abre una transacción `READ COMMITTED`, bloquea la fila del contador con `SELECT … FOR UPDATE` y vuelve a buscar por estancia/liquidación bajo ese bloqueo. Si no existe, incrementa el consecutivo transaccional e inserta la factura en la misma transacción. Si ya existe por una carrera, devuelve esa factura [SPEC FR-005, FR-007, FR-011] [PLAN].
 8. **Atomicidad y reintento**: un rollback revierte el contador y el invoice. Si una falla transitoria impide emitir, 010 publica el evento a `modulo3.checkout.retry.30s` con `x-retry-count` incrementado y confirma el original tras publisher confirm y sin `basic.return`. La entrega posterior devuelve la liquidación existente y reintenta la factura; agotados 5 reintentos de 30 s, el evento va a `modulo3.checkout.dlq`. Si la factura quedó confirmada pero se perdió el ACK, la entrega posterior devuelve el documento guardado sin consumir un número adicional [SPEC FR-007, NFR-003] [BASE].
 9. **Inmutabilidad**: la factura emitida no tiene ruta de escritura/edición y las consultas de 002/008 son de solo lectura [SPEC FR-006, BR-003] [BASE].
 
@@ -79,7 +85,7 @@ No existe transacción distribuida entre 007 y 006: si 007 persiste y una falla 
 
 ## 4. Resultado exitoso
 
-Devuelve la entidad `Invoice` persistida, ya sea recién emitida o recuperada en un reintento. Todos los importes decimales se serializan como texto; nunca se usan valores JavaScript `number` para el dinero [BASE] [CONV].
+Devuelve `{ status: 'ISSUED', invoice }`, donde `invoice` es la entidad `Invoice` persistida, ya sea recién emitida o recuperada en un reintento. La tabla y el ejemplo describen `invoice`. Todos los importes decimales se serializan como texto; nunca se usan valores JavaScript `number` para el dinero [BASE] [CONV].
 
 | Campo | Tipo | Descripción | Origen |
 |---|---|---|---|
@@ -112,7 +118,7 @@ Devuelve la entidad `Invoice` persistida, ya sea recién emitida o recuperada en
   "invoiceNumber": 1042,
   "status": "ISSUED",
   "immutable": true,
-  "issuedAt": "2026-12-23T11:05:12-05:00",
+  "issuedAt": "2026-12-23T16:05:12Z",
   "settlementId": "4e2b8c1d-9a7f-4f3e-b6d5-0c1a2b3d4e5f",
   "stayId": "c3a9e1b2-5f4d-4e6a-8b7c-1d2e3f4a5b6c",
   "sourceEventId": "9b1f6d3e-2c4a-4f7b-8e5d-3a1c0b9d8e72",
@@ -137,31 +143,34 @@ La conciliación distingue las relaciones: `lodgingAmount - otaCommissionAmount 
 
 ## 5. Errores
 
-006 no tiene respuesta HTTP. Comunica a 010 los errores tipados y el resultado normal `BILLING_CUSTOMER_DATA_MISSING`; el consumer usa ACK manual conforme a las reglas del plan base. `message` debe ser accionable y no incluir valores personales [BASE] [010].
+006 no tiene respuesta HTTP. Lanza a 010 los errores tipados de esta tabla; el resultado `NOT_ISSUED` no es un error y se describe aparte. El consumer usa ACK manual conforme a las reglas del plan base. `message` debe ser accionable y no incluir valores personales [BASE] [010].
 
 | Error de dominio | `errorCode` | Cuándo ocurre | Reintentable | Acción de 010 |
 |---|---|---|---:|---|
-| `BillingCustomerDataMissingError` | `BILLING_CUSTOMER_DATA_MISSING` | Falta nombre/razón social o documento fiscal | No; resultado normal sin emisión | Conservar liquidación, no asignar número, ACK y `checkout_event_log` en `PROCESSED` con nota; evento posterior completo permite emitir |
-| `FinalSettlementNotFoundError` | `FINAL_SETTLEMENT_NOT_FOUND` | 007 no puede proporcionar liquidación `FINAL` | No | Dead-letter |
+| `FinalSettlementNotFoundError` | `FINAL_SETTLEMENT_NOT_FOUND` | Guarda de integridad: 007 devolvió una liquidación que no está en `FINAL` o que no es de la estancia del comando. No ocurre en operación normal | No | Dead-letter |
 | `ReservationNotFoundError` | `RESERVATION_NOT_FOUND` | Módulo 2 informa reserva inexistente mediante 007 | No | Dead-letter |
 | `QuoteNotFoundError` | `QUOTE_NOT_FOUND` | 007 no encuentra cotización coincidente | No | Dead-letter |
 | `MissingCommissionError` / `InvalidCommissionError` | `MISSING_COMMISSION` / `INVALID_COMMISSION` | Inconsistencia OTA reportada por 007 | No | Dead-letter |
+| `SettlementAlreadyExistsError` | `SETTLEMENT_ALREADY_EXISTS` | 007 ya tiene una liquidación para la estancia con datos de check-out distintos | No | Dead-letter |
+| `VatRateNotConfiguredError` | `VAT_RATE_NOT_CONFIGURED` | El Administrador nunca registró un porcentaje de IVA en 001 | No | Dead-letter de inmediato, sin reintentos; tras registrar el IVA, el evento se reprocesa desde la DLQ. No hay número asignado |
 | `Module2UnavailableError` | `MODULE2_UNAVAILABLE` | Timeout, 5xx o circuito abierto en 007 | Sí | Publicar a `modulo3.checkout.retry.30s` con `x-retry-count` incrementado cada 30 s, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq` |
-| `VatRateUnavailableError` | `VAT_RATE_UNAVAILABLE` | No se pudo leer IVA vigente por 001 | Sí | Publicar a `modulo3.checkout.retry.30s` con `x-retry-count` incrementado cada 30 s, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq`; no hay número asignado |
+| `VatRateUnavailableError` | `VAT_RATE_UNAVAILABLE` | Fallo transitorio al leer el IVA vigente por 001 | Sí | Publicar a `modulo3.checkout.retry.30s` con `x-retry-count` incrementado cada 30 s, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq`; no hay número asignado |
 | `InvoicePersistenceUnavailableError` | `DATABASE_UNAVAILABLE` | Fallo de BD/commit al emitir | Sí | Publicar a `modulo3.checkout.retry.30s` con `x-retry-count` incrementado cada 30 s, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq`; rollback del contador y factura |
 
 No hay un error de “factura ya existe” para un reenvío compatible: el resultado es el invoice original. La unicidad de la estancia, liquidación y número se verifica en persistencia incluso ante carreras.
 
-### Ejemplo de resultado normal sin emisión
+### Resultado sin emisión (`NOT_ISSUED`)
+
+Cuando faltan el nombre/razón social o el documento fiscal, 006 devuelve este resultado en lugar de lanzar un error:
 
 ```json
 {
-  "errorCode": "BILLING_CUSTOMER_DATA_MISSING",
-  "message": "No se emitió la factura de la estancia c3a9e1b2-5f4d-4e6a-8b7c-1d2e3f4a5b6c: faltan el nombre o el documento fiscal del responsable.",
-  "timestamp": "2026-12-23T11:04:58Z",
-  "path": "habitacion.checkout"
+  "status": "NOT_ISSUED",
+  "reason": "BILLING_CUSTOMER_DATA_MISSING"
 }
 ```
+
+010 conserva la liquidación, no se asigna número, hace ACK y registra `PROCESSED` en `checkout_event_log` con la nota del contrato del evento. La estancia queda sin factura, porque Módulo 1 no envía un evento posterior [BASE] [010].
 
 ## 6. Garantías para quien llama
 

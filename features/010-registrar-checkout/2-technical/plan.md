@@ -91,7 +91,7 @@ test/
 2. Si el sobre es reconocible (JSON válido con un `eventId` con formato UUID), `registerIfAbsent(...)` registra atómicamente el mensaje con estado `PENDING` o devuelve el registro existente por `eventId`.
 3. Se valida el sobre, la lista blanca y los datos mínimos. Si el JSON es inválido o el sobre no es reconocible, se sigue el flujo de publicación a DLQ y auditoría descrito para ese caso. Si el evento reconocible con `eventId` tiene campos inválidos, se publica a DLQ con las reglas de confirmación; tras la confirmación y sin `basic.return`, se registra `REJECTED` con `INVALID_CHECKOUT_EVENT`.
 4. Un evento válido ejecuta `GenerateSettlementUseCase` de 007 y, después, `GenerateFinalInvoiceUseCase` de 006. 006 vuelve a invocar 007 internamente; la idempotencia por `stayId` devuelve la liquidación existente sin duplicarla.
-5. 010 entrega `billingCustomer` solo a 006, nunca a 007. Si falta o está incompleto, 006 produce `BillingCustomerDataMissingError`; 010 conserva la liquidación, confirma el evento y marca `PROCESSED` con la nota definida en el contrato.
+5. 010 entrega `billingCustomer` solo a 006, nunca a 007. Si falta o está incompleto, 006 devuelve el resultado `{ status: 'NOT_ISSUED', reason: 'BILLING_CUSTOMER_DATA_MISSING' }` (no lanza un error); 010 conserva la liquidación, confirma el evento y marca `PROCESSED` con la nota definida en el contrato.
 
 ### Puertos y dependencias
 
@@ -135,7 +135,7 @@ El servicio decide el destino, publica mediante `CheckoutMessagePublisherPort` y
 Las firmas de los casos de uso proveedores se consumen como están definidas en sus planes:
 
 - 007: `GenerateSettlementUseCase.generate(command: GenerateSettlementCommand): Promise<Settlement>`.
-- 006: `GenerateFinalInvoiceUseCase.generate(command: GenerateFinalInvoiceCommand): Promise<Invoice>`.
+- 006: `GenerateFinalInvoiceUseCase.generate(command: GenerateFinalInvoiceCommand): Promise<GenerateFinalInvoiceResult>`, donde el resultado es `{ status: 'ISSUED', invoice }` o `{ status: 'NOT_ISSUED', reason: 'BILLING_CUSTOMER_DATA_MISSING' }`.
 
 ### Auditoría `checkout_event_log`
 
@@ -170,7 +170,7 @@ Los eventos con JSON inválido o sobre no reconocible se publican persistentemen
 |---|---|---|
 | Éxito con factura o sin emisión por datos tributarios | `PROCESSED` | ack |
 | Payload inválido | `REJECTED` después de confirmar la publicación a DLQ | Publicación persistente con `mandatory` al exchange por defecto; sin `basic.return`, registrar y hacer ack; si falla, nack con reencolado |
-| Error de negocio no recuperable (`RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION`, `SETTLEMENT_ALREADY_EXISTS`) | `DEAD_LETTER` después de confirmar la publicación a DLQ | Publicación persistente con `mandatory` al exchange por defecto; sin `basic.return`, escribir `error_code`, `reason` y estado y hacer ack; si falla, conservar `PENDING` y hacer nack con reencolado |
+| Error de negocio no recuperable (`RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION`, `SETTLEMENT_ALREADY_EXISTS`) o IVA nunca configurado (`VAT_RATE_NOT_CONFIGURED`) | `DEAD_LETTER` después de confirmar la publicación a DLQ | Publicación persistente con `mandatory` al exchange por defecto; sin `basic.return`, escribir `error_code`, `reason` y estado y hacer ack; si falla, conservar `PENDING` y hacer nack con reencolado |
 | Dependencia transitoria (`MODULE2_UNAVAILABLE`, `VAT_RATE_UNAVAILABLE`, `DATABASE_UNAVAILABLE`) con `x-retry-count < 5` | `PENDING` cuando el registro existe | Publicar persistentemente a retry con contador incrementado y `mandatory`; sin `basic.return`, hacer ack; si falla, nack con reencolado |
 | Dependencia transitoria con `x-retry-count >= 5` | `DEAD_LETTER` después de confirmar la publicación a DLQ | Publicar persistentemente a DLQ con `mandatory`; sin `basic.return`, registrar el código del fallo actual en `error_code`, escribir `reason` y estado y hacer ack; si falla, conservar `PENDING` y hacer nack con reencolado |
 | `FINAL_SETTLEMENT_NOT_FOUND` o error no tipado | `DEAD_LETTER` después de confirmar la publicación a DLQ | Publicar persistentemente a DLQ con `mandatory`; registrar `UNEXPECTED_ERROR` en `error_code` para error no tipado; sin `basic.return`, escribir `error_code`, `reason` y estado y hacer ack; si falla, conservar `PENDING` y hacer nack con reencolado |

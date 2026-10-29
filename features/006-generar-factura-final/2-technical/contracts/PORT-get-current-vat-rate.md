@@ -29,7 +29,7 @@ No recibe argumentos: el porcentaje vigente es global para el módulo. No acepta
 
 ```ts
 export interface VatRate {
-  value: MoneyPercentage; // decimal exacto, serializable como string decimal
+  value: VatRateValue; // VO de 001: decimal exacto 0..100, máx. 2 decimales, serializable como string decimal
 }
 ```
 
@@ -54,8 +54,11 @@ La representación JSON ilustra el valor decimal; el uso real es una llamada de 
 | Resultado/problema | Error de aplicación | Comportamiento de 006 | Reintentable |
 |---|---|---|---:|
 | Tasa vigente válida | — | Continúa con el cálculo y guarda snapshot | — |
-| Lectura de base de datos temporalmente fallida | `VatRateUnavailableError` / `DATABASE_UNAVAILABLE` | No emite ni asigna número; propaga a 010, que publica a `modulo3.checkout.retry.30s` cada 30 s con `x-retry-count` incrementado, hasta 5 reintentos; agotados, publica a `modulo3.checkout.dlq` | Sí |
-| Valor ausente o fuera del rango definido por 001 | Error tipado del proveedor (`VatRateUnavailableError` o error de integridad) | No usa cero, tasa anterior cacheada ni valor por defecto; falla explícitamente | Según clasificación del proveedor |
+| Nunca se registró un porcentaje (estado inicial de 001, sin valor por defecto) | `VatRateNotConfiguredError` / `VAT_RATE_NOT_CONFIGURED` | No emite ni asigna número; propaga a 010, que publica de inmediato a `modulo3.checkout.dlq` sin reintentos. Tras registrar el IVA, el evento se reprocesa desde la DLQ | No |
+| Lectura de base de datos temporalmente fallida | `VatRateUnavailableError` / `VAT_RATE_UNAVAILABLE` | No emite ni asigna número; propaga a 010, que publica a `modulo3.checkout.retry.30s` cada 30 s con `x-retry-count` incrementado, hasta 5 reintentos; agotados, publica a `modulo3.checkout.dlq` | Sí |
+| Valor almacenado fuera de 0–100 (no debería ocurrir: lo impide el `CHECK` de la tabla en 001) | Error no tipado de integridad | No usa cero, tasa anterior cacheada ni valor por defecto; falla explícitamente y 010 lo envía a la DLQ como `UNEXPECTED_ERROR` | No |
+
+Se distinguen los dos primeros casos porque un IVA nunca configurado no se resuelve reintentando: es un problema de configuración que requiere al Administrador.
 
 La consulta debe ocurrir después de validar liquidación y datos tributarios y antes de entrar a la transacción que asigna el número. El invoice persiste `vatRateApplied`, `vatAmount` y `totalAmount`; no conserva una referencia viva a `vat_rate` [SPEC FR-009, NFR-003] [PROVIDER].
 

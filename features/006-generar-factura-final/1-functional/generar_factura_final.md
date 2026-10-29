@@ -20,7 +20,7 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero emitir
    - **Entonces** asigna el siguiente número de la numeración consecutiva oficial, calcula el IVA sobre el hospedaje, y marca la factura como inmutable
 
 2. **Escenario**: Emisión de factura definitiva para una liquidación de canal OTA
-   - **Dado** que la liquidación `Final` corresponde a una reserva OTA con comisión ya descontada por `Generar liquidación`
+   - **Dado** que la liquidación `Final` corresponde a una reserva OTA con la comisión OTA calculada por `Generar liquidación`
    - **Cuando** el sistema emite la factura definitiva
    - **Entonces** el total facturado al huésped corresponde al valor de hospedaje bruto más el IVA calculado sobre el hospedaje, y la comisión se muestra solo como referencia informativa, sin restarse del total ni exponerse como un cargo al huésped
 
@@ -33,11 +33,11 @@ Como sistema de Facturación, Consumos y Liquidación (Módulo 3), quiero emitir
 
 ### Historia de usuario 2 - Reflejar el desglose auditable y el total exacto a cobrar (Prioridad: P2)
 
-Como responsable de facturación, quiero que cada factura muestre el desglose completo del hospedaje, la comisión OTA ya descontada, el IVA aplicado y el total a cobrar, para conciliar el cobro con el huésped o con la OTA sin ambigüedad.
+Como responsable de facturación, quiero que cada factura muestre el desglose completo del hospedaje, la comisión OTA y el ingreso neto como referencia, el IVA aplicado y el total a cobrar, para conciliar el cobro con el huésped o con la OTA sin ambigüedad.
 
 **Por qué esta prioridad**: La exactitud del desglose no es indispensable para que el documento exista (eso lo cubre HU1), pero sí para que facturación pueda auditar y conciliar cada factura sin recalcular manualmente; por eso su prioridad es menor.
 
-**Prueba independiente**: Se puede generar una factura para una reserva OTA con comisión e IVA conocidos y verificar que el desglose expuesto permite reconstruir el total únicamente sumando o restando sus componentes, sin cifras ocultas o inconsistentes.
+**Prueba independiente**: Se puede generar una factura para una reserva OTA con comisión e IVA conocidos y verificar que el desglose cumple `hospedaje + IVA = total` y `hospedaje − comisión OTA = ingreso neto`, sin cifras ocultas o inconsistentes.
 
 **Escenarios de aceptación**:
 
@@ -47,14 +47,15 @@ Como responsable de facturación, quiero que cada factura muestre el desglose co
    - **Entonces** expone el valor de hospedaje, un renglón de comisión en cero, el IVA calculado y el total, de forma que hospedaje más IVA sea igual al total
 
 2. **Escenario**: Desglose completo en canal OTA
-   - **Dado** que la factura corresponde a una liquidación de canal OTA con comisión ya descontada
+   - **Dado** que la factura corresponde a una liquidación de canal OTA con comisión OTA
    - **Cuando** se genera el documento
-   - **Entonces** expone el valor de hospedaje bruto, la comisión OTA descontada como referencia informativa, el ingreso neto resultante, el IVA calculado sobre el hospedaje, y el total a cobrar al huésped, dejando explícito que la comisión no forma parte del cobro al huésped sino del pasivo con la OTA
+   - **Entonces** expone el valor de hospedaje bruto, la comisión OTA como referencia informativa, el ingreso neto resultante, el IVA calculado sobre el hospedaje, y el total a cobrar al huésped, dejando explícito que la comisión no forma parte del cobro al huésped sino del pasivo con la OTA
 
 ### Casos límite
 
 - No existe una liquidación `Final` asociada al evento que dispara `Generar factura final`: el sistema no debe emitir ningún documento.
-- Faltan los datos tributarios mínimos del cliente responsable (nombre o razón social, o documento fiscal), recibidos del Módulo 1 en el evento de check-out: el sistema rechaza la emisión y no asigna numeración oficial; la liquidación `Final` subyacente permanece generada, pero la estancia queda sin factura hasta que los datos se completen.
+- Falta alguno de los datos tributarios mínimos del cliente responsable (nombre o razón social, y documento fiscal), recibidos del Módulo 1 en el evento de check-out: el sistema no emite la factura y no asigna numeración oficial; la liquidación `Final` subyacente permanece generada y la estancia queda sin factura. Módulo 1 publica un solo evento de check-out por estancia y este caso de uso no emite facturas por otra vía.
+- El porcentaje de IVA vigente nunca se ha configurado: el sistema no emite la factura, no asigna numeración oficial ni asume un porcentaje por defecto, y deja el evento para revisión manual.
 - Salto o duplicado en la numeración consecutiva oficial: el sistema debe garantizar que cada número se asigne una única vez y en orden, sin reutilizar números de facturas ya emitidas.
 - El porcentaje de IVA vigente cambia después de emitida una factura: la factura ya emitida no se recalcula ni se corrige retroactivamente; el nuevo porcentaje solo aplica a facturas futuras.
 - Reintentos concurrentes del cierre de check-out para la misma estancia: el sistema debe garantizar que solo se asigne un número de la numeración consecutiva, incluso si el evento de check-out se procesa más de una vez casi simultáneamente.
@@ -72,7 +73,7 @@ Como responsable de facturación, quiero que cada factura muestre el desglose co
 - **FR-007**: El sistema DEBE responder de forma idempotente ante un reenvío del evento que originó el cierre de la liquidación, devolviendo la factura ya emitida con el mismo número, sin generar un nuevo documento.
 - **FR-008**: El sistema DEBE validar la presencia de los datos tributarios mínimos del cliente responsable (nombre o razón social, y número de identificación tributaria o documento fiscal) antes de emitir la factura; estos datos son los recibidos del Módulo 1 en el evento de check-out, y no se capturan ni se solicitan de forma independiente en este caso de uso.
 - **FR-009**: El sistema DEBE rechazar la emisión de la factura y no asignar numeración oficial si faltan los datos tributarios mínimos del cliente responsable o si la liquidación `Final` asociada no existe.
-- **FR-010**: El sistema DEBE presentar en cada factura el desglose de hospedaje, comisión OTA (si aplica), IVA y total, de forma que el total sea igual a la suma de sus componentes.
+- **FR-010**: El sistema DEBE presentar en cada factura el desglose de hospedaje, comisión OTA (cero en canal directo), ingreso neto, IVA y total, cumpliendo dos relaciones: `hospedaje + IVA = total` (lo que se cobra al huésped) y `hospedaje − comisión OTA = ingreso neto` (referencia de conciliación con la OTA). La comisión OTA y el ingreso neto no forman parte del total.
 - **FR-011**: El sistema DEBE garantizar que cada número de la numeración consecutiva oficial se asigne una única vez, en orden, sin reutilizar números de facturas ya emitidas, incluso ante reintentos concurrentes del cierre de check-out.
 - **FR-012**: El sistema DEBE identificar en cada factura la liquidación de origen y la fecha y hora de emisión, para fines de trazabilidad.
 - **FR-013**: El sistema NO DEBE capturar, procesar ni persistir datos de control migratorio en la factura, respetando la frontera de responsabilidad con Módulo 2.
@@ -83,7 +84,7 @@ Como responsable de facturación, quiero que cada factura muestre el desglose co
 - **Factura fiscal definitiva**: Documento formal generado al ejecutar `Generar factura final` en el check-out; con numeración consecutiva oficial, inmutable tras su emisión. Es la única clase de factura que produce este caso de uso.
 - **Numeración consecutiva oficial**: Secuencia única y ordenada de números asignados a cada factura emitida.
 - **Cliente responsable de facturación**: Datos tributarios mínimos (nombre o razón social, documento fiscal) requeridos para emitir una factura válida; suministrados por Módulo 1 en el evento de check-out.
-- **Desglose facturable**: Hospedaje, comisión OTA (informativa), IVA y total, expuestos en cada factura.
+- **Desglose facturable**: Hospedaje, comisión OTA e ingreso neto (informativos), IVA y total, expuestos en cada factura.
 
 ### Reglas de negocio
 
