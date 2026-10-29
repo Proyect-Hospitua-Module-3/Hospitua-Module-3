@@ -53,10 +53,8 @@ src/
 │   │       ├── invoice-breakdown.ts               # Snapshot de importes y tasa aplicada
 │   │       └── billing-customer.ts                # Nombre/razón social y documento fiscal
 │   ├── errors/
-│   │   ├── billing-customer-data-missing.error.ts
-│   │   ├── final-settlement-not-found.error.ts
-│   │   ├── invoice-already-exists.error.ts        # Conflicto no idempotente, si aplica
-│   │   └── invoice-number-allocation.error.ts
+│   │   ├── final-settlement-not-found.error.ts      # Guarda de integridad sobre lo que devuelve 007
+│   │   └── invoice-persistence-unavailable.error.ts # Fallo transitorio de BD/commit al emitir
 │   └── ports/
 │       ├── in/
 │       │   └── generate-final-invoice.use-case.ts
@@ -69,7 +67,8 @@ src/
 │   │       └── generate-final-invoice.service.ts
 │   └── dto/
 │       └── billing/
-│           └── generate-final-invoice.command.ts   # Reutiliza los datos de entrada del check-out
+│           ├── generate-final-invoice.command.ts   # Reutiliza los datos de entrada del check-out
+│           └── generate-final-invoice.result.ts    # ISSUED con la factura | NOT_ISSUED con el motivo
 │
 └── infrastructure/
     ├── adapters/
@@ -105,7 +104,7 @@ test/
 
 ### Entrada del caso de uso
 
-`GenerateFinalInvoiceCommand` lleva los datos de check-out del evento (`roomId` y `categoryRoom` incluidos) y el `billingCustomer` opcional que solo consume 006. `checkout-ingestion` (010) lo arma desde el mensaje `habitacion.checkout`; cuando 006 llama a 007, envía únicamente los campos de check-out aceptados por `GenerateSettlementCommand`, sin `billingCustomer`.
+`GenerateFinalInvoiceCommand` lleva los datos de check-out del evento (`roomId` y `categoryRoom` incluidos) y el `billingCustomer` opcional que solo consume 006. `checkout-ingestion` (010) lo arma desde el mensaje `facturacion.checkout` (Módulo 3 nunca recibe `habitacion.checkout`, que lleva datos migratorios); cuando 006 llama a 007, envía únicamente los campos de check-out aceptados por `GenerateSettlementCommand`, sin `billingCustomer`.
 
 | Campo | Tipo | Obligatorio | Origen |
 |---|---|---|---|
@@ -117,19 +116,26 @@ test/
 | `checkInDate`, `checkOutDate` | date `YYYY-MM-DD` | Sí | Evento; fechas reales validadas por 010 y revalidadas por 007 |
 | `billingCustomer` | `{ name?, taxId? }` | No en el evento | Datos tributarios que Módulo 1 entrega en el check-out; obligatorios y completos para emitir |
 
-El comando no acepta importes, IVA, comisión, canal, número de factura ni datos migratorios. Los importes/canal provienen de la liquidación inmutable de 007; el IVA proviene de 001; el número lo asigna la persistencia. `billingCustomer` solo se obtiene del evento de check-out y nunca se envía a 007 ni se recupera de la liquidación. Si el evento no incluye ambos campos tributarios completos y no vacíos, 006 devuelve `BILLING_CUSTOMER_DATA_MISSING` como resultado normal antes de consultar IVA o asignar numeración; la liquidación se conserva. Un evento posterior con los datos completos puede emitir la factura para esa liquidación sin modificarla.
+El comando no acepta importes, IVA, comisión, canal, número de factura ni datos migratorios. Los importes/canal provienen de la liquidación inmutable de 007; el IVA proviene de 001; el número lo asigna la persistencia. `billingCustomer` solo se obtiene del evento de check-out y nunca se envía a 007 ni se recupera de la liquidación. Si el evento no incluye ambos campos tributarios completos y no vacíos, 006 devuelve el resultado `NOT_ISSUED` con motivo `BILLING_CUSTOMER_DATA_MISSING` antes de consultar IVA o asignar numeración; la liquidación se conserva y la estancia queda sin factura, porque Módulo 1 publica un solo evento por estancia y no envía uno posterior (plan base).
 
 ### Puertos y dependencias
 
 ```ts
 // Puerto de entrada, expuesto solo a checkout-ingestion (010)
 export interface GenerateFinalInvoiceUseCase {
-  generate(command: GenerateFinalInvoiceCommand): Promise<Invoice>;
+  generate(command: GenerateFinalInvoiceCommand): Promise<GenerateFinalInvoiceResult>;
 }
+
+// La falta de datos tributarios no es un error: es un resultado sin emisión.
+export type GenerateFinalInvoiceResult =
+  | { status: 'ISSUED'; invoice: Invoice } // emitida ahora o recuperada por idempotencia
+  | { status: 'NOT_ISSUED'; reason: 'BILLING_CUSTOMER_DATA_MISSING' };
 
 // Dependencias internas ya definidas por las features 007 y 001:
 // GenerateSettlementUseCase.generate(GenerateSettlementCommand): Promise<Settlement>
 // GetCurrentVatRateUseCase.getCurrent(): Promise<VatRate>
+//   lanza VatRateNotConfiguredError (nunca se registró un porcentaje) o
+//   VatRateUnavailableError (fallo transitorio de lectura)
 
 // Puerto de salida de 006. `issueIfAbsent` reúne lectura, asignación
 // transaccional del consecutivo y persistencia para no separar esos efectos.
@@ -144,17 +150,17 @@ export interface InvoiceIssuanceRepositoryPort {
 ### Flujo de `GenerateFinalInvoiceService.generate`
 
 1. **Validar el comando**: requiere identificadores y fechas válidos; no hace I/O ni consume numeración si la entrada es inválida.
-2. **Idempotencia rápida**: consulta `InvoiceIssuanceRepositoryPort.findByStayId(stayId)`. Si existe una factura emitida, la devuelve sin volver a leer el IVA, recalcularla o cambiar sus valores.
-3. **Obtener la liquidación**: invoca `GenerateSettlementUseCase.generate` con `eventId`, `stayId`, `reservationRef`, `roomId`, `categoryRoom` y las fechas; no envía `billingCustomer`. 007 devuelve la liquidación `FINAL` existente o la genera idempotentemente. Sus errores tipados se propagan sin crear factura.
-4. **Validar cliente tributario**: usa exclusivamente `billingCustomer` del evento/comando. Rechaza datos ausentes, campos en blanco o un objeto parcial; no lee el cliente desde la liquidación, no combina fuentes y no completa datos por inferencia.
-5. **Obtener IVA vigente**: invoca `GetCurrentVatRateUseCase.getCurrent()` solo después de validar los datos tributarios. Guarda el valor exacto retornado como `vatRateApplied`, evitando que cambios posteriores afecten esta factura.
+2. **Idempotencia rápida**: consulta `InvoiceIssuanceRepositoryPort.findByStayId(stayId)`. Si existe una factura emitida, devuelve `{ status: 'ISSUED', invoice }` sin volver a leer el IVA, recalcularla o cambiar sus valores.
+3. **Obtener la liquidación**: invoca `GenerateSettlementUseCase.generate` con `eventId`, `stayId`, `reservationRef`, `roomId`, `categoryRoom` y las fechas; no envía `billingCustomer`. 007 devuelve la liquidación `FINAL` existente o la genera idempotentemente. Sus errores tipados (incluido `SETTLEMENT_ALREADY_EXISTS`) se propagan sin crear factura. Como guarda de integridad, 006 comprueba que la liquidación devuelta esté en estado `FINAL` y corresponda al `stayId` del comando; si no, lanza `FinalSettlementNotFoundError`. En operación normal no ocurre, porque 007 siempre devuelve o genera la liquidación `FINAL` de esa estancia.
+4. **Validar cliente tributario**: usa exclusivamente `billingCustomer` del evento/comando. Si faltan datos, hay campos en blanco o el objeto es parcial, devuelve `{ status: 'NOT_ISSUED', reason: 'BILLING_CUSTOMER_DATA_MISSING' }` sin lanzar excepción; no lee el cliente desde la liquidación, no combina fuentes y no completa datos por inferencia.
+5. **Obtener IVA vigente**: invoca `GetCurrentVatRateUseCase.getCurrent()` solo después de validar los datos tributarios. Guarda el valor exacto retornado como `vatRateApplied`, evitando que cambios posteriores afecten esta factura. Si 001 lanza `VatRateNotConfiguredError` o `VatRateUnavailableError`, se propaga sin asignar número.
 6. **Calcular el desglose** con `Money`/`decimal.js`, aritmética decimal exacta y redondeo half-up a dos decimales:
    - `vatAmount = lodgingAmount × vatRateApplied / 100`.
    - `totalAmount = lodgingAmount + vatAmount`.
    - `otaCommissionAmount` y `netIncome` se copian de la liquidación sin recalcularse. En canal directo la comisión sigue siendo `0.00`.
    - La comisión OTA y el neto son referencias de conciliación hotel/OTA; no se suman al total del huésped, no se restan del total y no se muestran como cargo.
-7. **Emitir atómicamente**: entrega el draft a `issueIfAbsent`. En una transacción serializable por el asignador de números, la infraestructura vuelve a comprobar la factura por estancia, asigna el siguiente número oficial y guarda número + factura + datos de trazabilidad. Si ya existe por una carrera concurrente, devuelve el documento existente. Un rollback revierte tanto el contador como la factura.
-8. **Devolver el documento persistido**: el caso de uso retorna la factura original o recién emitida; la reentrega del evento no crea otro documento ni número.
+7. **Emitir atómicamente**: entrega el draft a `issueIfAbsent`. En una transacción PostgreSQL con el aislamiento predeterminado (`READ COMMITTED`), la infraestructura bloquea la fila del contador con `SELECT … FOR UPDATE`, vuelve a comprobar la factura por estancia, asigna el siguiente número oficial y guarda número + factura + datos de trazabilidad. Si ya existe por una carrera concurrente, devuelve el documento existente. Un rollback revierte tanto el contador como la factura. No se usa el nivel `SERIALIZABLE`: el bloqueo de fila ya serializa la emisión, y ese nivel provocaría fallos de serialización (`40001`) que habría que reintentar.
+8. **Devolver el documento persistido**: el caso de uso retorna `{ status: 'ISSUED', invoice }` con la factura original o recién emitida; la reentrega del evento no crea otro documento ni número.
 
 La persistencia de la liquidación y la de la factura no comparten una transacción distribuida. Si 007 guardó correctamente y una falla transitoria impide emitir, 010 publica el evento a `modulo3.checkout.retry.30s` con `x-retry-count` incrementado y confirma el original solo después de la confirmación del broker y sin `basic.return`. Tras el TTL de 30 s, 007 devuelve la liquidación existente y 006 reintenta la factura. Se realizan hasta 5 reintentos; agotados, el evento se publica a `modulo3.checkout.dlq`. Si la factura se confirmó pero se perdió el ACK, la entrega posterior devuelve la misma factura.
 
@@ -191,16 +197,17 @@ La sección crítica debe ser corta y cubrir el segundo chequeo idempotente, act
 
 ### Errores y respuesta de 010
 
-006 no devuelve una respuesta HTTP y no crea un consumer; entrega errores de dominio tipados a 010, que aplica las reglas de ACK/DLQ del plan base:
+006 no devuelve una respuesta HTTP y no crea un consumer. Devuelve a 010 un `GenerateFinalInvoiceResult` o lanza un error de dominio tipado, y 010 aplica las reglas de ACK/DLQ del plan base:
 
-| Error | `errorCode` | Reintentable | Acción de 010 |
+| Resultado o error | `errorCode` | Reintentable | Acción de 010 |
 |---|---|---:|---|
-| `BillingCustomerDataMissingError` | `BILLING_CUSTOMER_DATA_MISSING` | No; resultado normal sin emisión | Conservar la liquidación, no asignar número, confirmar el evento y registrar `PROCESSED` con nota en `checkout_event_log`; un evento posterior completo emite la factura |
-| `FinalSettlementNotFoundError` | `FINAL_SETTLEMENT_NOT_FOUND` | No | Dead-letter; no se creó factura |
-| Errores tipados de 007 (reserva/cotización/comisión inválida) | Código original de 007 | No | Dead-letter |
+| Resultado `NOT_ISSUED` (no es un error) | `BILLING_CUSTOMER_DATA_MISSING` | No aplica | Conservar la liquidación, no asignar número, confirmar el evento y registrar `PROCESSED` con nota en `checkout_event_log`; la estancia queda sin factura |
+| `FinalSettlementNotFoundError` (guarda de integridad) | `FINAL_SETTLEMENT_NOT_FOUND` | No | Dead-letter; no se creó factura |
+| Errores tipados de 007 (reserva/cotización inexistente, comisión ausente/inválida, liquidación existente con datos distintos) | Código original de 007 (`RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION`, `SETTLEMENT_ALREADY_EXISTS`) | No | Dead-letter |
 | `Module2UnavailableError` propagado por 007 | `MODULE2_UNAVAILABLE` | Sí | Publicar a `modulo3.checkout.retry.30s` cada 30 s con `x-retry-count` incrementado, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq` |
-| IVA vigente no disponible/error de lectura de 001 | `VAT_RATE_UNAVAILABLE` | Sí | Publicar a `modulo3.checkout.retry.30s` cada 30 s con `x-retry-count` incrementado, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq`; no se asignó número |
-| Fallo transitorio de persistencia/commit | `DATABASE_UNAVAILABLE` | Sí | Publicar a `modulo3.checkout.retry.30s` cada 30 s con `x-retry-count` incrementado, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq`; la transacción revierte contador y factura |
+| `VatRateNotConfiguredError` de 001 (nunca se registró un porcentaje) | `VAT_RATE_NOT_CONFIGURED` | No | Dead-letter de inmediato, sin reintentos: es un problema de configuración, no una falla transitoria. El Administrador registra el IVA y el evento se reprocesa desde la DLQ; no se asignó número |
+| `VatRateUnavailableError` de 001 (fallo transitorio de lectura) | `VAT_RATE_UNAVAILABLE` | Sí | Publicar a `modulo3.checkout.retry.30s` cada 30 s con `x-retry-count` incrementado, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq`; no se asignó número |
+| `InvoicePersistenceUnavailableError` (fallo transitorio de persistencia/commit) | `DATABASE_UNAVAILABLE` | Sí | Publicar a `modulo3.checkout.retry.30s` cada 30 s con `x-retry-count` incrementado, hasta 5 reintentos; agotados, publicar a `modulo3.checkout.dlq`; la transacción revierte contador y factura |
 | Factura ya existente para la estancia | Sin error | No aplica | Se devuelve la factura existente |
 | Conflicto de idempotencia con factura ganadora concurrente | Sin error | No aplica | Se devuelve la factura ganadora; nunca se crea otra |
 
@@ -216,7 +223,7 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 - [ ] T001 Confirmar que el wiring de `billing` exporta `GenerateFinalInvoiceUseCase` solo a `checkout-ingestion` (010); ningún controller REST expone la operación.
 - [ ] T002 Confirmar que 007 exporta `GenerateSettlementUseCase` y que su contrato acepta los datos de check-out (`roomId` y `categoryRoom` incluidos), sin recibir ni persistir `billingCustomer`.
-- [ ] T003 Confirmar que 001 exporta `GetCurrentVatRateUseCase.getCurrent()` y devuelve una tasa decimal validada; no consultar `vat_rate` directamente desde 006.
+- [ ] T003 Confirmar que 001 exporta `GetCurrentVatRateUseCase.getCurrent()`, devuelve una tasa decimal validada y distingue `VatRateNotConfiguredError` de `VatRateUnavailableError`; no consultar `vat_rate` directamente desde 006.
 - [ ] T004 Acordar con 002/008 los campos copiados de la factura y mantener sus adaptadores en solo lectura.
 
 **Checkpoint**: las dependencias internas están disponibles con contratos tipados y no hay un nuevo endpoint o integración externa.
@@ -226,11 +233,11 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 **Purpose**: Establecer las invariantes comunes a las dos historias.
 
 - [ ] T005 Definir `BillingCustomer`, `InvoiceBreakdown` e `Invoice` inmutable en `domain/model/billing/`; validar montos no negativos, tasa válida, moneda y `totalAmount = lodgingAmount + vatAmount`.
-- [ ] T006 Definir `GenerateFinalInvoiceCommand`, `GenerateFinalInvoiceUseCase` y `InvoiceIssuanceRepositoryPort` con sus tokens.
-- [ ] T007 Definir `BillingCustomerDataMissingError`, `FinalSettlementNotFoundError` y `InvoiceNumberAllocationError`; registrar sus códigos y el error reintentable de IVA/BD en el mapeo compartido.
+- [ ] T006 Definir `GenerateFinalInvoiceCommand`, `GenerateFinalInvoiceResult`, `GenerateFinalInvoiceUseCase` y `InvoiceIssuanceRepositoryPort` con sus tokens.
+- [ ] T007 Definir `FinalSettlementNotFoundError` e `InvoicePersistenceUnavailableError`; acordar con 010 el mapeo de resultados: `NOT_ISSUED` y `VAT_RATE_NOT_CONFIGURED` no reintentables, `VAT_RATE_UNAVAILABLE` y `DATABASE_UNAVAILABLE` reintentables.
 - [ ] T008 Crear esquema Prisma de `Invoice` con `UNIQUE(invoice_number)`, `UNIQUE(settlement_id)` y `UNIQUE(stay_id)`, campos snapshot y FK a `Settlement`.
 - [ ] T009 Crear tabla/fila única transaccional para el consecutivo oficial, seed inicial documentado y migración atómica; no usar `nextval()` para este requisito de consecutivo sin huecos.
-- [ ] T010 Implementar `InvoiceMapper` y `PrismaInvoiceIssuanceRepository.issueIfAbsent`: transacción con bloqueo del contador, segundo chequeo idempotente, incremento y creación atómicos; mapear conflictos de unicidad a la factura existente.
+- [ ] T010 Implementar `InvoiceMapper` y `PrismaInvoiceIssuanceRepository.issueIfAbsent`: transacción `READ COMMITTED` con `SELECT … FOR UPDATE` sobre la fila del contador, segundo chequeo idempotente, incremento y creación atómicos; mapear conflictos de unicidad a la factura existente.
 - [ ] T011 Configurar `BillingModule` para consumir 001/007 y exportar 006 al módulo de `checkout-ingestion`.
 
 **Checkpoint**: entidad, almacenamiento, error handling y asignador de números preservan las invariantes bajo rollback y concurrencia.
@@ -244,8 +251,8 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 ### Tests for User Story 1
 
 - [ ] T012 [P] [US1] Unit tests de `Invoice`: solo acepta snapshots completos, estado `ISSUED`, moneda coherente y total igual a hospedaje más IVA; no ofrece mutadores.
-- [ ] T013 [P] [US1] Unit tests de `GenerateFinalInvoiceService`: llama a 007, obtiene una liquidación `FINAL`, devuelve factura existente sin consultar IVA, y propaga errores de liquidación.
-- [ ] T014 [P] [US1] Unit tests del flujo de validación tributaria: nombre y documento requeridos desde el evento; ausente/parcial/vacío produce el resultado normal `BILLING_CUSTOMER_DATA_MISSING` antes de IVA/persistencia; evento posterior completo permite emitir para una liquidación existente sin leer ni actualizar datos tributarios en ella.
+- [ ] T013 [P] [US1] Unit tests de `GenerateFinalInvoiceService`: llama a 007, obtiene una liquidación `FINAL`, devuelve factura existente sin consultar IVA, propaga errores de liquidación (incluido `SETTLEMENT_ALREADY_EXISTS`), lanza `FinalSettlementNotFoundError` si 007 devuelve una liquidación que no es `FINAL` o de otra estancia, y propaga por separado `VatRateNotConfiguredError` y `VatRateUnavailableError` sin asignar número.
+- [ ] T014 [P] [US1] Unit tests del flujo de validación tributaria: nombre y documento requeridos desde el evento; ausente/parcial/vacío devuelve `{ status: 'NOT_ISSUED', reason: 'BILLING_CUSTOMER_DATA_MISSING' }` sin lanzar excepción y antes de IVA/persistencia; no lee ni actualiza datos tributarios en la liquidación.
 - [ ] T015 [P] [US1] Unit tests de cálculo para canal directo: comisión `0.00`, IVA con redondeo half-up, total hospedaje + IVA.
 - [ ] T016 [P] [US1] Unit tests de reenvío: misma estancia ya emitida devuelve número y valores originales incluso si cambió la tasa vigente.
 - [ ] T017 [US1] Integration tests de `PrismaInvoiceIssuanceRepository` con Postgres: emisión, relectura por estancia, rollback y ausencia de incremento cuando falla la inserción.
@@ -253,10 +260,10 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] Implementar validación de `billingCustomer` exclusivamente desde el evento; si falta o es parcial, devolver el resultado normal `BILLING_CUSTOMER_DATA_MISSING` antes de leer IVA o persistir factura, sin buscar datos en la liquidación ni combinar fuentes.
+- [ ] T019 [US1] Implementar validación de `billingCustomer` exclusivamente desde el evento; si falta o es parcial, devolver `NOT_ISSUED` con `BILLING_CUSTOMER_DATA_MISSING` antes de leer IVA o persistir factura, sin buscar datos en la liquidación ni combinar fuentes.
 - [ ] T020 [US1] Implementar `GenerateFinalInvoiceService.generate`: idempotencia, invocación de 007, validación tributaria, lectura de 001, cálculo y emisión mediante el puerto.
 - [ ] T021 [US1] Implementar cálculo con `Money`/`decimal.js`, redondeo half-up a dos decimales; no usar `number` de JavaScript para importes.
-- [ ] T022 [US1] Implementar el mapeo de errores para que 010 envíe fallos de negocio no recuperables a DLQ y publique indisponibilidades en la cola retry de 30 s (hasta 5 reintentos) antes de enviarlas a DLQ.
+- [ ] T022 [US1] Implementar el mapeo de errores para que 010 envíe fallos de negocio no recuperables y `VAT_RATE_NOT_CONFIGURED` a DLQ, y publique indisponibilidades en la cola retry de 30 s (hasta 5 reintentos) antes de enviarlas a DLQ.
 
 **Checkpoint**: el flujo directo emite una factura una sola vez, sin número cuando falla una precondición.
 
@@ -320,8 +327,8 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 ## Notes
 
-- El total de la factura interpreta el desglose de acuerdo con FR-003/BR-002: `lodgingAmount + vatAmount`. La comisión OTA se muestra para conciliación y no se agrega ni se resta del total cobrado al huésped, aunque FR-010 enumere hospedaje, comisión, IVA y total como campos del desglose.
+- El total de la factura es `lodgingAmount + vatAmount` (FR-003, FR-010, BR-002). La comisión OTA y el ingreso neto se muestran para conciliación (`lodgingAmount − otaCommissionAmount = netIncome`) y no se agregan ni se restan del total cobrado al huésped.
 - La numeración sin huecos requiere contador transaccional, no `nextval()` de PostgreSQL, porque el valor de una secuencia no se revierte en un rollback.
-- La falta de datos tributarios es un resultado normal: conserva la liquidación ya generada, no reserva número y deja el evento `PROCESSED` con nota; un evento posterior con datos completos puede emitir la factura.
+- La falta de datos tributarios es un resultado normal (`NOT_ISSUED`), no una excepción: conserva la liquidación ya generada, no reserva número y deja el evento `PROCESSED` con nota. La estancia queda sin factura, porque Módulo 1 no envía un evento posterior y Módulo 3 no emite facturas por otra vía (plan base).
 - No se implementa aquí emisión correctiva, anulación, reimpresión con nuevo número, endpoint de alta/edición de facturas ni captura interactiva de datos tributarios.
 - Si una regla legal externa impone formato, prefijo, período o resolución de numeración, esos parámetros requieren una decisión regulatoria aparte; este plan cubre la secuencia consecutiva descrita en la spec.

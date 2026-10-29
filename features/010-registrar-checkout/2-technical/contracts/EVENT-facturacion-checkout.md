@@ -56,7 +56,7 @@ La lista blanca del evento incluye los campos definidos en las tablas del sobre 
 2. Se validan el sobre, los campos obligatorios y que `checkInDate <= checkOutDate`. `occurredAt` se valida como fecha-hora ISO 8601 con cualquier offset válido; un valor sin offset o con formato inválido hace que el evento se rechace con `INVALID_CHECKOUT_EVENT`. La categoría debe ser string no vacío. La ausencia o incompletitud de datos tributarios no invalida el evento. Si un evento reconocible tiene campos obligatorios o datos mínimos inválidos, su registro `PENDING` se mantiene y se publica el mensaje persistente a `modulo3.checkout.dlq` mediante el exchange por defecto con `mandatory`. Si el broker devuelve el mensaje con `basic.return` o no confirma la publicación, se hace nack con reencolado y el registro permanece en `PENDING`. Tras publisher confirm y sin `basic.return`, el registro pasa a `REJECTED` con `error_code = INVALID_CHECKOUT_EVENT` y se hace ack.
 3. Con el evento válido, 010 invoca `GenerateSettlementUseCase` de 007 y luego `GenerateFinalInvoiceUseCase` de 006. 006 vuelve a invocar 007 internamente; la idempotencia por `stayId` permite devolver la liquidación existente sin duplicarla. `stayId` es UUID obligatorio y clave de idempotencia de negocio; 007 mantiene la unicidad de liquidación por estancia.
 4. Un nuevo evento con la misma estancia y los mismos datos de check-out obtiene la liquidación existente sin recalcular. Si los datos de check-out contradicen la liquidación existente, se rechaza con `SETTLEMENT_ALREADY_EXISTS` y se conserva la liquidación original.
-5. Si 006 recibe datos tributarios ausentes o incompletos, devuelve `BILLING_CUSTOMER_DATA_MISSING`. 010 lo trata como resultado normal: conserva la liquidación, no se asigna número de factura, el evento se confirma y la auditoría queda `PROCESSED` con `result_note = "Factura no emitida: datos tributarios ausentes o incompletos"`.
+5. Si 006 recibe datos tributarios ausentes o incompletos, devuelve el resultado `NOT_ISSUED` con motivo `BILLING_CUSTOMER_DATA_MISSING` (no lanza un error). 010 lo trata como resultado normal: conserva la liquidación, no se asigna número de factura, el evento se confirma y la auditoría queda `PROCESSED` con `result_note = "Factura no emitida: datos tributarios ausentes o incompletos"`.
 6. Los datos de canal, OTA, comisión y cotización se obtienen mediante 007; no forman parte del payload del evento [BASE].
 
 ## 4. Política de ack
@@ -67,7 +67,7 @@ La lista blanca del evento incluye los campos definidos en las tablas del sobre 
 | Reentrega con `eventId` ya `PROCESSED`, `REJECTED` o `DEAD_LETTER` | `ack` inmediato, sin reprocesar | Sin cambio |
 | Evento con el mismo `eventId` en `PENDING` | Reanudar procesamiento sobre el registro existente | Según resultado final |
 | JSON inválido o sobre irreconocible | Publicar persistentemente a `modulo3.checkout.dlq` con `mandatory`; tras confirmación y sin `basic.return`, registrar y hacer ack | `REJECTED` |
-| Error de negocio no recuperable: `RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION` o `SETTLEMENT_ALREADY_EXISTS` | Publicar persistentemente a `modulo3.checkout.dlq` con `mandatory`; tras confirmación y sin `basic.return`, escribir `error_code`, `reason` y estado, y hacer ack | `DEAD_LETTER` |
+| Error de negocio no recuperable: `RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION`, `SETTLEMENT_ALREADY_EXISTS` o `VAT_RATE_NOT_CONFIGURED` | Publicar persistentemente a `modulo3.checkout.dlq` con `mandatory`; tras confirmación y sin `basic.return`, escribir `error_code`, `reason` y estado, y hacer ack | `DEAD_LETTER` |
 | Falla transitoria `MODULE2_UNAVAILABLE`, `VAT_RATE_UNAVAILABLE` o `DATABASE_UNAVAILABLE` con `x-retry-count < 5` | Publicar persistentemente a retry con `x-retry-count` incrementado y `mandatory`; tras confirmación y sin `basic.return`, hacer ack | `PENDING` cuando el registro existe |
 | Falla transitoria con `x-retry-count >= 5` | Publicar persistentemente a `modulo3.checkout.dlq` con `mandatory`; tras confirmación y sin `basic.return`, registrar el código del fallo actual en `error_code`, escribir `reason` y el estado, y hacer ack | `DEAD_LETTER` |
 | `FINAL_SETTLEMENT_NOT_FOUND` o error no tipado | Publicar persistentemente a `modulo3.checkout.dlq` con `mandatory`; tras confirmación y sin `basic.return`, escribir `error_code` (`UNEXPECTED_ERROR` para error no tipado), `reason` y estado, y hacer ack | `DEAD_LETTER` |
@@ -88,10 +88,11 @@ Los códigos siguientes son resultados de procesamiento y auditoría, no respues
 | `INVALID_COMMISSION` | Comisión inválida; `DEAD_LETTER`. |
 | `SETTLEMENT_ALREADY_EXISTS` | Datos de check-out contradicen la liquidación existente; `DEAD_LETTER`. |
 | `MODULE2_UNAVAILABLE` | Dependencia transitoria no disponible; retry mediante `x-retry-count` mientras sea menor que 5. |
-| `VAT_RATE_UNAVAILABLE` | Tasa de IVA no disponible; retry mediante `x-retry-count` mientras sea menor que 5. |
+| `VAT_RATE_NOT_CONFIGURED` | El Administrador nunca registró un porcentaje de IVA; `DEAD_LETTER` sin reintentos. Tras registrarlo, el evento se reprocesa desde la DLQ. |
+| `VAT_RATE_UNAVAILABLE` | Fallo transitorio al leer la tasa de IVA; retry mediante `x-retry-count` mientras sea menor que 5. |
 | `BILLING_CUSTOMER_DATA_MISSING` | Resultado normal sin emisión de factura; ack y `PROCESSED`. |
 | `DATABASE_UNAVAILABLE` | Falla transitoria de persistencia, incluida la escritura de la auditoría de 010; retry mediante `x-retry-count` mientras sea menor que 5, aunque todavía no exista el registro; si ya es 5, publicación a DLQ con el código del fallo actual. |
-| `FINAL_SETTLEMENT_NOT_FOUND` | No existe liquidación final requerida por 006; `DEAD_LETTER`. |
+| `FINAL_SETTLEMENT_NOT_FOUND` | Guarda de integridad de 006: 007 devolvió una liquidación que no está en `FINAL` o no es de la estancia; no ocurre en operación normal; `DEAD_LETTER`. |
 | `UNEXPECTED_ERROR` | Error no tipado; `DEAD_LETTER`. |
 
 ## 6. Ejemplos JSON

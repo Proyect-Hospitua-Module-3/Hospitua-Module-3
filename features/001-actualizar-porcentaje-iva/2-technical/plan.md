@@ -9,7 +9,7 @@
 
 El Administrador necesita mantener un único porcentaje de IVA vigente, con el que `Generar factura final` (006) calcula el IVA de cada factura en el momento de su emisión (FR-002 de `generar_factura_final.md`). Esta feature implementa el caso de uso `UpdateVatRateUseCase` dentro del *bounded context* `billing`: valida el nuevo porcentaje (0 a 100, ambos inclusive), lo registra como vigente de forma atómica (nunca dos porcentajes vigentes simultáneos), deja trazabilidad de quién y cuándo hizo el cambio, y expone el valor vigente mediante `GetCurrentVatRateUseCase`, la única vía por la que 006 lo lee.
 
-**No existe un valor inicial** (decisión de la spec 001): mientras el Administrador no registre el primer porcentaje, `GetCurrentVatRateUseCase` falla con `VatRateUnavailableError` y 006 no emite facturas ni asume un valor por defecto. El primer registro y las actualizaciones siguientes usan la misma operación.
+**No existe un valor inicial** (decisión de la spec 001): mientras el Administrador no registre el primer porcentaje, `GetCurrentVatRateUseCase` falla con `VatRateNotConfiguredError` y 006 no emite facturas ni asume un valor por defecto. Este error es distinto de `VatRateUnavailableError` (fallo transitorio de lectura): el primero no se resuelve reintentando y 010 envía el evento directo a la DLQ (contrato `PORT-get-current-vat-rate.md` de 006). El primer registro y las actualizaciones siguientes usan la misma operación.
 
 Una actualización nunca puede alterar facturas ya emitidas: 006 guarda el porcentaje aplicado en la propia factura (`vat_rate_applied`) y no mantiene ninguna referencia viva a `vat_rate`.
 
@@ -54,7 +54,8 @@ src/
 │   │   └── vat-rate-value.vo.ts               # VO decimal exacto 0..100, máx. 2 decimales (constantes VAT_RATE_MIN / VAT_RATE_MAX)
 │   ├── errors/
 │   │   ├── invalid-vat-rate.error.ts          # INVALID_VAT_RATE (ya definido en el plan base)
-│   │   └── vat-rate-unavailable.error.ts      # No hay porcentaje configurado, o la lectura falló (lo exige el contrato con 006)
+│   │   ├── vat-rate-not-configured.error.ts   # VAT_RATE_NOT_CONFIGURED: nunca se registró un porcentaje (no reintentable)
+│   │   └── vat-rate-unavailable.error.ts      # VAT_RATE_UNAVAILABLE: la lectura falló de forma transitoria (reintentable)
 │   └── ports/
 │       ├── in/
 │       │   ├── update-vat-rate.use-case.ts        # PUT /admin/vat-rate
@@ -158,13 +159,13 @@ El valor viaja y se almacena como decimal exacto (`"19.00"`), no como `number` d
 - [ ] T013 [P] [US2] Test de arquitectura (`dependency-cruiser`): `UpdateVatRateService` y su repositorio no importan nada del agregado `Invoice` ni de `settlement`; solo operan sobre `vat_rate` y `vat_rate_history`
 - [ ] T014 [US2] Integration test: con una fila de `invoice` simulada con `vat_rate_applied` ya persistido, actualizar `vat_rate` y verificar que el `vat_rate_applied` de esa factura no cambia (SC-002)
 - [ ] T015 [US2] Integration test de concurrencia real con Testcontainers: dos actualizaciones casi simultáneas, **incluido el caso en que la tabla está vacía**; el resultado final es exactamente uno de los dos valores, el historial refleja una secuencia coherente (`value_before` de la segunda = `value_after` de la primera) y nunca queda un estado mixto (FR-007, NFR-002)
-- [ ] T016 [US2] Unit test de `GetCurrentVatRateService`: devuelve el porcentaje vigente; sin porcentaje configurado lanza `VatRateUnavailableError`, sin devolver 0 ni un valor por defecto (FR-003, BR-003)
+- [ ] T016 [US2] Unit test de `GetCurrentVatRateService`: devuelve el porcentaje vigente; sin porcentaje configurado lanza `VatRateNotConfiguredError`, y ante un fallo de lectura del repositorio lanza `VatRateUnavailableError`; nunca devuelve 0 ni un valor por defecto (FR-003, BR-003)
 - [ ] T016a [US2] Integration test del caso límite "una factura se está generando en el instante de una actualización": 006 lee el porcentaje una sola vez (antes de su transacción) y la factura queda con exactamente uno de los dos porcentajes, anterior o nuevo, nunca una mezcla ni un valor indeterminado (BR-003)
 - [ ] T017 [US2] Contract test del puerto `GetCurrentVatRateUseCase` contra `PORT-get-current-vat-rate.md` de 006: `getCurrent()` sin argumentos, `value` como decimal exacto (`"19.00"`), y los errores del contrato
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] Implementar `GetCurrentVatRateService` como el **único** punto por el que `billing` (incluida 006) obtiene el porcentaje vigente; `vat_rate` nunca se expone como tabla de lectura fuera de este puerto. Si el repositorio no tiene ninguna fila, lanza `VatRateUnavailableError`
+- [ ] T018 [US2] Implementar `GetCurrentVatRateService` como el **único** punto por el que `billing` (incluida 006) obtiene el porcentaje vigente; `vat_rate` nunca se expone como tabla de lectura fuera de este puerto. Si el repositorio no tiene ninguna fila, lanza `VatRateNotConfiguredError`; si la lectura falla, `VatRateUnavailableError`
 - [ ] T019 [US2] Documentar en `vat-rate.repository.port.ts` que `Invoice` guarda el porcentaje aplicado como campo propio (`vat_rate_applied`) en el momento de la emisión, nunca como referencia viva a `vat_rate`: esa es la garantía estructural de BR-002 y FR-004, no una validación en tiempo de ejecución
 - [ ] T020 [US2] Regla de `dependency-cruiser`: el código de emisión de facturas (006) solo puede consumir `GetCurrentVatRateUseCase`, nunca `UpdateVatRateUseCase` ni `VatRateRepositoryPort`
 
@@ -179,7 +180,7 @@ El valor viaja y se almacena como decimal exacto (`"19.00"`), no como `number` d
 - [ ] T021 Decisión de diseño: una actualización a un valor **idéntico** al vigente se acepta y **sí** genera una entrada de historial (consistente con FR-005: toda actualización exitosa queda trazada, sin excepción)
 - [ ] T022 Si la inserción en `vat_rate_history` falla por cualquier motivo, la transacción completa se revierte y la actualización se reporta como fallida: no se permite un cambio del vigente sin su traza correspondiente
 - [ ] T023 [P] Unit/integration test del caso "valor idéntico al vigente" y del caso "fallo al escribir historial → rollback completo"
-- [ ] T024 [P] Test del caso "sin ningún porcentaje configurado": `GetCurrentVatRateUseCase` falla, y el primer `PUT /admin/vat-rate` registra el porcentaje con `value_before` nulo en el historial (spec: estado inicial sin porcentaje)
+- [ ] T024 [P] Test del caso "sin ningún porcentaje configurado": `GetCurrentVatRateUseCase` falla con `VatRateNotConfiguredError`, y el primer `PUT /admin/vat-rate` registra el porcentaje con `value_before` nulo en el historial (spec: estado inicial sin porcentaje)
 
 **Checkpoint**: todos los casos límite de la spec quedan representados en código y pruebas.
 
