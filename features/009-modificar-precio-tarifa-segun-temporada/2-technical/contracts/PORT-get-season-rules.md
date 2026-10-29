@@ -39,6 +39,7 @@ export interface EffectiveSeasonRule {
   adjustmentPercent: string;
   isDefault: boolean;
   validFrom: string;
+  archivedAt: string | null;
 }
 ```
 
@@ -52,8 +53,9 @@ export interface EffectiveSeasonRule {
 | `seasons[].adjustmentPercent` | decimal string | Sí | Porcentaje firmado entre `-100.00` y `100.00` |
 | `seasons[].isDefault` | boolean | Sí | Exactamente un elemento es `true` |
 | `seasons[].validFrom` | datetime ISO 8601 UTC | Sí | Inicio de vigencia de la versión del ajuste |
+| `seasons[].archivedAt` | datetime ISO 8601 UTC \| `null` | Sí | Instante en que la temporada se retiró del catálogo; `null` si sigue disponible |
 
-El proveedor devuelve temporadas ordenadas determinísticamente por nombre normalizado e ID. El consumidor trata importes/porcentajes como decimales exactos, no como `number` para operaciones financieras.
+El snapshot incluye las temporadas retiradas antes de `asOf`, con su última regla, para que 011 pueda etiquetar revisiones históricas del calendario que las usaron. Una revisión activa nunca referencia una temporada retirada (lo garantizan el retiro de 009 y la publicación de 011), por lo que 005 no las aplica en la práctica. El proveedor devuelve temporadas ordenadas determinísticamente por nombre normalizado e ID. El consumidor trata importes/porcentajes como decimales exactos, no como `number` para operaciones financieras.
 
 ### Ejemplo
 
@@ -68,7 +70,8 @@ El proveedor devuelve temporadas ordenadas determinísticamente por nombre norma
       "color": "#808080",
       "adjustmentPercent": "-2.50",
       "isDefault": true,
-      "validFrom": "2026-01-01T00:00:00.000Z"
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "archivedAt": null
     },
     {
       "seasonId": "5dca644e-7a6a-4d2e-a9a5-1943188c4710",
@@ -76,7 +79,8 @@ El proveedor devuelve temporadas ordenadas determinísticamente por nombre norma
       "color": "#C0392B",
       "adjustmentPercent": "25.00",
       "isDefault": false,
-      "validFrom": "2026-10-09T20:12:00.000Z"
+      "validFrom": "2026-10-09T20:12:00.000Z",
+      "archivedAt": null
     }
   ]
 }
@@ -99,13 +103,13 @@ El cálculo es por noche: un rango que cruza varias temporadas usa la regla de c
 
 ### 011 Revisar temporada del año
 
-011 combina IDs del calendario/excepciones con el catálogo para mostrar el nombre/color actual. Puede informar fechas sin clasificación explícita, pero el cálculo las resuelve al default. 011 no modifica porcentajes de ajuste a través de este puerto.
+011 combina IDs del calendario/excepciones con el catálogo para mostrar el nombre/color actual. Puede informar fechas sin clasificación explícita, pero el cálculo las resuelve al default. Al publicar una revisión, rechaza los `seasonId` con `archivedAt` distinto de `null` (`UNKNOWN_SEASON_REFERENCE`); al mostrar una revisión histórica, sí puede etiquetar temporadas retiradas. 011 no modifica porcentajes de ajuste a través de este puerto.
 
 ## 5. Consistencia y errores
 
 - La operación devuelve una sola instantánea con regla seleccionada por intervalos `valid_from <= asOf < valid_to` (o `valid_to IS NULL` para la regla actual).
 - Al inicio de un cálculo se captura un instante único; todas las noches usan esa instantánea. Una actualización confirmada después de `asOf` no se mezcla en esa operación; la siguiente consulta la observa [SPEC casos límite, NFR-002, NFR-003].
-- Una lectura que no puede completarse se propaga como `SEASON_RULES_UNAVAILABLE`/`DATABASE_UNAVAILABLE`. No se devuelve lista vacía, temporada inventada, caché vencida ni porcentaje neutral como fallback.
+- Una lectura que no puede completarse se propaga como `SeasonRulesUnavailableError` (`SEASON_RULES_UNAVAILABLE`). Es un código interno del puerto, no un `errorCode` de `ApiError`: el consumidor lo traduce a su propia respuesta (005 responde `422 UNEXPECTED_ERROR`, reintentable). No se devuelve lista vacía, temporada inventada, caché vencida ni porcentaje neutral como fallback.
 - Una inconsistencia entre calendario y catálogo se informa como error de dominio identificable; la operación no retorna un resultado parcial.
 - La temporada reservada `Regular` debe estar presente exactamente una vez, tener `isDefault = true` y un `adjustmentPercent` válido dentro del rango firmado. Si la invariante se rompe, falla la consulta explícitamente.
 

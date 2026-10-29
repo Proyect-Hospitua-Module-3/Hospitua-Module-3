@@ -228,7 +228,7 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 Toda excepción o rechazo funcional se traduce a un cuerpo JSON estandarizado:
 ```json
 {
-  "errorCode": "INVALID_VAT_RATE | INVALID_BASE_RATE | INVALID_SEASON | INVALID_SEASON_ADJUSTMENT | SEASON_NOT_FOUND | SEASON_NAME_CONFLICT | DEFAULT_SEASON_IMMUTABLE | SEASON_IN_USE | SEASON_RULE_CONFLICT | INVALID_CALENDAR_RANGE | OVERLAPPING_SEASON_CALENDAR | DUPLICATE_SEASON_EXCEPTION | SEASON_CALENDAR_CONFLICT | SEASON_CALENDAR_NOT_FOUND | MISSING_COMMISSION | SETTLEMENT_NOT_FOUND | INVOICE_NOT_FOUND | ROOM_NOT_FOUND | MODULE1_UNAVAILABLE | RESERVATION_NOT_FOUND | QUOTE_NOT_FOUND | MODULE2_UNAVAILABLE | INVALID_COMMISSION | SETTLEMENT_ALREADY_EXISTS | MISSING_SEARCH_CRITERIA | INVALID_DATE_RANGE | INVALID_QUERY_PARAMS | UNAUTHENTICATED | FORBIDDEN | UNEXPECTED_ERROR",
+  "errorCode": "INVALID_VAT_RATE | INVALID_BASE_RATE | INVALID_SEASON | INVALID_SEASON_ADJUSTMENT | SEASON_NOT_FOUND | UNKNOWN_SEASON_REFERENCE | SEASON_NAME_CONFLICT | DEFAULT_SEASON_IMMUTABLE | SEASON_IN_USE | SEASON_RULE_CONFLICT | INVALID_CALENDAR_RANGE | OVERLAPPING_SEASON_CALENDAR | DUPLICATE_SEASON_EXCEPTION | SEASON_CALENDAR_CONFLICT | SEASON_CALENDAR_NOT_FOUND | MISSING_COMMISSION | SETTLEMENT_NOT_FOUND | INVOICE_NOT_FOUND | ROOM_NOT_FOUND | MODULE1_UNAVAILABLE | RESERVATION_NOT_FOUND | QUOTE_NOT_FOUND | MODULE2_UNAVAILABLE | INVALID_COMMISSION | SETTLEMENT_ALREADY_EXISTS | MISSING_SEARCH_CRITERIA | INVALID_DATE_RANGE | INVALID_QUERY_PARAMS | UNAUTHENTICATED | FORBIDDEN | UNEXPECTED_ERROR",
   "message": "Descripción legible y accionable de la regla violada o contingencia.",
   "timestamp": "2026-09-28T10:30:00Z",
   "path": "/admin/vat-rate"
@@ -464,11 +464,12 @@ Basado en las entidades clave de `docs/diccionario.md` y de cada spec:
 |---|---|---|
 | `vat_rate` | `billing` | Porcentaje de IVA vigente único, en una fila única (BR-003 de `actualizar_porcentaje_iva.md`). |
 | `vat_rate_history` | `billing` | Historial de cambios del IVA: valor anterior (nulo al primer registro), valor nuevo, responsable y fecha (FR-005 de `actualizar_porcentaje_iva.md`). |
-| `season` | `pricing` | Catálogo de temporadas: nombre único, color e indicador de temporada por defecto (`Regular`, solo una, no eliminable; su porcentaje sí es editable) (FR-001 de `modificar_precio_tarifa_segun_temporada.md`). |
+| `season` | `pricing` | Catálogo de temporadas: nombre único entre las no retiradas, color, indicador de temporada por defecto (`Regular`, solo una, no eliminable; su porcentaje sí es editable), `version` para control optimista y retiro lógico (`archived_at`) en lugar de borrado físico (FR-001 de `modificar_precio_tarifa_segun_temporada.md`). |
 | `season_rule` | `pricing` | Versiones del ajuste porcentual de cada temporada, con vigencia `valid_from`/`valid_to` (nulo en la vigente) (BR-005 de `modificar_precio_tarifa_segun_temporada.md`). |
 | `season_rule_history` | `pricing` | Auditoría de cada cambio de regla: ajuste anterior (nulo al crear), ajuste nuevo, responsable y fecha (FR-004 de `modificar_precio_tarifa_segun_temporada.md`). |
 | `season_calendar_revision` | `pricing` | Revisión anual del calendario: `UNIQUE(year, revision)`, una sola activa por año, con vigencia y responsable (FR-008 de `revisar_temporada_del_año.md`). |
 | `season_calendar_entry` | `pricing` | Períodos base (pueden cruzar el cambio de año) y excepciones puntuales de una revisión, que referencian una temporada del catálogo; sin solapamientos entre períodos base (BR-005 de `revisar_temporada_del_año.md`). |
+| `season_calendar_active_base` | `pricing` | Proyección de los períodos base de las revisiones activas de todos los años, con `EXCLUDE USING gist` sobre el rango de fechas para impedir solapamientos entre años (ver plan 011). |
 | `lodging_quote` | `pricing` | Cotización del hospedaje de una habitación, solicitada por Módulo 2 al crear la reserva: habitación (`room_id`), fechas reservadas, moneda y total. Inmutable una vez creada. |
 | `lodging_quote_night` | `pricing` | Detalle por noche de la cotización: tarifa base, temporada y ajuste aplicados y tarifa resultante; `UNIQUE(quote_id, night_date)`. |
 | `settlement` | `settlement` | Liquidación: una fila por estancia, `UNIQUE(stay_id)`, estado siempre `Final` (BR-006/FR-010 de `generar_liquidacion.md`). |
@@ -497,6 +498,8 @@ erDiagram
         text name UK "Regular es el default, su % es editable"
         text color "Formato RRGGBB"
         bool is_default "Solo una verdadera"
+        int version "Control optimista"
+        datetime archived_at "Retiro logico, nulo si activa"
         uuid created_by
         datetime updated_at
     }

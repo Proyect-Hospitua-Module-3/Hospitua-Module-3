@@ -100,6 +100,7 @@ Para un rango de noches que cruza años, el consumidor llama a este puerto para 
 - Calendario inconsistente: `SeasonCalendarInconsistentError` (`SEASON_CALENDAR_INCONSISTENT`); la tarifa dinámica completa falla sin resultados parciales.
 - Referencia `seasonId` ausente en el snapshot del catálogo 009: `SeasonCalendarInconsistentError` (`SEASON_CALENDAR_INCONSISTENT`); no se usa default como fallback para una referencia rota.
 - Fallo transitorio de persistencia: `SeasonCalendarUnavailableError` (`SEASON_CALENDAR_UNAVAILABLE`); el consumidor puede reintentar la operación completa, nunca reutilizar una respuesta supuesta.
+- `SEASON_CALENDAR_INCONSISTENT` y `SEASON_CALENDAR_UNAVAILABLE` son códigos internos del puerto, no `errorCode` de `ApiError`. 005 los traduce a `422 UNEXPECTED_ERROR`: reintentable si el calendario no estaba disponible y no reintentable si es inconsistente.
 
 ## 6. Garantías para 005
 
