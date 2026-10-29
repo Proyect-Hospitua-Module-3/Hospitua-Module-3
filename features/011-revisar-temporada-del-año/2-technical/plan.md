@@ -80,7 +80,7 @@ src/
 └── infrastructure/
     ├── adapters/
     │   ├── in/http/
-    │   │   └── season-calendar.controller.ts
+    │   │   └── season-admin.controller.ts       # Compartido con 009: 011 aporta las rutas /admin/season-calendar
     │   └── out/persistence/
     │       ├── mappers/season-calendar.mapper.ts
     │       └── repositories/prisma-season-calendar.repository.ts
@@ -115,7 +115,7 @@ La matriz del plan base declara `GET /admin/season-calendar`; la decisión de in
 
 | Método y ruta | Propósito | Respuesta |
 |---|---|---|
-| `GET /admin/season-calendar?year={YYYY}&from?={YYYY-MM-DD}&to?={YYYY-MM-DD}` | Consultar calendario anual completo o una ventana del año, incluidos huecos, excepciones, leyenda y conflictos existentes | `200` |
+| `GET /admin/season-calendar?year={YYYY}&from?={YYYY-MM-DD}&to?={YYYY-MM-DD}&asOf?={ISO-8601}&revision?={n}` | Consultar calendario anual completo o una ventana del año, incluidos huecos, excepciones, leyenda y conflictos existentes. `asOf` lee la revisión efectiva en ese instante y `revision` una revisión histórica concreta; son mutuamente excluyentes | `200` |
 | `PUT /admin/season-calendar/{year}` | Publicar una revisión completa e inmutable de clasificación anual y excepciones | `200` con revisión activa |
 
 No se exponen mutaciones por elemento en rutas separadas: el `PUT` reemplaza la definición completa del año como una única revisión validada. Esto evita estados parciales al cambiar múltiples rangos. Si el calendario actual fue leído antes de editarlo, puede enviarse `expectedRevision` para control optimista; una versión obsoleta se rechaza sin sobrescribir el cambio concurrente. El detalle de cuerpo, precedencia, errores y respuesta se especifica en [`contracts/ADMIN-season-calendar.md`](contracts/ADMIN-season-calendar.md).
@@ -123,11 +123,11 @@ No se exponen mutaciones por elemento en rutas separadas: el `PUT` reemplaza la 
 ### Modelo de dominio y representación temporal
 
 - `CalendarYear` es un entero entre 1 y 9999 y determina el intervalo `[YYYY-01-01, (YYYY+1)-01-01)`. `from` y `to` son fechas civiles del hotel, no timestamps; los rangos del API son inclusivos.
-- `SeasonCalendarEntry` contiene `entryId`, `seasonId`, `kind` (`BASE` o `EXCEPTION`), `startDate`, `endDate`, `validFrom` y `validTo`.
+- `SeasonCalendarEntry` contiene `entryId`, `seasonId`, `kind` (`BASE` o `EXCEPTION`), `startDate` y `endDate`. No tiene vigencia propia: la vigencia (`effectiveAt`) pertenece a la revisión que la contiene.
 - `BASE` pertenece al año de `startDate`; puede cubrir uno o varios días y cruzar el 31 de diciembre, pero `endDate` no puede exceder el año inmediatamente siguiente. Al revisar o resolver el año siguiente se consideran las entradas `BASE` heredadas de la revisión efectiva del año anterior. Dos entradas `BASE` con días compartidos se rechazan aunque pertenezcan a revisiones anuales distintas.
 - `EXCEPTION` cubre exactamente un día (`startDate = endDate`) y puede superponerse con una entrada `BASE`: tiene precedencia explícita. Dos excepciones para la misma fecha se rechazan incluso si apuntan a la misma temporada; no se usa orden de inserción para desempatar.
 - Una fecha que no coincide con ninguna entrada `BASE` o `EXCEPTION` se resuelve al `defaultSeasonId` del catálogo de 009, con `isDefault = true` y clasificación `DEFAULT`. El hueco se hace explícito en la respuesta administrativa.
-- `seasonId` debe existir en el catálogo retornado por 009. Los nombres, colores y porcentajes no se copian como fuente de verdad en el calendario; se adjuntan al consultar a través del snapshot de catálogo.
+- Al publicar, cada `seasonId` debe existir en el catálogo retornado por 009 y no estar retirado (`archivedAt = null`). Una revisión histórica puede referenciar temporadas retiradas después; al consultarla se muestran con su nombre y color del snapshot. Los nombres, colores y porcentajes no se copian como fuente de verdad en el calendario; se adjuntan al consultar a través del snapshot de catálogo.
 - El calendario permite las categorías configuradas en 009; no codifica enum fijo `HIGH/REGULAR/LOW`. `BASE`/`EXCEPTION` describe el papel temporal, no una categoría estacional.
 
 ### Versionado y auditoría
@@ -143,9 +143,19 @@ La hora de publicación y las fechas civiles se manejan por separado: `effective
 | Tabla | Campos esenciales | Restricciones |
 |---|---|---|
 | `season_calendar_revision` | `id`, `year`, `revision`, `effective_at`, `changed_by`, `changed_at`, `is_active` | `UNIQUE(year, revision)`; máximo una activa por año; versiones publicadas inmutables |
-| `season_calendar_entry` | `id`, `revision_id`, `season_id`, `kind`, `start_date`, `end_date` | FK a revisión y season; `start_date <= end_date`; `start_date` pertenece al año de la revisión; `BASE` termina como máximo el año siguiente; excepción de un solo día dentro del año propietario |
+| `season_calendar_entry` | `id`, `revision_id`, `season_id`, `kind`, `start_date`, `end_date` | FK a revisión y season; `start_date <= end_date`; `start_date` pertenece al año de la revisión; `BASE` termina como máximo el año siguiente; excepción de un solo día dentro del año propietario; índice único parcial `(revision_id, start_date) WHERE kind = 'EXCEPTION'` |
+| `season_calendar_active_base` | `entry_id` (PK, FK a `season_calendar_entry`), `year`, `period daterange` | Proyección de los períodos `BASE` de las revisiones **activas** de todos los años. `period = daterange(start_date, end_date + 1, '[)')`. `EXCLUDE USING gist (period WITH &&)` impide cualquier solapamiento entre años. Solo la escribe la publicación de 011 |
 
-La activación de una revisión y la inserción completa de sus entradas ocurre en una sola transacción. La validación de dominio detecta conflictos con mensajes que identifican rango/fecha y entradas en colisión. Al publicar el año `N`, se validan también las entradas `BASE` de las revisiones efectivas de `N-1` y `N+1` a `effectiveAt`; la escritura serializa la validación con bloqueos de los años vecinos para impedir solapamientos por publicaciones concurrentes. La persistencia aplica la restricción de exclusión PostgreSQL sobre una proyección de las entradas efectivas, incluyendo las que cruzan años, para no bloquear revisiones históricas; las restricciones de `EXCEPTION` aseguran unicidad por fecha dentro de su año propietario. Las excepciones pueden superponerse con rangos base por diseño, pero no con otra excepción de la misma fecha.
+**Publicación del año `N`** (una sola transacción):
+
+1. Toma `pg_advisory_xact_lock` sobre los años `N-1`, `N` y `N+1`, siempre en orden ascendente para evitar interbloqueos. Así se serializan las publicaciones del mismo año y de los años vecinos.
+2. Compara `expectedRevision` con la revisión activa de `N`; si no coincide, `409 SEASON_CALENDAR_CONFLICT`.
+3. Bloquea con `SELECT … FOR SHARE` las filas de `season` referenciadas y verifica que existan y no estén retiradas (`UNKNOWN_SEASON_REFERENCE`). El `FOR SHARE` se serializa con el `FOR UPDATE` que toma el retiro de 009, así una temporada no puede retirarse mientras se publica una revisión que la usa.
+4. Valida en dominio el conjunto completo junto con los `BASE` activos de `N-1` y `N+1`, para devolver errores accionables (`OVERLAPPING_SEASON_CALENDAR`, `DUPLICATE_SEASON_EXCEPTION`) con fechas y entradas en conflicto.
+5. Inserta la nueva revisión y sus entradas, desactiva la anterior, borra de `season_calendar_active_base` las filas con `year = N` e inserta las de la nueva revisión.
+6. Si aun así la restricción de exclusión salta (violación `23P01`), se traduce a `409 OVERLAPPING_SEASON_CALENDAR` y la transacción se revierte completa.
+
+La restricción `EXCLUDE` vive en una tabla aparte porque PostgreSQL no permite filtrar una restricción de exclusión por una columna de otra tabla (`is_active` está en la revisión, no en la entrada), y aplicarla sobre todas las entradas bloquearía las revisiones históricas. Requiere SQL manual en la migración, porque Prisma no genera restricciones `EXCLUDE`. Las excepciones pueden superponerse con rangos base por diseño, pero no con otra excepción de la misma fecha.
 
 Para `resolveSeasonByDate`, la lectura selecciona en una sola transacción las revisiones efectivas a `asOf` del año de la fecha y del año anterior. Busca primero una excepción puntual del año de la fecha, luego un rango base propio o heredado del año anterior y por último usa el default de 009. La respuesta conserva la revisión del año consultado y reporta también el año/revisión propietario de la entrada aplicada, si existe.
 
@@ -188,7 +198,7 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 | Error | `errorCode` | HTTP | Efecto |
 |---|---|---:|---|
 | Año/fechas malformados, rango invertido, inicio fuera del año propietario o período `BASE` que excede el año siguiente | `INVALID_CALENDAR_RANGE` | 400 | Sin lectura parcial ni publicación |
-| ID de temporada desconocido en el catálogo 009 | `SEASON_NOT_FOUND` | 422 | Rechaza la revisión completa |
+| ID de temporada inexistente o retirado en el catálogo 009 | `UNKNOWN_SEASON_REFERENCE` | 422 | Rechaza la revisión completa |
 | Rangos base solapados dentro de una revisión o entre años vecinos | `OVERLAPPING_SEASON_CALENDAR` | 409 | No activa la revisión |
 | Excepciones duplicadas para una fecha | `DUPLICATE_SEASON_EXCEPTION` | 409 | No activa la revisión |
 | `expectedRevision` no es la activa | `SEASON_CALENDAR_CONFLICT` | 409 | Conserva la revisión ganadora |
@@ -197,6 +207,8 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 | JWT ausente/inválido | `UNAUTHENTICATED` | 401 | No ejecuta operación administrativa |
 | Rol distinto de Administrador | `FORBIDDEN` | 403 | No ejecuta operación administrativa |
 | Persistencia temporalmente no disponible | `UNEXPECTED_ERROR` | 422 | El `ExceptionFilter` global registra el error con id de correlación y lo incluye en el mensaje; rollback completo |
+
+Se usa `UNKNOWN_SEASON_REFERENCE` y no `SEASON_NOT_FOUND` porque este último es el `404` de 009 cuando el recurso de la ruta no existe; aquí la ruta es válida y lo que falla es una referencia dentro del cuerpo. `SEASON_CALENDAR_INCONSISTENT` y `SEASON_CALENDAR_UNAVAILABLE` son códigos internos del puerto `ResolveSeasonByDateUseCase`, no `errorCode` de `ApiError`: 005 los traduce a `422 UNEXPECTED_ERROR`, como indica su plan.
 
 ## Phase 1: Setup (específico de esta feature)
 
@@ -217,7 +229,7 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 - [ ] T006 Implementar `SeasonCalendarEntry` con tipos `BASE`/`EXCEPTION` y precedencia puntual explícita.
 - [ ] T007 Definir puertos de entrada `ReviewSeasonCalendarUseCase`, `ReplaceSeasonCalendarUseCase` y `ResolveSeasonByDateUseCase`, más tokens.
 - [ ] T008 Definir `SeasonCalendarRepositoryPort` y `SeasonCatalogQueryPort` hacia 009.
-- [ ] T009 Crear modelos Prisma de revisión/entradas e índices/restricciones; no duplicar nombre, color o ajuste del catálogo 009.
+- [ ] T009 Crear modelos Prisma de revisión/entradas/`season_calendar_active_base` e índices; agregar en SQL manual de la migración la restricción `EXCLUDE USING gist (period WITH &&)` (no requiere `btree_gist`, porque solo compara rangos); no duplicar nombre, color o ajuste del catálogo 009.
 - [ ] T010 Implementar `SeasonCalendarMapper` y repositorio Prisma con transacción de publicación, historial y lectura por snapshot `asOf`.
 - [ ] T011 Registrar errores de dominio, códigos `ApiError` y bindings de puertos en `PricingModule`.
 
@@ -274,17 +286,17 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 
 ### Tests for User Story 3
 
-- [ ] T027 [P] [US3] Unit tests de `ReplaceSeasonCalendarService`: alta/modificación/borrado mediante reemplazo completo, excepción válida y temporada inexistente.
+- [ ] T027 [P] [US3] Unit tests de `ReplaceSeasonCalendarService`: alta/modificación/borrado mediante reemplazo completo, excepción válida, temporada inexistente y temporada retirada (`UNKNOWN_SEASON_REFERENCE`).
 - [ ] T028 [P] [US3] Tests de conflictos: rangos base con cualquier día compartido; excepción-excepción duplicada; excepción única sobre base aceptada.
 - [ ] T029 [US3] E2E/contract tests del `PUT`: validación, control `expectedRevision`, 409 en carrera, auth 401/403 y respuesta de revisión.
-- [ ] T030 [US3] Integration test Postgres de publicaciones concurrentes del mismo año y de años vecinos que intentan crear solapamientos BASE; solo se activa una configuración compatible.
+- [ ] T030 [US3] Integration test Postgres de publicaciones concurrentes del mismo año y de años vecinos que intentan crear solapamientos BASE; solo se activa una configuración compatible y `season_calendar_active_base` nunca contiene períodos solapados. Incluye una publicación concurrente con el retiro de una temporada que referencia (ver T016 de 009).
 - [ ] T031 [US3] Integration test de atomicidad: falla al insertar una entrada o auditoría y la revisión activa anterior sigue intacta.
 
 ### Implementation for User Story 3
 
 - [ ] T032 [US3] Implementar reemplazo completo del año propietario validando referencias y solapamientos BASE con las revisiones efectivas de los años vecinos antes de persistir.
 - [ ] T033 [US3] Crear nueva `SeasonCalendarRevision` con actor y hora DB, activar atómicamente e inmovilizar revisiones anteriores.
-- [ ] T034 [US3] Implementar control de concurrencia `expectedRevision`, serialización de publicaciones de años vecinos y restricciones de BD para solapamientos/duplicados.
+- [ ] T034 [US3] Implementar control de concurrencia `expectedRevision`, `pg_advisory_xact_lock` ordenado sobre `N-1`/`N`/`N+1`, bloqueo `FOR SHARE` de las temporadas referenciadas, reescritura de `season_calendar_active_base` y traducción de la violación `23P01` a `OVERLAPPING_SEASON_CALENDAR`.
 - [ ] T035 [US3] Mapear errores de dominio a respuestas `ApiError` accionables; no aceptar ni publicar resultados parciales.
 
 **Checkpoint**: las configuraciones son versionadas, auditables y solo una revisión íntegra es visible por año/instante.
@@ -310,7 +322,7 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 
 ### Dependencias con otras features
 
-- **009 Modificar precio tarifa según temporada** posee el catálogo de temporadas (IDs, nombres, colores, default) y los porcentajes; 011 solo guarda `seasonId` y los períodos clasificados.
+- **009 Modificar precio tarifa según temporada** posee el catálogo de temporadas (IDs, nombres, colores, default, retiro lógico) y los porcentajes; 011 solo guarda `seasonId` y los períodos clasificados. 009 consulta a 011 (`SeasonCalendarReferencePort`) si una revisión activa usa una temporada antes de retirarla.
 - **005 Consultar tarifa dinámica** consume el puerto `ResolveSeasonByDateUseCase` y el snapshot de reglas de 009; usa la clasificación y ajuste de cada fecha, no una temporada única para toda la estancia.
 - **007 Generar liquidación** lee la cotización guardada; no consulta el calendario ni recalcula importes.
 - **006 Generar factura final** congela los importes de 007; no consulta temporadas.
@@ -318,7 +330,7 @@ Errores de dominio salen con `ApiError` en HTTP y como errores tipados por el pu
 
 ## Notes
 
-- La aprobación del alcance por el usuario incluye que 011 también administra altas, modificaciones y excepciones; el plan escoge un único `PUT` de reemplazo completo por año para preservar atomicidad.
+- La administración de altas, modificaciones y excepciones está cubierta por FR-009 de la spec; el plan escoge un único `PUT` de reemplazo completo por año para preservar atomicidad.
 - El calendario es anual, mientras los porcentajes son configuración versionada de 009. La revisión del calendario solo referencia `seasonId`; nombre, color y regla de precio se consultan al catálogo.
 - Los intervalos base son inclusivos para API/dominio y se validan como fechas civiles; la persistencia puede representarlos como rangos PostgreSQL semiabiertos `[startDate, endDate + 1 day)` para restricciones de solapamiento.
 - Solapamiento excepción-base es intencional (la excepción prevalece); solapamiento base-base o excepción-excepción no es resoluble y se rechaza antes de activar.

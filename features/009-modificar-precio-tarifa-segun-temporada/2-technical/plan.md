@@ -11,7 +11,7 @@ La feature 009 permite al Administrador mantener el catálogo de temporadas y el
 
 El ajuste se representa como **porcentaje firmado**, acordado para este plan: `+20.00` significa incrementar 20 % y `-10.00` reducir 10 %. El rango inclusivo es `-100.00..+100.00`; la tarifa dinámica se calcula como `baseRate × (1 + adjustmentPercent / 100)`, con aritmética decimal exacta y redondeo half-up a dos decimales. La temporada por defecto (`Regular`) es la temporada reservada del catálogo y no se puede borrar ni renombrar; su porcentaje de ajuste es configurable dentro del mismo rango y puede ser distinto de cero. Las reglas actualizadas aplican a consultas nuevas desde su instante de vigencia; las cotizaciones y liquidaciones ya materializadas son snapshots y no se recalculan.
 
-009 administra nombres, colores e importes de ajuste de las temporadas; 011 conserva la responsabilidad del calendario y sus clasificaciones/excepciones por fecha. La ausencia de clasificación explícita se resuelve usando la temporada por defecto. Una temporada referenciada en el calendario no se elimina, evitando referencias rotas.
+009 administra nombres, colores e importes de ajuste de las temporadas; 011 conserva la responsabilidad del calendario y sus clasificaciones/excepciones por fecha. La ausencia de clasificación explícita se resuelve usando la temporada por defecto. Eliminar una temporada es un **retiro lógico** (`archived_at`): deja de aparecer en el catálogo y de poder asignarse, pero conserva su historial y las referencias de revisiones anteriores del calendario. Una temporada asignada en una revisión activa del calendario no se puede retirar, evitando referencias rotas.
 
 ## Technical Context
 
@@ -22,7 +22,7 @@ El ajuste se representa como **porcentaje firmado**, acordado para este plan: `+
 **Target Platform**: Servicio backend Linux en contenedor Docker
 **Project Type**: Servicio backend único (monolito modular hexagonal), bounded context `pricing`, sin frontend en este repositorio
 **Performance Goals**: Lectura consistente de temporada/reglas sin llamadas externas; los cambios administrativos quedan disponibles inmediatamente para consultas nuevas de 005, sin caché con TTL
-**Constraints**: Solo Administrador puede modificar; porcentaje firmado entre -100 % y +100 %; temporada por defecto no eliminable ni renombrable; su ajuste puede variar dentro del rango firmado; una sola regla vigente por temporada; escritura + auditoría atómicas; cambios no alteran cotizaciones ya creadas ni liquidaciones/facturas consolidadas
+**Constraints**: Solo Administrador puede modificar; porcentaje firmado entre -100 % y +100 %; temporada por defecto no eliminable ni renombrable; su ajuste puede variar dentro del rango firmado; una sola regla vigente por temporada; escritura + auditoría atómicas; modificaciones serializadas por bloqueo de fila con control optimista opcional (`expectedVersion`); retiro lógico, nunca borrado físico; cambios no alteran cotizaciones ya creadas ni liquidaciones/facturas consolidadas
 **Scale/Scope**: Gestión CRUD del catálogo de temporadas, modificación/revisión de reglas y puerto interno de consulta para 005/011; sin llamada saliente a Módulo 1 ni cambio de tarifa base
 
 ## Project Structure
@@ -59,7 +59,7 @@ src/
 │   │   └── season-rule-conflict.error.ts
 │   └── ports/
 │       ├── in/
-│       │   ├── manage-season-rules.use-case.ts
+│       │   ├── modify-season-rule.use-case.ts
 │       │   └── get-effective-season-rules.use-case.ts
 │       └── out/
 │           ├── season-rule.repository.port.ts
@@ -67,7 +67,7 @@ src/
 │
 ├── application/
 │   ├── services/pricing/
-│   │   ├── manage-season-rules.service.ts
+│   │   ├── modify-season-rule.service.ts
 │   │   └── get-effective-season-rules.service.ts
 │   └── dto/pricing/
 │       ├── create-season.command.ts
@@ -77,7 +77,7 @@ src/
 └── infrastructure/
     ├── adapters/
     │   ├── in/http/
-    │   │   └── season-admin.controller.ts
+    │   │   └── season-admin.controller.ts      # Compartido con 011: rutas /admin/season-rules (009) y /admin/season-calendar (011)
     │   └── out/persistence/
     │       ├── mappers/season-rule.mapper.ts
     │       └── repositories/prisma-season-rule.repository.ts
@@ -93,7 +93,7 @@ prisma/
 test/
 ├── unit/
 │   ├── domain/pricing/season-adjustment-percent.vo.spec.ts
-│   └── application/pricing/manage-season-rules.service.spec.ts
+│   └── application/pricing/modify-season-rule.service.spec.ts
 ├── integration/
 │   └── persistence/pricing/prisma-season-rule.repository.spec.ts
 ├── e2e/
@@ -114,14 +114,16 @@ Las rutas administrativas son privadas a Módulo 3 y requieren `JwtAuthGuard`, `
 | --------------------------------------- | ---------------------------------------------------------------------- | ------------------------------- |
 | `GET /admin/season-rules`               | Consultar catálogo completo, regla vigente, versión y auditoría mínima | `200` con `seasons[]`           |
 | `POST /admin/season-rules`              | Crear temporada con nombre, color y ajuste inicial                     | `201` con temporada y regla     |
-| `PUT /admin/season-rules/{seasonId}`    | Actualizar nombre, color y/o porcentaje de ajuste                      | `200` con configuración vigente |
-| `DELETE /admin/season-rules/{seasonId}` | Eliminar temporada no predeterminada y sin referencias en calendario   | `204`                           |
+| `PUT /admin/season-rules/{seasonId}`    | Actualizar nombre, color y/o porcentaje de ajuste; acepta `expectedVersion` opcional | `200` con configuración vigente |
+| `DELETE /admin/season-rules/{seasonId}` | Retirar (borrado lógico) una temporada no predeterminada y sin asignaciones en revisiones activas del calendario | `204` |
 
-El contrato HTTP define validación de formato, códigos de error y ejemplos en [`contracts/ADMIN-season-rules.md`](contracts/ADMIN-season-rules.md). Las consultas del calendario y sus excepciones siguen perteneciendo a 011; este controller no crea ni cambia períodos de fecha. La ruta de borrado devuelve conflicto si el catálogo de 011 referencia la temporada; no borra asignaciones ni las reclasifica silenciosamente.
+El contrato HTTP define validación de formato, códigos de error y ejemplos en [`contracts/ADMIN-season-rules.md`](contracts/ADMIN-season-rules.md). Las consultas del calendario y sus excepciones siguen perteneciendo a 011; este controller no crea ni cambia períodos de fecha. La ruta de retiro devuelve conflicto si una revisión activa del calendario de 011 referencia la temporada; no borra asignaciones ni las reclasifica silenciosamente.
+
+`PUT` acepta cambios parciales (`name`, `color`, `adjustmentPercent`). Se mantiene `PUT` y no `PATCH` porque es el verbo acordado en la matriz del plan base; la semántica de actualización parcial queda documentada en el contrato.
 
 ### Dominio y valores
 
-- `Season` guarda un identificador estable, nombre visible, color hexadecimal `#RRGGBB` y el indicador `isDefault`.
+- `Season` guarda un identificador estable, nombre visible, color hexadecimal `#RRGGBB`, el indicador `isDefault`, un `version` entero que se incrementa con cada cambio efectivo (nombre, color o ajuste) y `archivedAt` (nulo mientras la temporada está en el catálogo).
 - Una sola temporada tiene `isDefault = true`; la migración asegura que exista la temporada reservada `Regular` para la arquitectura y 005. Su identidad estable y nombre reservado `Regular` no se pueden borrar ni renombrar; su color sí puede personalizarse. Las temporadas adicionales admiten nombres y colores definidos por el Administrador.
 - `SeasonAdjustmentPercent` representa un decimal exacto firmado entre `-100.00` y `+100.00`, inclusive. Fuera de rango, no numérico, `NaN`/infinito o precisión superior a dos decimales se rechaza.
 - La temporada por defecto conserva el `seasonId` reservado y puede tener un ajuste distinto de cero, siempre que permanezca dentro del rango firmado. El default no puede eliminarse ni renombrarse.
@@ -132,18 +134,30 @@ El contrato HTTP define validación de formato, códigos de error y ejemplos en 
 
 | Tabla                         | Campos esenciales                                                                                                         | Restricciones                                                                                                                                          |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `season`                      | `id`, `name`, `color`, `is_default`, `created_at`, `created_by`, `updated_at`, `updated_by`                               | Un único default (índice único parcial); `name` único sin distinguir mayúsculas/espacios exteriores; default reservado como `Regular`; color `#RRGGBB` |
+| `season`                      | `id`, `name`, `color`, `is_default`, `version`, `archived_at`, `archived_by`, `created_at`, `created_by`, `updated_at`, `updated_by` | Un único default (índice único parcial); `name` único sin distinguir mayúsculas/espacios exteriores entre temporadas no retiradas (índice único parcial `WHERE archived_at IS NULL`); default reservado como `Regular` y nunca retirado (`CHECK (NOT is_default OR archived_at IS NULL)`); color `#RRGGBB` |
 | `season_rule`                 | `id`, `season_id`, `adjustment_percent`, `valid_from`, `valid_to`, `created_at`, `created_by`                             | Versiones append-only; restricción temporal de exclusión para evitar intervalos solapados por temporada; `valid_to` nulo solo para la versión vigente  |
 | `season_rule_history`         | `id`, `season_id`, `previous_rule_id`, `new_rule_id`, `previous_adjustment`, `new_adjustment`, `changed_by`, `changed_at` | Append-only y en la misma transacción que el cambio; para creación, valor anterior nulo                                                                |
-| `season_calendar_entry` (011) | Referenciada por `season_id`                                                                                              | 009 solo consulta referencias para proteger eliminaciones; 011 es dueño de sus fechas/excepciones                                                      |
+| `season_calendar_entry` (011) | Referenciada por `season_id`                                                                                              | 009 solo consulta referencias para proteger retiros; 011 es dueño de sus fechas/excepciones                                                            |
 
-Las fechas de vigencia son instantes UTC de la base de datos. Al cambiar el ajuste, la transacción bloquea la temporada/regla actual, cierra su `valid_to` y crea la nueva versión con `valid_from` igual al mismo instante de cambio. La regla anterior nunca se actualiza en sus valores; solo se cierra su intervalo vigente. La base valida además la exclusión de rangos superpuestos por `season_id` para protegerse de carreras concurrentes. La modificación de nombre/color es una actualización atómica del catálogo, con auditoría; no altera el identificador usado por 011.
+Las fechas de vigencia son instantes UTC de la base de datos. **Concurrencia**: toda modificación (`PUT`) y todo retiro (`DELETE`) empieza con `SELECT … FOR UPDATE` sobre la fila de `season`, lo que serializa los cambios de una misma temporada. Con la fila bloqueada, si la petición trae `expectedVersion` y no coincide con `season.version`, se rechaza con `409 SEASON_RULE_CONFLICT` (otro Administrador cambió la temporada después de que la leyó). Si no trae `expectedVersion`, el cambio se aplica sobre la versión vigente (último en escribir gana, pero siempre con una sola versión vigente). Al cambiar el ajuste, la transacción cierra el `valid_to` de la regla vigente y crea la nueva versión con `valid_from` igual al mismo instante de cambio. La regla anterior nunca se actualiza en sus valores; solo se cierra su intervalo vigente. La base valida además la exclusión de rangos superpuestos por `season_id` como última defensa. La modificación de nombre/color es una actualización atómica del catálogo, con auditoría; no altera el identificador usado por 011. Cada cambio efectivo incrementa `season.version`.
+
+### Retiro de temporadas
+
+`DELETE` no borra la fila: marca `archived_at` y `archived_by`. Así `season_rule`, `season_rule_history` y las entradas de revisiones históricas del calendario conservan su clave foránea y la auditoría de FR-004 queda intacta.
+
+1. Bloquea la fila de `season` (`FOR UPDATE`); si no existe o ya está retirada, responde `404 SEASON_NOT_FOUND`; si es la predeterminada, `409 DEFAULT_SEASON_IMMUTABLE`.
+2. Consulta con `SeasonCalendarReferencePort` si alguna **revisión activa** del calendario (de cualquier año) la referencia en una entrada `BASE` o `EXCEPTION`. Si es así, `409 SEASON_IN_USE`. Las revisiones históricas no bloquean el retiro.
+3. Marca el retiro, cierra el `valid_to` de su regla vigente y registra la operación en `season_rule_history`, todo en la misma transacción.
+
+**Carrera con 011**: la publicación de una revisión del calendario bloquea en modo `FOR SHARE` las filas de `season` que referencia antes de validar que no estén retiradas. Como el retiro toma `FOR UPDATE` sobre la misma fila, ambas operaciones se serializan: o el retiro ve la revisión nueva y responde `SEASON_IN_USE`, o la publicación ve la temporada retirada y la rechaza con `UNKNOWN_SEASON_REFERENCE`.
+
+Una temporada retirada no se puede modificar (`404 SEASON_NOT_FOUND`) ni asignar en el calendario, y libera su nombre para una temporada nueva. El puerto `GetEffectiveSeasonRulesUseCase` la sigue devolviendo con `archivedAt` para que 011 pueda mostrar revisiones históricas que la usaron.
 
 Una actualización que conserva los mismos valores de ajuste, nombre y color es un no-op: se acepta y retorna el estado actual, pero no crea una versión ni fila de historial redundante [SPEC casos límite]. Una modificación efectiva escribe configuración y auditoría en una transacción. Fallo de auditoría revierte el cambio completo.
 
 ### Vigencia para las consultas y dependencia con 005/011
 
-`GetEffectiveSeasonRulesUseCase` da a `pricing` un snapshot determinista de las reglas que eran efectivas en `asOf`, timestamp capturado al inicio de la consulta dinámica. 005 resuelve la temporada del calendario de cada noche mediante su integración con 011 y obtiene de este puerto el ajuste correspondiente. No hay caché TTL: una actualización confirmada se observa en una consulta que comienza después del `valid_from`.
+`GetEffectiveSeasonRulesUseCase` da a `pricing` un snapshot determinista de las reglas que eran efectivas en `asOf`, timestamp capturado al inicio de la consulta dinámica. El snapshot incluye las temporadas retiradas, con `archivedAt` y su última regla, para que 011 pueda etiquetar revisiones históricas; las revisiones activas nunca referencian una temporada retirada, así que 005 no las aplica en la práctica. 005 resuelve la temporada del calendario de cada noche mediante su integración con 011 y obtiene de este puerto el ajuste correspondiente. No hay caché TTL: una actualización confirmada se observa en una consulta que comienza después del `valid_from`.
 
 La lectura debe ser consistente en una sola operación de base de datos/transacción de solo lectura: no combina la temporada obtenida antes de un cambio con el ajuste leído después de ese cambio. 011 también puede consumir el catálogo (id/nombre/color/default) para representar colores y etiquetas del calendario, pero 009 no depende de 011 para actualizar un porcentaje, salvo para validar que la temporada no esté en uso antes de borrarla.
 
@@ -155,14 +169,18 @@ Los errores de dominio se traducen en `ApiError` mediante el filtro compartido. 
 
 | Error                                                  | `errorCode`                 |      HTTP | Reintentable | Efecto                            |
 | ------------------------------------------------------ | --------------------------- | --------: | -----------: | --------------------------------- |
-| Ajuste no decimal o fuera de `-100..100`               | `INVALID_SEASON_ADJUSTMENT` |       400 |           No | Conserva regla actual             |
-| Nombre/color inválido o nombre duplicado               | `INVALID_SEASON`            | 400 / 409 |           No | Conserva catálogo                 |
-| Intento de borrar o renombrar la temporada por defecto | `DEFAULT_SEASON_IMMUTABLE`  |       409 |           No | Sin cambios                       |
-| Temporada referenciada por calendario                  | `SEASON_IN_USE`             |       409 |           No | Conserva temporada y asignaciones |
-| Conflicto de versión o cambio concurrente no rebasable | `SEASON_RULE_CONFLICT`      |       409 |           No | Transacción revertida             |
+| Nombre/color malformado, nombre vacío o cuerpo sin campos | `INVALID_SEASON`         |       400 |           No | Conserva catálogo                 |
+| Ajuste no decimal, exceso de precisión o fuera de `-100..100` | `INVALID_SEASON_ADJUSTMENT` | 400 |        No | Conserva regla actual             |
+| `seasonId` inexistente o temporada retirada            | `SEASON_NOT_FOUND`          |       404 |           No | Sin cambios                       |
+| Nombre normalizado ya usado por otra temporada no retirada | `SEASON_NAME_CONFLICT`  |       409 |           No | Conserva catálogo                 |
+| Intento de retirar o renombrar la temporada por defecto | `DEFAULT_SEASON_IMMUTABLE` |       409 |           No | Sin cambios                       |
+| Temporada referenciada por una revisión activa del calendario | `SEASON_IN_USE`      |       409 |           No | Conserva temporada y asignaciones |
+| `expectedVersion` distinto de la versión vigente       | `SEASON_RULE_CONFLICT`      |       409 |           No | Transacción revertida             |
 | Falta de autenticación/token inválido                  | `UNAUTHENTICATED`           |       401 |           No | No ejecuta el caso de uso         |
 | Actor no Administrador                                 | `FORBIDDEN`                 |       403 |           No | No ejecuta el caso de uso         |
 | Base de datos no disponible                            | `UNEXPECTED_ERROR`          |       422 |           Sí | El `ExceptionFilter` global registra el error con id de correlación y lo incluye en el mensaje; rollback completo |
+
+Esta tabla coincide con la de [`contracts/ADMIN-season-rules.md`](contracts/ADMIN-season-rules.md). El puerto interno `GetEffectiveSeasonRulesUseCase` no responde HTTP: si no puede leer el snapshot lanza `SeasonRulesUnavailableError` (`SEASON_RULES_UNAVAILABLE`), código interno que no forma parte de `ApiError`; 005 lo traduce a `422 UNEXPECTED_ERROR`, como indica su plan.
 
 ### Observabilidad y privacidad
 
@@ -185,8 +203,8 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 
 - [ ] T005 Implementar `Season` con ID estable, nombre, color y protección del default.
 - [ ] T006 Implementar `SeasonAdjustmentPercent` con rango inclusivo `-100.00..100.00`, precisión de dos decimales y sin fijar un valor por defecto por nombre de temporada.
-- [ ] T007 Definir `SeasonRule`, `ManageSeasonRulesUseCase`, `GetEffectiveSeasonRulesUseCase` y los puertos de persistencia/consulta de calendario.
-- [ ] T008 Agregar tablas e índices de temporada/reglas/historial a Prisma; migración con una temporada default reservada, sin asumir categorías o colores adicionales.
+- [ ] T007 Definir `SeasonRule`, `ModifySeasonRuleUseCase`, `GetEffectiveSeasonRulesUseCase` y los puertos de persistencia/consulta de calendario.
+- [ ] T008 Agregar tablas e índices de temporada/reglas/historial a Prisma (incluidos `version`, `archived_at`, el índice único parcial de nombre entre temporadas no retiradas y el `CHECK` que impide retirar el default); migración con una temporada default reservada, sin asumir categorías o colores adicionales.
 - [ ] T009 Implementar mapper y repositorio Prisma: snapshot por `asOf`, bloqueo/versionado transaccional, no-op sin historial redundante y rollback si falla auditoría.
 - [ ] T010 Registrar los bindings del catálogo, caso de uso administrativo y puerto de reglas efectivas en `PricingModule`.
 - [ ] T011 Registrar los errores de dominio y sus `errorCode` en el filtro compartido.
@@ -203,15 +221,15 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 
 - [ ] T012 [P] [US1] Unit tests del VO: límites `-100.00`, `0.00`, `100.00`; rechaza fuera de rango, formato no numérico, NaN/infinito y exceso de decimales.
 - [ ] T013 [P] [US1] Unit tests de `Season`: valida nombre/color/identidad, default no eliminable ni renombrable y reglaje validado por el rango firmado.
-- [ ] T014 [P] [US1] Unit tests de servicio: alta, cambio de ajuste, cambio de nombre/color, no-op idéntico, rechazo del default y temporada referenciada.
-- [ ] T015 [P] [US1] Contract/e2e tests REST para autorización, alta/modificación/borrado, payload inválido, default protegido y errores `409`.
-- [ ] T016 [US1] Integration test con Postgres: cambio de regla y registro de auditoría atómicos; fallo de historial revierte la regla.
+- [ ] T014 [P] [US1] Unit tests de servicio: alta, cambio de ajuste (positivo y negativo), cambio de nombre/color, no-op idéntico, `expectedVersion` desactualizado, rechazo del default, temporada referenciada por una revisión activa, retiro permitido cuando solo la referencian revisiones históricas y temporada retirada no modificable.
+- [ ] T015 [P] [US1] Contract/e2e tests REST para autorización, alta/modificación/retiro, payload inválido, default protegido, `404` de temporada retirada y errores `409`.
+- [ ] T016 [US1] Integration test con Postgres: cambio de regla y registro de auditoría atómicos; fallo de historial revierte la regla; el retiro conserva `season_rule`, `season_rule_history` y las entradas históricas del calendario; un retiro concurrente con una publicación de 011 que la referencia termina en `SEASON_IN_USE` o en `UNKNOWN_SEASON_REFERENCE`, nunca en ambos éxitos.
 
 ### Implementation for User Story 1
 
-- [ ] T017 [US1] Implementar `ManageSeasonRulesService` con validación de entrada, protección del default y verificación de referencias de calendario.
-- [ ] T018 [US1] Implementar rutas administrativas protegidas por `Administrador` para crear, consultar, modificar y eliminar temporadas.
-- [ ] T019 [US1] Implementar transacción de actualización con bloqueo optimista/versionado o bloqueo de fila, `valid_from` UTC y registro de historial.
+- [ ] T017 [US1] Implementar `ModifySeasonRuleService` con validación de entrada, protección del default, retiro lógico y verificación de referencias en revisiones activas del calendario.
+- [ ] T018 [US1] Implementar rutas administrativas protegidas por `Administrador` para crear, consultar, modificar y retirar temporadas.
+- [ ] T019 [US1] Implementar transacción de actualización y retiro con `SELECT … FOR UPDATE` sobre `season`, comparación opcional de `expectedVersion`, incremento de `version`, `valid_from` UTC y registro de historial.
 - [ ] T020 [US1] Implementar respuesta `ApiError` específica y mantener el estado anterior ante cualquier validación/conflicto.
 
 **Checkpoint**: un Administrador configura temporadas y ajustes; actores no autorizados o entradas inválidas no cambian el estado.

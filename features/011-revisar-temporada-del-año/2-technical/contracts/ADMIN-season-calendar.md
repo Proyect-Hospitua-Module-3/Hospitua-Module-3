@@ -79,7 +79,7 @@ Headers:
 | `expectedRevision` | integer \| `null` | No | Control optimista; si se envía debe coincidir con la revisión activa. `null` significa que se espera que aún no exista |
 | `entries` | array | Sí | Conjunto completo de entradas propias del año; `[]` es válido y las fechas sin BASE heredada ni otra asignación resuelven al default |
 | `entries[].entryId` | UUID | No | Se conserva para entradas existentes; si no llega el sistema genera uno |
-| `entries[].seasonId` | UUID/string | Sí | Debe existir en catálogo de 009 |
+| `entries[].seasonId` | UUID/string | Sí | Debe existir en el catálogo de 009 y no estar retirado |
 | `entries[].kind` | `BASE` \| `EXCEPTION` | Sí | Período base o excepción puntual |
 | `entries[].startDate` | date `YYYY-MM-DD` | Sí | Inclusivo y dentro del año propietario (`year`) |
 | `entries[].endDate` | date `YYYY-MM-DD` | Sí | Inclusivo; para BASE puede extenderse hasta el año inmediatamente siguiente; para EXCEPTION debe ser igual a `startDate` y estar dentro del año propietario |
@@ -94,7 +94,7 @@ Headers:
 2. Valida `year`, `from`, `to` y `asOf`; un rango inválido devuelve `400` sin resultado parcial.
 3. Obtiene la revisión de `year` e instante; para una revisión explícita, usa su `effectiveAt` como instante de referencia para cargar la revisión anterior. Si no hay revisión de `year`, usa `revision: 0`; una revisión histórica explícita inexistente sí devuelve `404`.
 4. Carga también la revisión efectiva de `year - 1` al mismo instante y extrae las entradas BASE que se prolonguen a `year` como `carriedInEntries`.
-5. Combina las entradas propias y heredadas con el catálogo de 009 para incluir nombre, color y ajuste efectivo de cada temporada.
+5. Combina las entradas propias y heredadas con el catálogo de 009 para incluir nombre, color y ajuste efectivo de cada temporada. Una revisión histórica puede mostrar temporadas retiradas después de su publicación; se etiquetan con los datos del snapshot de 009.
 6. Por fecha/rango solicitado, identifica `EXCEPTION` primero, luego un único `BASE` propio o heredado; si ninguna aplica, informa `DEFAULT` y la temporada regular.
 7. Devuelve los conflictos que detecte en datos heredados con fecha/rango, entradas en conflicto y `blocking: true`; la revisión permanece visible para auditoría, pero no es consumible por el cálculo de tarifa.
 
@@ -102,7 +102,7 @@ Headers:
 
 1. Autentica y autoriza antes de procesar.
 2. Verifica año, forma del cuerpo y fechas civiles; `startDate` debe estar dentro del año propietario, `startDate <= endDate`, y una entrada BASE no puede terminar después del año siguiente. Una EXCEPTION debe ser puntual y estar dentro del año propietario.
-3. Verifica en catálogo 009 que cada `seasonId` exista y que `expectedRevision` coincida con la revisión activa.
+3. Serializa la publicación con los años vecinos, comprueba que `expectedRevision` coincida con la revisión activa y bloquea las temporadas referenciadas para verificar en el catálogo 009 que cada `seasonId` exista y no esté retirado. Mientras dura la publicación, 009 no puede retirar esas temporadas.
 4. Valida el conjunto completo junto con las entradas BASE de las revisiones efectivas de los años anterior y siguiente a `effectiveAt`: rangos BASE no pueden compartir fechas aunque pertenezcan a años distintos; EXCEPTION debe ser puntual y dos excepciones del mismo año no pueden tener la misma fecha. Una excepción sí puede coincidir con un período BASE y lo sobrescribe.
 5. Si alguna entrada/referencia/conflicto es inválido, rechaza todo el conjunto y conserva revisión activa e historial.
 6. En una única transacción, crea la nueva revisión con número monotónico, `effectiveAt` de la base de datos, actor autenticado y todas las entradas; activa la nueva y conserva la anterior como histórica.
@@ -126,7 +126,7 @@ Las revisiones rigen cálculos iniciados con `asOf >= effectiveAt`. Una cotizaci
     "seasonId": "00000000-0000-4000-8000-000000000001",
     "name": "Regular",
     "color": "#808080",
-    "adjustmentPercent": "0.00"
+    "adjustmentPercent": "-2.50"
   },
   "entries": [
     {
@@ -200,7 +200,7 @@ Todos usan `{ errorCode, message, timestamp, path }` del `ApiError` compartido [
 | 409 | `OVERLAPPING_SEASON_CALENDAR` | Dos rangos BASE de revisiones del mismo o de años vecinos comparten al menos un día | No |
 | 409 | `DUPLICATE_SEASON_EXCEPTION` | Más de una excepción para la misma fecha | No |
 | 409 | `SEASON_CALENDAR_CONFLICT` | `expectedRevision` desactualizado o carrera concurrente | No |
-| 422 | `SEASON_NOT_FOUND` | Un `seasonId` no existe en el catálogo de 009 | No |
+| 422 | `UNKNOWN_SEASON_REFERENCE` | Un `seasonId` del cuerpo no existe en el catálogo de 009 o está retirado | No |
 | 422 | `UNEXPECTED_ERROR` | Fallo inesperado al leer calendario/catálogo; el `ExceptionFilter` global registra el error con id de correlación y lo incluye en el mensaje | Sí |
 | 422 | `UNEXPECTED_ERROR` | Fallo inesperado de escritura/lectura de PostgreSQL; el `ExceptionFilter` global registra el error con id de correlación y lo incluye en el mensaje; la transacción se revirtió | Sí |
 

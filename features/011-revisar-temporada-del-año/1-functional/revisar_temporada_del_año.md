@@ -48,9 +48,9 @@ Como sistema de facturación, quiero que la revisión del calendario anual sea l
 
 ---
 
-### Historia de usuario 3 - El Administrador valida la coherencia del calendario anual antes de confirmar cambios de precios (Prioridad: P2)
+### Historia de usuario 3 - El Administrador valida y publica cambios coherentes en el calendario anual (Prioridad: P2)
 
-Como Administrador, quiero revisar el calendario de temporadas antes de actualizar o confirmar ajustes de tarifa, para asegurar que los cambios de porcentaje por temporada se aplican sobre un panorama anual consistente y sin solapamientos.
+Como Administrador, quiero revisar el calendario de temporadas y publicar cambios en sus períodos y excepciones, para asegurar que los ajustes de tarifa se aplican sobre un panorama anual consistente y sin solapamientos.
 
 **Por qué esta prioridad**: La revisión del calendario anual resulta útil antes de modificar reglas de temporada; aun cuando la operación de modificación es posible, no debería hacerse sobre un mapa de fechas ambiguo o con solapamientos que generen resultados inconsistentes.
 
@@ -68,13 +68,25 @@ Como Administrador, quiero revisar el calendario de temporadas antes de actualiz
    - **Cuando** se revisa la clasificación
    - **Entonces** el sistema informa el conflicto para corregirlo antes de usar la configuración en cálculos de tarifa
 
+3. **Escenario**: Publicación de cambios válidos
+   - **Dado** que el Administrador agrega, modifica o elimina períodos base o excepciones puntuales de un año sin generar conflictos
+   - **Cuando** publica los cambios
+   - **Entonces** el sistema activa la nueva clasificación completa del año, conserva la anterior para auditoría y registra el responsable y la vigencia del cambio
+
+4. **Escenario**: Publicación con conflictos
+   - **Dado** que los cambios del Administrador generan un solapamiento entre períodos base, dos excepciones para la misma fecha o una temporada que no existe en el catálogo
+   - **Cuando** intenta publicarlos
+   - **Entonces** el sistema rechaza la publicación completa, informa el conflicto y mantiene sin cambios la clasificación vigente
+
 ### Casos límite
 
 - Fechas sin clasificación propia en el año consultado: el sistema debe considerar primero si una temporada BASE del año anterior se prolonga hasta esa fecha; si no hay clasificación explícita propia ni heredada, debe tratarlas como temporada regular por defecto.
 - Rango de fechas inválido en la revisión del calendario: la consulta no debe aceptar una fecha de fin anterior a la fecha de inicio.
 - Solapamiento entre temporadas: el sistema debe señalar el conflicto y no asumir una prioridad implícita.
 - Duplicidad de la misma fecha en más de un período: debe rechazarse o destacarse como inconsistente antes de su uso operativo.
-- Actor distinto al Administrador intenta revisar la temporada del año: el sistema debe restringir el acceso.
+- Actor distinto al Administrador intenta revisar o modificar la temporada del año: el sistema debe restringir el acceso.
+- Dos Administradores publican cambios del mismo año casi al mismo tiempo: solo uno se activa; el otro se rechaza para que revise la clasificación vigente antes de reintentar.
+- Asignación de una temporada retirada del catálogo: el sistema debe rechazar la publicación.
 - Cambio de temporada para un período que aún no está vigente: debe quedar registrado como próximo cambio y no afectar fechas ya calculadas.
 
 ## Requisitos _(obligatorio)_
@@ -85,20 +97,22 @@ Como Administrador, quiero revisar el calendario de temporadas antes de actualiz
 - **FR-002**: El sistema DEBE representar el calendario anual con la temporada aplicada a cada fecha, usando la leyenda y los colores de las temporadas configuradas en `Temporadas y tarifas` en lugar de categorías fijas. Cuando exista una excepción puntual para una fecha, el calendario DEBE mostrarla con prioridad sobre la temporada base aplicable a esa fecha.
 - **FR-003**: El sistema DEBE considerar temporada regular por defecto cuando una fecha no tenga una clasificación explícita configurada.
 - **FR-004**: El sistema DEBE detectar conflictos de solapamiento o duplicidad en la clasificación anual y señalar la inconsistencia antes de usar la información en cálculo de tarifa.
-- **FR-005**: El sistema DEBE restringir la revisión del calendario anual exclusivamente al actor `Administrador`.
+- **FR-005**: El sistema DEBE restringir la revisión y la modificación del calendario anual exclusivamente al actor `Administrador`.
 - **FR-006**: El sistema DEBE permitir que la clasificación anual sea la referencia única para determinar la temporada aplicada por `Consultar tarifa dinámica`.
 - **FR-007**: El sistema DEBE rechazar o advertir explícitamente un rango de fechas inválido al revisar la temporada del año, sin devolver un resultado parcial.
 - **FR-008**: El sistema DEBE registrar la vigencia de los cambios de clasificación anual, para que la temporada aplicada pueda ser trazada en el tiempo.
+- **FR-009**: El sistema DEBE permitir al actor `Administrador` crear, modificar y eliminar los períodos base y las excepciones puntuales del calendario de un año, publicándolos como una clasificación completa que se valida y se activa de forma atómica. Una publicación con conflictos no DEBE activarse ni dejar cambios parciales.
+- **FR-010**: El sistema DEBE permitir asignar únicamente temporadas existentes y no retiradas del catálogo de `Temporadas y tarifas`.
 
 ### Entidades clave _(incluir si la funcionalidad maneja datos)_
 
 - **Calendario anual de temporadas**: Definición temporal de la clasificación estacional del hotel para cada fecha o rango de fechas.
-- **Temporada del año**: Etiqueta que asigna a cada fecha la categoría `alta`, `regular` o `baja`.
+- **Temporada del año**: Temporada del catálogo de `Temporadas y tarifas` asignada a una fecha (no se limita a `alta`, `regular` o `baja`). `Regular` es la predeterminada para las fechas sin clasificación.
 - **Conflicto de clasificación**: Condición en la que una fecha o rango recibe más de una temporada o presenta una configuración inconsistente.
 
 ### Reglas de negocio
 
-- **BR-001**: Solo el Administrador puede revisar la temporada del año.
+- **BR-001**: Solo el Administrador puede revisar y modificar la temporada del año.
 - **BR-002**: Las temporadas válidas y su leyenda y colores son los configurados en `Temporadas y tarifas`; no se limitan a las categorías `alta`, `regular` y `baja`. Para una fecha con una excepción puntual configurada, esta prevalece sobre la temporada base de esa fecha.
 - **BR-003**: Si una fecha no tiene una temporada configurada explícitamente, el sistema la toma como temporada regular para cálculos de tarifa.
 - **BR-004**: La clasificación anual es la fuente oficial de la temporada aplicable a cada fecha; debe ser coherente y no ambigua antes de usarse en la tarifa dinámica.
@@ -122,3 +136,4 @@ Como Administrador, quiero revisar el calendario de temporadas antes de actualiz
 - **SC-003**: El 100% de las consultas de tarifa dinámica sobre una fecha consultan la misma clasificación anual revisada por el Administrador.
 - **SC-004**: El 100% de las fechas sin clasificación explícita son tratadas como temporada regular y no generan resultados ambiguos.
 - **SC-005**: El 100% de los accesos a `Revisar temporada del año` quedan restringidos al actor `Administrador`.
+- **SC-006**: El 100% de las publicaciones con conflictos se rechazan sin modificar la clasificación vigente.

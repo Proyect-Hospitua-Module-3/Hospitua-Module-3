@@ -48,30 +48,33 @@ Como Administrador, quiero que cualquier modificación de la tarifa por temporad
 
 ---
 
-### Historia de usuario 3 - El Administrador revisa la regla vigente para confirmar que la estrategia comercial está aplicada correctamente (Prioridad: P2)
+### Historia de usuario 3 - El Administrador revisa el catálogo de temporadas y su ajuste vigente (Prioridad: P2)
 
-Como Administrador, quiero revisar la regla de ajuste configurada por temporada para cada periodo del año, para validar que la estrategia de precios esté coherente con la demanda y los objetivos del hotel.
+Como Administrador, quiero revisar las temporadas configuradas y el ajuste vigente de cada una, para validar que la estrategia de precios esté coherente con la demanda y los objetivos del hotel.
 
 **Por qué esta prioridad**: La regla de tarifa por temporada se usa por varios casos de uso y varios actores; sin una vista de revisión clara y legible, la administración puede cometer errores de configuración que luego afecten la tarifa dinámica sin darse cuenta.
 
-**Prueba independiente**: Se puede abrir la configuración de temporada del año y verificar que cada rango o fecha asociada muestre la temporada vigente y su ajuste correspondiente, sin posibilidad de confusión entre temporadas.
+**Prueba independiente**: Se puede abrir el catálogo de temporadas y verificar que cada temporada muestre su nombre, color y ajuste vigente, y que la temporada predeterminada aparezca identificada como tal, sin posibilidad de confusión entre temporadas.
+
+La asignación de temporadas a fechas y rangos del año (calendario anual, períodos y excepciones) se revisa en `Revisar temporada del año` (`revisar_temporada_del_año.md`), que usa este catálogo para mostrar el nombre, el color y el ajuste de cada período.
 
 **Escenarios de aceptación**:
 
-1. **Escenario**: Revisión de la regla activa
-   - **Dado** que existe un calendario de temporada definido para varias fechas o rangos del año
-   - **Cuando** el Administrador abre la configuración
-   - **Entonces** el sistema muestra la temporada asignada a cada período y el ajuste exacto aplicable a la tarifa base
+1. **Escenario**: Revisión del catálogo vigente
+   - **Dado** que existen varias temporadas configuradas con su ajuste
+   - **Cuando** el Administrador abre el catálogo de temporadas
+   - **Entonces** el sistema muestra cada temporada con su nombre, color y el ajuste exacto aplicable a la tarifa base
 
-2. **Escenario**: Configuración incompleta
-   - **Dado** que existen fechas sin clasificación de temporada dentro del calendario anual
-   - **Cuando** se revisa la configuración
-   - **Entonces** el sistema identifica claramente esas fechas como no clasificadas y las trata como temporada regular en la lógica de cálculo, sin ocultar la ausencia de regla
+2. **Escenario**: Temporada predeterminada identificable
+   - **Dado** que `Regular` es la temporada predeterminada
+   - **Cuando** el Administrador revisa el catálogo
+   - **Entonces** el sistema la identifica explícitamente como la temporada que se aplica a las fechas sin clasificación en el calendario anual, junto con su ajuste vigente
 
 ### Casos límite
 
-- Actualización con un ajuste negativo o fuera de rango para una temporada: el sistema debe rechazar la modificación y conservar la regla anterior.
-- Modificación concurrente por dos Administradores casi al mismo tiempo: el sistema debe garantizar una sola versión vigente de la regla, sin dejarla en un estado ambiguo.
+- Actualización con un ajuste fuera del rango permitido o con formato inválido para una temporada: el sistema debe rechazar la modificación y conservar la regla anterior. Un ajuste negativo es válido: representa un descuento sobre la tarifa base.
+- Modificación concurrente por dos Administradores casi al mismo tiempo: el sistema debe garantizar una sola versión vigente de la regla, sin dejarla en un estado ambiguo. Si un Administrador envía un cambio basado en una versión que ya fue modificada por otro, el cambio se rechaza para que revise el valor vigente antes de reintentar.
+- Eliminación de una temporada asignada en el calendario vigente: el sistema debe rechazarla e indicar que primero se retire del calendario.
 - Cambio de ajuste a un valor idéntico al ya vigente: la operación debe aceptarse como válida, pero sin generar un cambio efectivo o un historial redundante.
 - Fechas que no tienen temporada explícita configurada: el sistema debe aplicar temporada regular por defecto y no permitir que queden sin clasificación sin notificación.
 - Actor distinto al Administrador intenta modificar la regla: el sistema debe rechazar la operación.
@@ -81,8 +84,8 @@ Como Administrador, quiero revisar la regla de ajuste configurada por temporada 
 
 ### Requisitos funcionales
 
-- **FR-001**: El sistema DEBE permitir al actor `Administrador` crear temporadas con nombre y color definidos libremente, eliminarlas excepto `Regular` y modificar el ajuste aplicado a la tarifa base para cada temporada configurada. `Regular` DEBE existir como temporada por defecto y no DEBE poder eliminarse.
-- **FR-002**: El sistema DEBE validar que el porcentaje o factor de ajuste sea numérico y esté dentro de un rango comercial razonable antes de aceptarlo como vigente.
+- **FR-001**: El sistema DEBE permitir al actor `Administrador` crear temporadas con nombre y color definidos libremente, eliminarlas excepto `Regular` y modificar el ajuste aplicado a la tarifa base para cada temporada configurada. `Regular` DEBE existir como temporada por defecto y no DEBE poder eliminarse ni renombrarse. Eliminar una temporada la retira del catálogo para nuevas asignaciones, sin borrar su historial de ajustes ni las revisiones anteriores del calendario que la usaron; no se puede eliminar una temporada asignada en el calendario vigente.
+- **FR-002**: El sistema DEBE validar que el porcentaje o factor de ajuste sea numérico y esté dentro de un rango comercial razonable antes de aceptarlo como vigente. El ajuste puede ser positivo (incremento) o negativo (descuento).
 - **FR-003**: El sistema DEBE mantener una única regla vigente por temporada en cada periodo de validez, sin dejar reglas parcialmente aplicadas o contradictorias.
 - **FR-004**: El sistema DEBE registrar quién modificó la regla, cuándo y cuál era el valor anterior, para fines de trazabilidad y auditoría.
 - **FR-005**: El sistema DEBE restringir la modificación de los precios de temporada exclusivamente al actor `Administrador`.
@@ -94,7 +97,7 @@ Como Administrador, quiero revisar la regla de ajuste configurada por temporada 
 ### Entidades clave _(incluir si la funcionalidad maneja datos)_
 
 - **Regla de temporada**: Parámetro que define el ajuste (incremento, decremento o neutro) que se aplica a la tarifa base para una temporada concreta.
-- **Temporada**: Clasificación anual del calendario del hotel en baja, regular o alta, usada para determinar el sentido del ajuste del precio.
+- **Temporada**: Elemento del catálogo de temporadas del hotel, con nombre y color definidos por el Administrador (no se limita a baja, regular o alta). `Regular` es la temporada predeterminada. Su ajuste determina el sentido y la magnitud del cambio de precio.
 - **Historial de ajustes**: Registro de cada cambio de regla, con el valor anterior, el nuevo valor, el Administrador responsable y la marca temporal.
 
 ### Reglas de negocio
@@ -103,7 +106,7 @@ Como Administrador, quiero revisar la regla de ajuste configurada por temporada 
 - **BR-002**: La regla por temporada modifica el ajuste aplicado sobre la tarifa base, no la tarifa base en sí misma.
 - **BR-003**: Cuando una fecha no figura con clasificación explícita en el calendario anual, el sistema asume temporada regular para el cálculo.
 - **BR-004**: Un cambio en la regla de temporada afecta únicamente a nuevas consultas y cálculos futuros; no retroactiva resultados ya consolidados.
-- **BR-005**: Los períodos de temporadas base no pueden solaparse. Una excepción puntual prevalece sobre la temporada base para su fecha sin modificar el calendario base; si dos excepciones puntuales entran en conflicto para una misma fecha, el sistema debe rechazar la configuración. La regla vigente debe ser única por temporada y por período de vigencia.
+- **BR-005**: La regla vigente debe ser única por temporada y por período de vigencia. Las reglas sobre los períodos del calendario (no solapamiento de períodos base y precedencia de las excepciones puntuales) pertenecen a `Revisar temporada del año` (BR-005 y BR-006 de `revisar_temporada_del_año.md`).
 
 ## Requisitos no funcionales
 
