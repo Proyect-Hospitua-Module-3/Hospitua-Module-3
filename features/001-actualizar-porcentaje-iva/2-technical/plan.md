@@ -34,17 +34,21 @@ Se hereda el stack y las convenciones de `docs/plan-tecnico-base.md` (NestJS 10 
 features/001-actualizar-porcentaje-iva/
 ├── 1-functional/
 │   └── actualizar_porcentaje_iva.md   # Spec funcional (fuente de verdad de negocio)
-└── 2-technical/
-    ├── plan.md                        # Este archivo
-    └── contracts/
-        └── PUT-admin-vat-rate.md      # Contrato REST de PUT /admin/vat-rate
+├── 2-technical/
+│   ├── plan.md                        # Este archivo
+│   └── contracts/
+│       └── PUT-admin-vat-rate.md      # Contrato REST de PUT /admin/vat-rate
+├── 3-implementation/
+│   └── implementacion.md              # Mapa del código y las pruebas de 001, con el estado de cada tarea
+└── 4-testing/
+    └── TC-001-actualizar-porcentaje-iva.md  # Caso de prueba manual (plantilla docs/test-case-template.md)
 ```
 
 El contrato del puerto `GetCurrentVatRateUseCase` que consume 006 ya está documentado en `features/006-generar-factura-final/2-technical/contracts/PORT-get-current-vat-rate.md`; este plan lo implementa sin modificarlo.
 
 ### Source Code (repository root)
 
-Solo se listan los archivos propiedad de 001, dentro de la estructura por capas del plan base (`billing` como subcarpeta de cada capa).
+Solo se listan los archivos propiedad de 001, dentro de la estructura por capas del plan base. Dentro de cada capa, todo lo de 001 va en una subcarpeta `billing/` (también en `errors`, `ports`, los adaptadores y las pruebas), para que cada carpeta agrupe un solo *bounded context* cuando se sumen los demás.
 
 ```text
 src/
@@ -52,46 +56,49 @@ src/
 │   ├── model/billing/
 │   │   ├── vat-rate.ts                        # Entidad VatRate (porcentaje vigente, actualizador, fecha)
 │   │   └── vat-rate-value.vo.ts               # VO decimal exacto 0..100, máx. 2 decimales (constantes VAT_RATE_MIN / VAT_RATE_MAX)
-│   ├── errors/
+│   ├── errors/billing/
 │   │   ├── invalid-vat-rate.error.ts          # INVALID_VAT_RATE (ya definido en el plan base)
 │   │   ├── vat-rate-not-configured.error.ts   # VAT_RATE_NOT_CONFIGURED: nunca se registró un porcentaje (no reintentable)
 │   │   └── vat-rate-unavailable.error.ts      # VAT_RATE_UNAVAILABLE: la lectura falló de forma transitoria (reintentable)
 │   └── ports/
-│       ├── in/
-│       │   ├── update-vat-rate.use-case.ts        # PUT /admin/vat-rate
+│       ├── in/billing/
+│       │   ├── update-vat-rate.use-case.ts        # PUT /admin/vat-rate; define también UpdateVatRateCommand { value, actorId }
 │       │   └── get-current-vat-rate.use-case.ts   # Lectura interna: getCurrent(): Promise<VatRate>
-│       └── out/
+│       └── out/billing/
 │           └── vat-rate.repository.port.ts        # getCurrent() / saveNew(value, actorId)
 │
 ├── application/
-│   ├── services/billing/
-│   │   ├── update-vat-rate.service.ts         # Valida con el VO y delega la escritura atómica al puerto
-│   │   └── get-current-vat-rate.service.ts    # Solo lectura; falla si no hay porcentaje configurado
-│   └── dto/billing/
-│       └── update-vat-rate.command.ts         # { value: string decimal, actorId }
+│   └── services/billing/
+│       ├── update-vat-rate.service.ts         # Valida con el VO y delega la escritura atómica al puerto
+│       └── get-current-vat-rate.service.ts    # Solo lectura; falla si no hay porcentaje configurado
 │
 └── infrastructure/
-    └── adapters/
-        ├── in/http/
-        │   ├── vat-rate-admin.controller.ts   # PUT /admin/vat-rate, con @Roles("Administrador") y el RolesGuard del plan base
-        │   └── dto/update-vat-rate.dto.ts     # { value } con class-validator como primer filtro
-        └── out/persistence/
-            ├── mappers/vat-rate.mapper.ts             # Dominio <-> modelo Prisma
-            └── repositories/prisma-vat-rate.repository.ts  # Implementa el puerto: una transacción (lock + upsert + historial)
+    ├── adapters/
+    │   ├── in/http/billing/
+    │   │   ├── vat-rate-admin.controller.ts   # PUT /admin/vat-rate, con @Roles("Administrador") y el RolesGuard del plan base
+    │   │   └── dto/update-vat-rate.dto.ts     # { value } con class-validator como primer filtro
+    │   └── out/persistence/
+    │       ├── mappers/billing/vat-rate.mapper.ts                  # Dominio <-> fila de PostgreSQL
+    │       └── repositories/billing/prisma-vat-rate.repository.ts  # Implementa el puerto: una transacción (lock + upsert + historial)
+    └── config/
+        └── billing.module.ts                  # Binding puerto → adaptador; exporta GetCurrentVatRateUseCase para 006
 
 prisma/
 ├── schema.prisma                              # Modelos VatRate y VatRateHistory
 └── migrations/
-    └── <timestamp>_create_vat_rate_tables/    # vat_rate (sin fila inicial) + vat_rate_history
+    └── <timestamp>_create_auth_and_vat_rate/  # vat_rate (sin fila inicial) + vat_rate_history
 
 test/
-├── unit/domain/vat-rate-value.vo.spec.ts
-├── unit/application/update-vat-rate.service.spec.ts
-├── unit/application/get-current-vat-rate.service.spec.ts
-├── integration/persistence/prisma-vat-rate.repository.spec.ts   # incluye la prueba de concurrencia real (Testcontainers)
-├── contract/get-current-vat-rate.port.spec.ts                   # contrato con 006
-└── e2e/vat-rate.e2e-spec.ts                                     # PUT /admin/vat-rate: 200 / 400 / 401 / 403
+├── unit/domain/billing/vat-rate-value.vo.spec.ts
+├── unit/application/billing/update-vat-rate.service.spec.ts
+├── unit/application/billing/get-current-vat-rate.service.spec.ts
+├── integration/persistence/billing/prisma-vat-rate.repository.spec.ts   # incluye la prueba de concurrencia real
+├── contract/billing/get-current-vat-rate.port.spec.ts                   # contrato con 006
+├── e2e/billing/vat-rate.e2e-spec.ts                                     # PUT /admin/vat-rate: 200 / 400 / 401 / 403 / 422
+└── support/billing/in-memory-vat-rate.repository.ts                     # doble del puerto para unitarias y e2e
 ```
+
+`UpdateVatRateCommand` se define junto al puerto de entrada, en `domain/`, y no en `application/dto/`: el puerto lo usa en su firma y el dominio no puede importar de la capa de aplicación (regla 1 del plan base).
 
 **Structure Decision**: 001 vive dentro de `billing`; no crea un *bounded context* nuevo ni adaptadores salientes hacia otros módulos. Reutiliza el `ExceptionFilter` global (`domain-exception.filter.ts`) y el `RolesGuard` con el decorador `@Roles(...)` de `src/infrastructure/adapters/in/http/auth/`, definidos en el plan base (Phase 2).
 

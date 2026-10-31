@@ -159,4 +159,4 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 - **Facturas intactas**: una factura ya emitida conserva su porcentaje, su IVA y su total originales, sin recalcularse [SPEC FR-004, BR-002, SC-002].
 - **Facturas nuevas con el valor nuevo**: toda factura emitida después de una actualización aplica el nuevo porcentaje [SPEC SC-001].
 - **Sin valor supuesto**: sin un primer registro, 006 no emite facturas; nunca se usa cero ni un valor por defecto [SPEC FR-003, BR-003].
-- Un cambio en el campo `value`, en sus límites o en la forma de la respuesta requiere coordinar con el Administrador que lo usa y actualizar `test/e2e/vat-rate.e2e-spec.ts` [PLAN].
+- Un cambio en el campo `value`, en sus límites o en la forma de la respuesta requiere coordinar con el Administrador que lo usa y actualizar `test/e2e/billing/vat-rate.e2e-spec.ts` [PLAN].

@@ -1,0 +1,20 @@
+# Entorno local de Módulo 3. Por ahora solo PostgreSQL; RabbitMQ se agrega con la feature 010.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: hospitua
+      POSTGRES_PASSWORD: hospitua
+      POSTGRES_DB: modulo3
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hospitua -d modulo3']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
