@@ -6,6 +6,7 @@ import { DomainExceptionFilter } from './infrastructure/adapters/in/http/domain-
 import { AuthModule } from './infrastructure/config/auth.module';
 import { BillingModule } from './infrastructure/config/billing.module';
 import { PersistenceModule } from './infrastructure/config/persistence.module';
+import { PricingModule } from './infrastructure/config/pricing.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { PersistenceModule } from './infrastructure/config/persistence.module';
     PersistenceModule,
     AuthModule,
     BillingModule,
+    PricingModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: DomainExceptionFilter }],
 })

@@ -23,7 +23,16 @@ export interface ApiError {
 // dominio que no están aquí (p. ej. VAT_RATE_NOT_CONFIGURED, que es interno) se
 // tratan como inesperados si llegan a un controller.
 const HTTP_STATUS_BY_ERROR_CODE: Record<string, number> = {
+  // billing — 001
   INVALID_VAT_RATE: 400,
+  // pricing — 009
+  INVALID_SEASON: 400,
+  INVALID_SEASON_ADJUSTMENT: 400,
+  SEASON_NOT_FOUND: 404,
+  SEASON_NAME_CONFLICT: 409,
+  DEFAULT_SEASON_IMMUTABLE: 409,
+  SEASON_IN_USE: 409,
+  SEASON_RULE_CONFLICT: 409,
 };
 
 // Errores HTTP del framework que no son de negocio (ruta inexistente, JSON mal formado).
