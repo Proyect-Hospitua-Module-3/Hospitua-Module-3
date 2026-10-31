@@ -33,76 +33,98 @@ Los períodos base son inclusivos por fecha y no pueden solaparse. Una excepció
 features/011-revisar-temporada-del-año/
 ├── 1-functional/
 │   └── revisar_temporada_del_año.md
-└── 2-technical/
-    ├── plan.md
-    └── contracts/
-        ├── ADMIN-season-calendar.md
-        └── PORT-resolve-season-by-date.md
+├── 2-technical/
+│   ├── plan.md
+│   └── contracts/
+│       ├── ADMIN-season-calendar.md
+│       └── PORT-resolve-season-by-date.md
+├── 3-implementation/
+│   └── implementacion.md                        # Mapa de dónde quedó el código
+└── 4-testing/
+    ├── TC-011-revisar-temporada-del-año.md      # Caso de prueba manual
+    └── reset-calendario-temporadas.sql          # Deja el calendario vacío para el caso de prueba
 ```
 
 ### Source Code (repository root)
 
-Solo se listan los archivos propiedad de 011. La identidad, nombre, color y porcentaje de ajuste de la temporada son de 009; 011 almacena únicamente referencias estacionales y sus períodos.
+Solo se listan los archivos propiedad de 011, más los compartidos que 011 modifica (marcados). La identidad, nombre, color y porcentaje de ajuste de la temporada son de 009; 011 almacena únicamente referencias estacionales y sus períodos. Igual que en 001 y 009, dentro de cada capa todo va en la subcarpeta del *bounded context* (`pricing/`).
 
 ```text
 src/
 ├── domain/
 │   ├── model/pricing/
-│   │   ├── season-calendar.ts                  # Revisión anual y sus entries
+│   │   ├── season-calendar.ts                  # Revisión anual, borrador a publicar y vista de un año (resolver/inspeccionar)
 │   │   ├── season-calendar-entry.ts             # Período base o excepción puntual
+│   │   ├── calendar-date.vo.ts                  # Fecha civil del hotel (sin zona horaria)
+│   │   ├── calendar-year.vo.ts                  # Año 1..9999
 │   │   └── calendar-date-range.vo.ts            # Rango inclusivo de fechas calendario
-│   ├── errors/
-│   │   ├── invalid-calendar-year.error.ts
-│   │   ├── invalid-season-calendar-entry.error.ts
+│   ├── errors/pricing/
+│   │   ├── invalid-calendar-range.error.ts      # Único 400 del contrato (año, fechas, entradas)
 │   │   ├── overlapping-season-calendar.error.ts
 │   │   ├── duplicate-season-exception.error.ts
+│   │   ├── season-calendar-conflict.error.ts
+│   │   ├── unknown-season-reference.error.ts
 │   │   ├── season-calendar-not-found.error.ts
-│   │   └── season-calendar-unavailable.error.ts
+│   │   ├── season-calendar-inconsistent.error.ts  # Interno del puerto para 005 (sin HTTP)
+│   │   └── season-calendar-unavailable.error.ts   # Interno del puerto para 005 (sin HTTP)
 │   └── ports/
-│       ├── in/
+│       ├── in/pricing/
 │       │   ├── review-season-calendar.use-case.ts
 │       │   ├── replace-season-calendar.use-case.ts
 │       │   └── resolve-season-by-date.use-case.ts
-│       └── out/
+│       └── out/pricing/
 │           ├── season-calendar.repository.port.ts
 │           └── season-catalog-query.port.ts      # Consulta de IDs/default a 009
 │
 ├── application/
-│   ├── services/pricing/
-│   │   ├── review-season-calendar.service.ts
-│   │   ├── replace-season-calendar.service.ts
-│   │   └── resolve-season-by-date.service.ts
-│   └── dto/pricing/
-│       ├── review-season-calendar.query.ts
-│       ├── replace-season-calendar.command.ts
-│       └── resolve-season-by-date.query.ts
+│   └── services/pricing/
+│       ├── review-season-calendar.service.ts
+│       ├── replace-season-calendar.service.ts
+│       ├── resolve-season-by-date.service.ts
+│       └── season-catalog-lookup.ts             # Índice por id del snapshot de 009
 │
 └── infrastructure/
     ├── adapters/
     │   ├── in/http/
-    │   │   └── season-admin.controller.ts       # Compartido con 009: 011 aporta las rutas /admin/season-calendar
-    │   └── out/persistence/
-    │       ├── mappers/season-calendar.mapper.ts
-    │       └── repositories/prisma-season-calendar.repository.ts
+    │   │   ├── domain-exception.filter.ts       # Compartido: 011 agrega sus errorCode
+    │   │   └── pricing/
+    │   │       ├── season-admin.controller.ts   # Compartido con 009: 011 aporta las rutas /admin/season-calendar
+    │   │       └── dto/season-calendar.dto.ts
+    │   └── out/
+    │       ├── catalog/season-rules-catalog.adapter.ts   # SeasonCatalogQueryPort → puerto de 009
+    │       └── persistence/
+    │           ├── mappers/pricing/season-calendar.mapper.ts
+    │           └── repositories/pricing/prisma-season-calendar.repository.ts  # También implementa SeasonCalendarReferencePort de 009
     └── config/
-        └── pricing.module.ts
+        └── pricing.module.ts                    # Compartido con 009
 
 prisma/
-├── schema.prisma                                # SeasonCalendarRevision, SeasonCalendarEntry
+├── schema.prisma                                # Compartido: SeasonCalendarRevision, SeasonCalendarEntry, SeasonCalendarActiveBase
 └── migrations/
-    └── <timestamp>_season_calendar/
+    └── 20261031120000_season_calendar/
         └── migration.sql
 
 test/
 ├── unit/
-│   ├── domain/pricing/season-calendar-entry.spec.ts
-│   └── application/pricing/season-calendar.service.spec.ts
+│   ├── domain/pricing/
+│   │   ├── calendar-date-range.vo.spec.ts
+│   │   ├── season-calendar-entry.spec.ts
+│   │   └── season-calendar.spec.ts
+│   └── application/pricing/
+│       ├── review-season-calendar.service.spec.ts
+│       ├── replace-season-calendar.service.spec.ts
+│       └── resolve-season-by-date.service.spec.ts
+├── contract/
+│   └── pricing/resolve-season-by-date.contract.spec.ts
 ├── integration/
 │   └── persistence/pricing/prisma-season-calendar.repository.spec.ts
 ├── e2e/
 │   └── pricing/season-calendar.e2e-spec.ts
-└── contract/
-    └── pricing/resolve-season-by-date.contract.spec.ts
+└── support/
+    ├── pricing/
+    │   ├── in-memory-season-calendar.repository.ts
+    │   └── fake-season-catalog.ts
+    └── database/pricing-test-database-lock.ts   # Compartido con 009: las suites de integración se turnan
 ```
 
 **Structure Decision**: Se reutiliza el bounded context `pricing` y el modelo hexagonal del plan base. El controller solo aplica autorización/validación de transporte; dominio/aplicación validan y resuelven la clasificación, y Prisma implementa los puertos. 011 no llama a Módulo 1/2 ni modifica reglas de precios de 009.
@@ -144,7 +166,7 @@ La hora de publicación y las fechas civiles se manejan por separado: `effective
 |---|---|---|
 | `season_calendar_revision` | `id`, `year`, `revision`, `effective_at`, `changed_by`, `changed_at`, `is_active` | `UNIQUE(year, revision)`; máximo una activa por año; versiones publicadas inmutables |
 | `season_calendar_entry` | `id`, `revision_id`, `season_id`, `kind`, `start_date`, `end_date` | FK a revisión y season; `start_date <= end_date`; `start_date` pertenece al año de la revisión; `BASE` termina como máximo el año siguiente; excepción de un solo día dentro del año propietario; índice único parcial `(revision_id, start_date) WHERE kind = 'EXCEPTION'` |
-| `season_calendar_active_base` | `entry_id` (PK, FK a `season_calendar_entry`), `year`, `period daterange` | Proyección de los períodos `BASE` de las revisiones **activas** de todos los años. `period = daterange(start_date, end_date + 1, '[)')`. `EXCLUDE USING gist (period WITH &&)` impide cualquier solapamiento entre años. Solo la escribe la publicación de 011 |
+| `season_calendar_active_base` | `calendar_entry_id` (PK, FK a `season_calendar_entry`), `year`, `period daterange` | Proyección de los períodos `BASE` de las revisiones **activas** de todos los años. `period = daterange(start_date, end_date + 1, '[)')`. `EXCLUDE USING gist (period WITH &&)` impide cualquier solapamiento entre años. Solo la escribe la publicación de 011 |
 
 **Publicación del año `N`** (una sola transacción):
 
@@ -336,3 +358,19 @@ Se usa `UNKNOWN_SEASON_REFERENCE` y no `SEASON_NOT_FOUND` porque este último es
 - Solapamiento excepción-base es intencional (la excepción prevalece); solapamiento base-base o excepción-excepción no es resoluble y se rechaza antes de activar.
 - Una consulta administrativa puede mostrar huecos como default regular; una referencia rota o conflicto real no se disfraza como default.
 - Publicar una revisión no cambia las tarifas ya consultadas, cotizaciones existentes, liquidaciones ni facturas; solo los cálculos futuros observan la revisión efectiva para su `asOf`.
+
+### Decisiones de implementación (por confirmar con el equipo)
+
+Tomadas al implementar; el detalle y dónde se prueban está en [`3-implementation/implementacion.md`](../3-implementation/implementacion.md).
+
+- **Un solo error de validación**: el contrato tiene un único `400` (`INVALID_CALENDAR_RANGE`), así que en lugar de `invalid-calendar-year.error.ts` e `invalid-season-calendar-entry.error.ts` hay un único `InvalidCalendarRangeError`. Los errores de forma del cuerpo o la query (campos de más, tipos incorrectos, `name`/`color`/`adjustmentPercent` en una entrada) también responden ese código.
+- **`expectedRevision: 0` equivale a `null`**: los dos significan "el año aún no tiene revisión", porque `GET` informa `revision: 0` en ese caso y el cliente puede reenviar ese valor tal cual.
+- **`effectiveAt` truncado a milisegundos**: la hora de la base se guarda sin microsegundos para que el `effectiveAt` que recibe el cliente sirva tal cual como `asOf` (JavaScript no maneja microsegundos).
+- **Ventana**: `unclassifiedRanges` y los conflictos por fecha se recortan a la ventana `from`/`to` consultada.
+- **Resolución estricta**: si dos `BASE` cubren la misma fecha, `ResolveSeasonByDateUseCase` falla con `SEASON_CALENDAR_INCONSISTENT` aunque esa fecha tenga una excepción que los taparía; un calendario corrupto no se usa para cobrar.
+- **Identidad de las entradas**: cada fila de `season_calendar_entry` tiene su propio `id` (lo usa la proyección `season_calendar_active_base`) y además el `entry_id` estable que ve el cliente, que se conserva entre revisiones si se reenvía.
+- **La lectura espera a las publicaciones en curso**: la publicación fija `effective_at` antes de confirmar, así que una lectura con un `asOf` posterior podría no ver una revisión que otra lectura con el mismo `asOf`, un momento después, sí vería; 005 mezclaría revisiones entre las noches de una consulta. Por eso la lectura toma `pg_advisory_xact_lock_shared` sobre los mismos años antes de leer: espera solo a las publicaciones en curso de esos años, nunca a otras lecturas.
+- **`CalendarDateRange` propio**: el `DateRange` compartido del plan base (T006 base) todavía no existe; 011 usa su propio rango de fechas civiles dentro de `pricing`.
+- **Respuesta del `PUT`**: devuelve la misma forma que el `GET` (incluye `asOf`, igual a `effectiveAt`, y `defaultSeason`).
+- **Sin carpeta `application/dto/`**: las consultas y comandos son tipos declarados junto a cada puerto de entrada, como en 009.
+- **Pruebas de integración**: igual que 001 y 009, usan una base ya migrada en `TEST_DATABASE_URL` (no Testcontainers) y se omiten sin esa variable.

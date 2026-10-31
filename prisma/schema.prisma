@@ -74,8 +74,9 @@ model Season {
   updatedAt  DateTime  @map("updated_at") @db.Timestamptz(6)
   updatedBy  String    @map("updated_by") @db.Uuid
 
-  rules   SeasonRule[]
-  history SeasonRuleHistory[]
+  rules           SeasonRule[]
+  history         SeasonRuleHistory[]
+  calendarEntries SeasonCalendarEntry[] // 011: entradas del calendario que la asignan
 
   @@map("season")
 }
@@ -120,4 +121,62 @@ model SeasonRuleHistory {
 
   @@index([seasonId])
   @@map("season_rule_history")
+}
+
+// ---------------------------------------------------------------------------
+// pricing — 011 Revisar temporada del año
+// CHECK, índices parciales y la restricción de exclusión: SQL manual en la migración.
+// ---------------------------------------------------------------------------
+
+// Revisión anual del calendario: inmutable una vez publicada; una sola activa por año.
+model SeasonCalendarRevision {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  year        Int
+  revision    Int
+  effectiveAt DateTime @map("effective_at") @db.Timestamptz(6)
+  isActive    Boolean  @map("is_active")
+  changedBy   String   @map("changed_by") @db.Uuid
+  changedAt   DateTime @map("changed_at") @db.Timestamptz(6)
+
+  entries SeasonCalendarEntry[]
+
+  @@unique([year, revision])
+  // Destino de la FK compuesta de season_calendar_entry: obliga a que cada entrada
+  // repita el año de su revisión, para poder validarlo con CHECK.
+  @@unique([id, year])
+  @@map("season_calendar_revision")
+}
+
+// Período BASE o excepción puntual de una revisión. Solo guarda el seasonId; nombre,
+// color y ajuste son del catálogo de 009.
+model SeasonCalendarEntry {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  revisionId String   @map("revision_id") @db.Uuid
+  year       Int // año propietario: el de la revisión
+  entryId    String   @map("entry_id") @db.Uuid // identidad estable entre revisiones
+  seasonId   String   @map("season_id") @db.Uuid
+  kind       String
+  startDate  DateTime @map("start_date") @db.Date
+  endDate    DateTime @map("end_date") @db.Date
+
+  revision   SeasonCalendarRevision    @relation(fields: [revisionId, year], references: [id, year])
+  season     Season                    @relation(fields: [seasonId], references: [id])
+  activeBase SeasonCalendarActiveBase?
+
+  @@unique([revisionId, entryId])
+  @@index([seasonId])
+  @@map("season_calendar_entry")
+}
+
+// Proyección de los períodos BASE de las revisiones ACTIVAS de todos los años. Existe
+// para la restricción de exclusión que impide solapes BASE entre años (plan 011).
+model SeasonCalendarActiveBase {
+  calendarEntryId String                   @id @map("calendar_entry_id") @db.Uuid
+  year            Int
+  period          Unsupported("daterange")
+
+  entry SeasonCalendarEntry @relation(fields: [calendarEntryId], references: [id])
+
+  @@index([year])
+  @@map("season_calendar_active_base")
 }
