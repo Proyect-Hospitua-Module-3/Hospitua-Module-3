@@ -1,0 +1,56 @@
+// Modelos y mapeo de tablas de Módulo 3 (plan técnico base).
+// Las restricciones CHECK no las genera Prisma: se agregan como SQL manual en las migraciones.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Login propio (transversal). Los usuarios se crean por seed.
+// ---------------------------------------------------------------------------
+
+enum AppUserRole {
+  Administrador
+  OTA
+}
+
+model AppUser {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username     String      @unique
+  passwordHash String      @map("password_hash")
+  role         AppUserRole
+  otaId        String?     @map("ota_id")
+  active       Boolean     @default(true)
+
+  @@map("app_user")
+}
+
+// ---------------------------------------------------------------------------
+// billing — 001 Actualizar porcentaje de IVA
+// ---------------------------------------------------------------------------
+
+// Fila única (id = 1). Vacía hasta que el Administrador registra el primer porcentaje.
+model VatRate {
+  id        Int      @id
+  value     Decimal  @db.Decimal(5, 2)
+  updatedBy String   @map("updated_by") @db.Uuid
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@map("vat_rate")
+}
+
+// Insert-only: una entrada por cada actualización exitosa.
+model VatRateHistory {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  valueBefore Decimal? @map("value_before") @db.Decimal(5, 2)
+  valueAfter  Decimal  @map("value_after") @db.Decimal(5, 2)
+  changedBy   String   @map("changed_by") @db.Uuid
+  changedAt   DateTime @default(now()) @map("changed_at") @db.Timestamptz(6)
+
+  @@map("vat_rate_history")
+}
