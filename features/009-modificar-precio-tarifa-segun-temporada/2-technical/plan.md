@@ -33,54 +33,64 @@ El ajuste se representa como **porcentaje firmado**, acordado para este plan: `+
 features/009-modificar-precio-tarifa-segun-temporada/
 ├── 1-functional/
 │   └── modificar_precio_tarifa_segun_temporada.md
-└── 2-technical/
-    ├── plan.md
-    └── contracts/
-        ├── ADMIN-season-rules.md
-        └── PORT-get-season-rules.md
+├── 2-technical/
+│   ├── plan.md
+│   └── contracts/
+│       ├── ADMIN-season-rules.md
+│       └── PORT-get-season-rules.md
+├── 3-implementation/
+│   └── implementacion.md              # Mapa del código y las pruebas de 009, con el estado de cada tarea
+└── 4-testing/
+    └── TC-009-modificar-precio-tarifa-segun-temporada.md  # Caso de prueba manual (plantilla docs/test-case-template.md)
 ```
 
 ### Source Code (repository root)
 
-Solo se listan los archivos propiedad de 009. El calendario y los adaptadores existentes de tarifas/cotizaciones permanecen a cargo de 011 y 005 respectivamente.
+Solo se listan los archivos propiedad de 009. Igual que en 001, dentro de cada capa todo va en una subcarpeta del *bounded context* (`pricing/`). El calendario y los adaptadores existentes de tarifas/cotizaciones permanecen a cargo de 011 y 005 respectivamente.
 
 ```text
 src/
 ├── domain/
 │   ├── model/pricing/
-│   │   ├── season.ts                         # Temporada configurable; identidad estable del default
+│   │   ├── season.ts                         # Temporada + regla vigente; decide cambios (planChange) y retiros
 │   │   ├── season-adjustment-percent.vo.ts   # Decimal firmado -100..100; sin neutralización por nombre de temporada
-│   │   └── season-rule.ts                    # Regla temporal vigente e inmutable por versión
-│   ├── errors/
+│   │   ├── season-name.vo.ts                 # Nombre sin espacios exteriores; unicidad sin distinguir mayúsculas
+│   │   ├── season-color.vo.ts                # #RRGGBB, guardado en mayúsculas
+│   │   └── season-rule.ts                    # Versión del ajuste, inmutable
+│   ├── errors/pricing/
 │   │   ├── invalid-season.error.ts
 │   │   ├── invalid-season-adjustment.error.ts
+│   │   ├── season-not-found.error.ts
+│   │   ├── season-name-conflict.error.ts
 │   │   ├── default-season-immutable.error.ts
 │   │   ├── season-in-use.error.ts
-│   │   └── season-rule-conflict.error.ts
+│   │   ├── season-rule-conflict.error.ts
+│   │   ├── season-rules-unavailable.error.ts       # Interno del puerto (no es HTTP)
+│   │   └── season-catalog-inconsistent.error.ts    # Interno del puerto (no es HTTP)
 │   └── ports/
-│       ├── in/
-│       │   ├── modify-season-rule.use-case.ts
+│       ├── in/pricing/
+│       │   ├── modify-season-rule.use-case.ts      # Define también los comandos Create/Update/RetireSeasonCommand
 │       │   └── get-effective-season-rules.use-case.ts
-│       └── out/
+│       └── out/pricing/
 │           ├── season-rule.repository.port.ts
 │           └── season-calendar-reference.port.ts  # Solo consulta de referencias de 011 para validar borrado
 │
 ├── application/
-│   ├── services/pricing/
-│   │   ├── modify-season-rule.service.ts
-│   │   └── get-effective-season-rules.service.ts
-│   └── dto/pricing/
-│       ├── create-season.command.ts
-│       ├── update-season-rule.command.ts
-│       └── effective-season-rules.query.ts
+│   └── services/pricing/
+│       ├── modify-season-rule.service.ts
+│       └── get-effective-season-rules.service.ts
 │
 └── infrastructure/
     ├── adapters/
-    │   ├── in/http/
-    │   │   └── season-admin.controller.ts      # Compartido con 011: rutas /admin/season-rules (009) y /admin/season-calendar (011)
-    │   └── out/persistence/
-    │       ├── mappers/season-rule.mapper.ts
-    │       └── repositories/prisma-season-rule.repository.ts
+    │   ├── in/http/pricing/
+    │   │   ├── season-admin.controller.ts      # Compartido con 011: rutas /admin/season-rules (009) y /admin/season-calendar (011)
+    │   │   └── dto/season.dto.ts
+    │   └── out/
+    │       ├── persistence/
+    │       │   ├── mappers/pricing/season.mapper.ts
+    │       │   └── repositories/pricing/prisma-season-rule.repository.ts
+    │       └── calendar/
+    │           └── pending-season-calendar-reference.adapter.ts  # PROVISIONAL hasta 011: responde "no está en uso"
     └── config/
         └── pricing.module.ts
 
@@ -88,19 +98,28 @@ prisma/
 ├── schema.prisma                              # Season, SeasonRule, SeasonRuleHistory
 └── migrations/
     └── <timestamp>_manage_season_rules/
-        └── migration.sql
+        └── migration.sql                      # Incluye índices parciales, exclusión de rangos, CHECK y la temporada Regular
 
 test/
 ├── unit/
 │   ├── domain/pricing/season-adjustment-percent.vo.spec.ts
-│   └── application/pricing/modify-season-rule.service.spec.ts
+│   ├── domain/pricing/season-name-color.vo.spec.ts
+│   ├── domain/pricing/season.spec.ts
+│   ├── application/pricing/modify-season-rule.service.spec.ts
+│   └── application/pricing/get-effective-season-rules.service.spec.ts
 ├── integration/
 │   └── persistence/pricing/prisma-season-rule.repository.spec.ts
 ├── e2e/
 │   └── pricing/season-admin.e2e-spec.ts
-└── contract/
-    └── pricing/effective-season-rules.contract.spec.ts
+├── contract/
+│   └── pricing/effective-season-rules.contract.spec.ts
+└── support/
+    └── pricing/in-memory-season-rule.repository.ts       # Doble del puerto para unitarias y e2e
 ```
+
+Los comandos se definen junto al puerto de entrada, en `domain/`, y no en `application/dto/`: el puerto los usa en su firma y el dominio no puede importar de la capa de aplicación (regla 1 del plan base). Mismo criterio que 001.
+
+**Transacciones sin lógica en SQL**: `modify` y `retire` del repositorio bloquean la temporada y le entregan el estado actual a una función del dominio (`Season.planChange`, `Season.assertCanBeRetired` y la consulta al calendario), que decide; el repositorio aplica la decisión en la misma transacción. La temporada se bloquea **sola** y su regla vigente se lee en una sentencia posterior: si se bloqueara con un `JOIN` a `season_rule`, quien espera el bloqueo recibiría una regla ya cerrada y solaparía versiones (lo detectó la restricción de exclusión en las pruebas de concurrencia).
 
 **Structure Decision**: se reutiliza el bounded context `pricing` y la arquitectura hexagonal del plan base. El controller REST valida autenticación/rol y mapea request/response; las reglas de negocio y la coordinación de transacciones viven en aplicación/dominio. PostgreSQL/Prisma solo aparecen en los adaptadores.
 

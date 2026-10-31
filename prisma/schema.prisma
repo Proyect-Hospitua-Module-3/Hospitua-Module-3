@@ -54,3 +54,70 @@ model VatRateHistory {
 
   @@map("vat_rate_history")
 }
+
+// ---------------------------------------------------------------------------
+// pricing — 009 Modificar precio tarifa según temporada
+// Índices parciales, exclusión de rangos y CHECK: SQL manual en la migración.
+// ---------------------------------------------------------------------------
+
+// Catálogo de temporadas. Retiro lógico (archived_at): nunca se borra una fila.
+model Season {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  color      String    @db.Char(7)
+  isDefault  Boolean   @default(false) @map("is_default")
+  version    Int       @default(1)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(6)
+  archivedBy String?   @map("archived_by") @db.Uuid
+  createdAt  DateTime  @map("created_at") @db.Timestamptz(6)
+  createdBy  String    @map("created_by") @db.Uuid
+  updatedAt  DateTime  @map("updated_at") @db.Timestamptz(6)
+  updatedBy  String    @map("updated_by") @db.Uuid
+
+  rules   SeasonRule[]
+  history SeasonRuleHistory[]
+
+  @@map("season")
+}
+
+// Versiones del ajuste de cada temporada; valid_to nulo solo en la vigente.
+model SeasonRule {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seasonId          String    @map("season_id") @db.Uuid
+  adjustmentPercent Decimal   @map("adjustment_percent") @db.Decimal(5, 2)
+  validFrom         DateTime  @map("valid_from") @db.Timestamptz(6)
+  validTo           DateTime? @map("valid_to") @db.Timestamptz(6)
+  createdAt         DateTime  @map("created_at") @db.Timestamptz(6)
+  createdBy         String    @map("created_by") @db.Uuid
+
+  season          Season              @relation(fields: [seasonId], references: [id])
+  historyAsBefore SeasonRuleHistory[] @relation("PreviousRule")
+  historyAsAfter  SeasonRuleHistory[] @relation("NewRule")
+
+  @@index([seasonId])
+  @@map("season_rule")
+}
+
+// Auditoría append-only de cada cambio efectivo: CREATE, UPDATE o RETIRE (FR-004).
+model SeasonRuleHistory {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seasonId           String   @map("season_id") @db.Uuid
+  changeType         String   @map("change_type")
+  previousRuleId     String?  @map("previous_rule_id") @db.Uuid
+  newRuleId          String?  @map("new_rule_id") @db.Uuid
+  previousAdjustment Decimal? @map("previous_adjustment") @db.Decimal(5, 2)
+  newAdjustment      Decimal? @map("new_adjustment") @db.Decimal(5, 2)
+  previousName       String?  @map("previous_name")
+  newName            String?  @map("new_name")
+  previousColor      String?  @map("previous_color") @db.Char(7)
+  newColor           String?  @map("new_color") @db.Char(7)
+  changedBy          String   @map("changed_by") @db.Uuid
+  changedAt          DateTime @map("changed_at") @db.Timestamptz(6)
+
+  season       Season      @relation(fields: [seasonId], references: [id])
+  previousRule SeasonRule? @relation("PreviousRule", fields: [previousRuleId], references: [id])
+  newRule      SeasonRule? @relation("NewRule", fields: [newRuleId], references: [id])
+
+  @@index([seasonId])
+  @@map("season_rule_history")
+}
