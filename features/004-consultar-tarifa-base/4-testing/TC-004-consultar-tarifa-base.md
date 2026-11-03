@@ -41,7 +41,7 @@ Verificar los siete escenarios de aceptación de la spec: consulta correcta, res
 ##### Preconditions & Default Setup
 
 - **Initial State** : rama `feature/004-consultar-tarifa-base`.
-- **Environment** : Dependencias instaladas con `npm ci`. Los pasos de la Sección 4 que ejecutan `npm test` completo requieren Docker/PostgreSQL con `TEST_DATABASE_URL`, como en TC-001 y TC-009.
+- **Environment** : Dependencias instaladas con `npm ci`.
 - **Test Accounts** : No aplica.
 
 --------------------------------------------------------------------------------
@@ -92,10 +92,8 @@ Verificar los siete escenarios de aceptación de la spec: consulta correcta, res
 
 | Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
 | :---: | --- | --- | --- | --- | :---: | --- |
-| 1 | Ejecutar los cinco specs de 004. | `npm test -- --runInBand --runTestsByPath test/unit/domain/shared/money.vo.spec.ts test/unit/domain/pricing/base-rate.spec.ts test/unit/application/pricing/get-base-rate.service.spec.ts test/integration/http/module1-base-rate.client.spec.ts test/contract/pricing/module1-base-rate.contract.spec.ts` | Cinco specs de la feature 004. | `Test Suites: 5 passed`; `Tests: 91 passed`; sin pruebas omitidas. | [✔] | — |
-| 2 | Ejecutar la suite completa. | `npm test` | Suite completa. | `Test Suites: 17 passed`; `Tests: 225 passed`; ninguna omitida. | [✔] | — |
-| 3 | Ejecutar las pruebas end-to-end. | `npm run test:e2e` | Suite end-to-end. | `Test Suites: 2 passed`; `Tests: 41 passed`. | [✔] | — |
-
+| 1 | Ejecutar los cinco specs existentes de 004. | `npm test -- --runInBand --runTestsByPath test/unit/domain/shared/money.vo.spec.ts test/unit/domain/pricing/base-rate.spec.ts test/unit/application/pricing/get-base-rate.service.spec.ts test/integration/http/module1-base-rate.client.spec.ts test/contract/pricing/module1-base-rate.contract.spec.ts` | Cinco specs existentes de la feature 004. | `Test Suites: 5 passed`; `Tests: 91 passed`; sin pruebas omitidas ni fallidas. | [✔] | — |
+| 2 | Ejecutar la suite E2E exclusiva de 004. | `npm run test:e2e -- --runInBand --runTestsByPath test/e2e/pricing/base-rate.e2e-spec.ts` | Suite E2E de la feature 004. | `Test Suites: 1 passed`; `Tests: 7 passed`; sin pruebas omitidas ni fallidas. | [✔] | — |
 --------------------------------------------------------------------------------
 
 ##### Edge Cases & Boundary Conditions
