@@ -1,7 +1,7 @@
 // Feature 009 · Modificar precio tarifa según temporada
 // Repositorio real contra PostgreSQL (T016, T023, T031, T037). Necesita una base ya migrada
 // en TEST_DATABASE_URL; sin esa variable estas pruebas se omiten.
-// ¡Borra y recrea el catálogo de temporadas de esa base!
+// ¡Borra y recrea el catálogo de temporadas de esa base (y el calendario de 011, que lo referencia)!
 import { DefaultSeasonImmutableError } from '../../../../src/domain/errors/pricing/default-season-immutable.error';
 import { SeasonNameConflictError } from '../../../../src/domain/errors/pricing/season-name-conflict.error';
 import { SeasonNotFoundError } from '../../../../src/domain/errors/pricing/season-not-found.error';
@@ -12,6 +12,10 @@ import { SeasonColor } from '../../../../src/domain/model/pricing/season-color.v
 import { SeasonName } from '../../../../src/domain/model/pricing/season-name.vo';
 import { PrismaService } from '../../../../src/infrastructure/adapters/out/persistence/prisma.service';
 import { PrismaSeasonRuleRepository } from '../../../../src/infrastructure/adapters/out/persistence/repositories/pricing/prisma-season-rule.repository';
+import {
+  lockPricingTestDatabase,
+  PRICING_TEST_LOCK_TIMEOUT_MS,
+} from '../../../support/database/pricing-test-database-lock';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const describeWithDatabase = TEST_DATABASE_URL ? describe : describe.skip;
@@ -25,16 +29,23 @@ const adjust = (value: string) => (current: Season) =>
 describeWithDatabase('PrismaSeasonRuleRepository (PostgreSQL real)', () => {
   let prisma: PrismaService;
   let repository: PrismaSeasonRuleRepository;
+  let unlockDatabase: () => Promise<void>;
 
   beforeAll(async () => {
+    // La suite de 011 borra las mismas tablas: se turnan.
+    unlockDatabase = await lockPricingTestDatabase(TEST_DATABASE_URL!);
     process.env.DATABASE_URL = TEST_DATABASE_URL;
     prisma = new PrismaService();
     await prisma.$connect();
     repository = new PrismaSeasonRuleRepository(prisma);
-  });
+  }, PRICING_TEST_LOCK_TIMEOUT_MS);
 
   // Deja el catálogo como recién migrado: solo Regular, igual que la migración.
   beforeEach(async () => {
+    // El calendario de 011 referencia temporadas: se borra primero.
+    await prisma.$executeRaw`DELETE FROM season_calendar_active_base`;
+    await prisma.$executeRaw`DELETE FROM season_calendar_entry`;
+    await prisma.$executeRaw`DELETE FROM season_calendar_revision`;
     await prisma.$executeRaw`DELETE FROM season_rule_history`;
     await prisma.$executeRaw`DELETE FROM season_rule`;
     await prisma.$executeRaw`DELETE FROM season`;
@@ -48,7 +59,8 @@ describeWithDatabase('PrismaSeasonRuleRepository (PostgreSQL real)', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await prisma?.$disconnect();
+    await unlockDatabase?.();
   });
 
   function newSeason(name: string, adjustment = '20') {
