@@ -41,17 +41,17 @@ features/004-consultar-tarifa-base/
 src/
 ├── domain/
 │   ├── model/
-│   │   ├── shared/money.vo.ts (reutilizado del Plan Base)
+│   │   ├── shared/money.vo.ts (creado por 004 y reutilizable por otras features)
 │   │   └── pricing/base-rate.ts
-│   ├── errors/
+│   ├── errors/pricing/
 │   │   ├── room-not-found.error.ts
 │   │   ├── invalid-base-rate.error.ts
 │   │   ├── invalid-base-rate-query.error.ts
 │   │   ├── malformed-base-rate-response.error.ts
 │   │   └── module1-unavailable.error.ts
 │   └── ports/
-│       ├── in/get-base-rate.use-case.ts
-│       └── out/base-rate.client.port.ts
+│       ├── in/pricing/get-base-rate.use-case.ts
+│       └── out/pricing/base-rate.client.port.ts
 ├── application/
 │   └── services/pricing/get-base-rate.service.ts
 └── infrastructure/
@@ -61,9 +61,11 @@ src/
 test/
 ├── unit/
 │   ├── domain/pricing/base-rate.spec.ts
+│   ├── domain/shared/money.vo.spec.ts
 │   └── application/pricing/get-base-rate.service.spec.ts
 ├── integration/http/module1-base-rate.client.spec.ts
-└── contract/pricing/module1-base-rate.contract.spec.ts
+├── contract/pricing/module1-base-rate.contract.spec.ts
+└── support/pricing/module1-http-fixture.ts
 ```
 
 **Structure Decision**: Se usa la estructura por capas del plan base con `pricing` como subcarpeta. No hay controllers ni consumers: `pricing.module.ts` exporta `GetBaseRateUseCase` para los servicios de la feature 005.
@@ -88,7 +90,7 @@ interface BaseRateClientPort {
 
 ### Adaptador HTTP
 
-El adaptador implementa la petición del contrato `CLIENT-get-base-rate.md`. Inserta el `roomId`, ya validado como UUID, en la ruta sin transformarlo. Si `baseRate` es texto decimal con valor menor o igual a cero, lanza `InvalidBaseRateError`; este error no cuenta como fallo del circuit breaker y se traduce a `INVALID_BASE_RATE`. La estructura inválida, el cuerpo no JSON, los campos ausentes, el tipo incorrecto, `baseRate` como número JSON o no decimal, la moneda distinta de COP y el eco discordante de `roomId` o `date` lanzan `MalformedBaseRateResponseError`; este error cuenta como fallo del circuit breaker y se traduce a `MODULE1_UNAVAILABLE`. Un `404` con cuerpo `ApiError` y `errorCode` `ROOM_NOT_FOUND` lanza `RoomNotFoundError`, no cuenta como fallo del circuit breaker y se traduce a `ROOM_NOT_FOUND`. Un `404` sin ese cuerpo, cualquier otro `4xx`, el timeout, los `5xx`, los errores de red y el circuito abierto lanzan `Module1UnavailableError`, cuentan como fallo del circuit breaker y se traducen a `MODULE1_UNAVAILABLE`. El timeout es de 500 ms y el circuit breaker opossum se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s. Los campos adicionales del cuerpo se ignoran. El adaptador no persiste ni cachea datos.
+El adaptador implementa la petición del contrato `CLIENT-get-base-rate.md`. Inserta el `roomId`, ya validado como UUID, en la ruta sin transformarlo. El formato decimal admite un signo - opcional y no admite +. Si `baseRate` es texto decimal con valor menor o igual a cero, lanza `InvalidBaseRateError`; este error no cuenta como fallo del circuit breaker y se traduce a `INVALID_BASE_RATE`. Un `baseRate` decimal con más de 2 decimales significativos se trata como respuesta malformada (`MODULE1_UNAVAILABLE`, cuenta como fallo del circuit breaker). La estructura inválida, el cuerpo no JSON, los campos ausentes, el tipo incorrecto, `baseRate` como número JSON o no decimal, la moneda distinta de COP y el eco discordante de `roomId` o `date` lanzan `MalformedBaseRateResponseError`; este error cuenta como fallo del circuit breaker y se traduce a `MODULE1_UNAVAILABLE`. Un `404` con cuerpo `ApiError` y `errorCode` `ROOM_NOT_FOUND` lanza `RoomNotFoundError`, no cuenta como fallo del circuit breaker y se traduce a `ROOM_NOT_FOUND`. Un `404` sin ese cuerpo, cualquier otro `4xx`, el timeout, los `5xx`, los errores de red y el circuito abierto lanzan `Module1UnavailableError`, cuentan como fallo del circuit breaker y se traducen a `MODULE1_UNAVAILABLE`. El timeout es de 500 ms y el circuit breaker opossum se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s. Los campos adicionales del cuerpo se ignoran. El adaptador no persiste ni cachea datos.
 
 ### Errores
 
@@ -106,14 +108,14 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 
 **Purpose**: Crear la estructura `pricing` y configurar el módulo NestJS conforme al Plan Base.
 
-- [ ] T001 [P] Crear la estructura `pricing` y configurar el módulo NestJS conforme al Plan Base.
+- [x] T001 [P] Crear la estructura `pricing` y configurar el módulo NestJS conforme al Plan Base.
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
 **Purpose**: Definir el puerto, el modelo y los errores requeridos para la consulta de tarifa base.
 
-- [ ] T002 [P] Definir `BaseRateClientPort`, el modelo `BaseRate` y los errores de dominio `InvalidBaseRateQueryError`, `RoomNotFoundError`, `InvalidBaseRateError` y `MalformedBaseRateResponseError`.
-- [ ] T003 Registrar el adaptador HTTP en `pricing.module.ts`; configurar `MODULE1_BASE_URL` y `MODULE1_TIMEOUT_MS=500` en `.env.example` y en el módulo de configuración; agregar `@nestjs/axios` y `opossum` a las dependencias del proyecto si aún no están.
+- [x] T002 [P] Definir `BaseRateClientPort`, el modelo `BaseRate` y los errores de dominio `InvalidBaseRateQueryError`, `RoomNotFoundError`, `InvalidBaseRateError` y `MalformedBaseRateResponseError`.
+- [x] T003 Registrar el adaptador HTTP en `pricing.module.ts`; configurar `MODULE1_BASE_URL` y `MODULE1_TIMEOUT_MS=500` en `.env.example` y en el módulo de configuración; agregar `@nestjs/axios` y `opossum` a las dependencias del proyecto si aún no están.
 
 **Checkpoint**: El puerto, el modelo, los errores y el adaptador HTTP están definidos para implementar las historias.
 
@@ -125,17 +127,17 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 
 ### Tests for User Story 1
 
-- [ ] T004 [P] [US1] Crear pruebas unitarias del modelo `BaseRate` para `Money` positivo y moneda COP [SPEC FR-001, FR-006].
-- [ ] T005 [P] [US1] Crear pruebas unitarias de `GetBaseRateService` para el camino exitoso, consultas independientes por fecha, el determinismo de la misma consulta y la lectura del dato vigente de Módulo 1 en llamadas sucesivas [SPEC FR-001, FR-002, FR-003, NFR-001, NFR-003, SC-001, SC-005].
-- [ ] T006 [P] [US1] Crear pruebas de integración del cliente HTTP para una respuesta `200` válida, timeout de 500 ms y circuit breaker que se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s.
-- [ ] T007 [P] [US1] Crear contract test para la respuesta `200` válida y la clasificación de errores definida en `CLIENT-get-base-rate.md`, incluidos `ROOM_NOT_FOUND`, `INVALID_BASE_RATE` y `MODULE1_UNAVAILABLE`, y verificar que los campos adicionales del cuerpo se ignoran [SPEC FR-004, FR-006, SC-001, SC-002, SC-003].
+- [x] T004 [P] [US1] Crear pruebas unitarias del modelo `BaseRate` para `Money` positivo y moneda COP [SPEC FR-001, FR-006].
+- [x] T005 [P] [US1] Crear pruebas unitarias de `GetBaseRateService` para el camino exitoso, consultas independientes por fecha, el determinismo de la misma consulta y la lectura del dato vigente de Módulo 1 en llamadas sucesivas [SPEC FR-001, FR-002, FR-003, NFR-001, NFR-003, SC-001, SC-005].
+- [x] T006 [P] [US1] Crear pruebas de integración del cliente HTTP para una respuesta `200` válida, timeout de 500 ms y circuit breaker que se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s.
+- [x] T007 [P] [US1] Crear contract test para la respuesta `200` válida y la clasificación de errores definida en `CLIENT-get-base-rate.md`, incluidos `ROOM_NOT_FOUND`, `INVALID_BASE_RATE` y `MODULE1_UNAVAILABLE`, y verificar que los campos adicionales del cuerpo se ignoran [SPEC FR-004, FR-006, SC-001, SC-002, SC-003].
 
 ### Implementation for User Story 1
 
-- [ ] T008 [P] [US1] Implementar el modelo `BaseRate` con `Money` y los errores de dominio `InvalidBaseRateError` y `MalformedBaseRateResponseError`.
-- [ ] T009 [US1] Implementar `GetBaseRateService` y su puerto de salida.
-- [ ] T010 [US1] Implementar el adaptador HTTP con validación y traducción diferenciada: `404` estructurado `ROOM_NOT_FOUND` a `RoomNotFoundError`, importe decimal no positivo a `InvalidBaseRateError` y respuestas malformadas a `MalformedBaseRateResponseError`.
-- [ ] T011 [US1] Exportar el puerto `GetBaseRateUseCase` para consumo interno desde `pricing.module.ts`.
+- [x] T008 [P] [US1] Implementar el modelo `BaseRate` con `Money` y los errores de dominio `InvalidBaseRateError` y `MalformedBaseRateResponseError`.
+- [x] T009 [US1] Implementar `GetBaseRateService` y su puerto de salida.
+- [x] T010 [US1] Implementar el adaptador HTTP con validación y traducción diferenciada: `404` estructurado `ROOM_NOT_FOUND` a `RoomNotFoundError`, importe decimal no positivo a `InvalidBaseRateError` y respuestas malformadas a `MalformedBaseRateResponseError`.
+- [x] T011 [US1] Exportar el puerto `GetBaseRateUseCase` para consumo interno desde `pricing.module.ts`.
 
 **Checkpoint**: La consulta exitosa devuelve una tarifa base válida para la habitación y fecha consultadas.
 
@@ -147,12 +149,12 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 
 ### Tests for User Story 2
 
-- [ ] T012 [P] [US2] Crear pruebas de servicio para `roomId` sin formato UUID y fecha inválida, verificando que no invocan el puerto [SPEC FR-007, SC-006].
-- [ ] T013 [P] [US2] Crear pruebas de integración HTTP para `404` estructurado, `404` sin cuerpo, importe decimal no positivo, moneda distinta, `roomId` o fecha discordantes, `baseRate` numérico o no decimal, cuerpo no JSON, campos ausentes, tipo incorrecto, timeout, `5xx` y circuito abierto [SPEC FR-004, FR-006, SC-002, SC-003]. El importe decimal no positivo debe producir `INVALID_BASE_RATE` y no incrementar el contador ni abrir el circuito; el `404` estructurado debe producir `ROOM_NOT_FOUND` con el mismo criterio; las respuestas malformadas deben producir `MODULE1_UNAVAILABLE` y contar como fallos del circuito. Un `200` y un `404` `ROOM_NOT_FOUND` con campos adicionales (por ejemplo `details`) deben procesarse igual que sin ellos y no contar como respuesta malformada ni como fallo del circuito.
+- [x] T012 [P] [US2] Crear pruebas de servicio para `roomId` sin formato UUID y fecha inválida, verificando que no invocan el puerto [SPEC FR-007, SC-006].
+- [x] T013 [P] [US2] Crear pruebas de integración HTTP para `404` estructurado, `404` sin cuerpo, importe decimal no positivo, moneda distinta, `roomId` o fecha discordantes, `baseRate` numérico o no decimal, cuerpo no JSON, campos ausentes, tipo incorrecto, timeout, `5xx` y circuito abierto [SPEC FR-004, FR-006, SC-002, SC-003]. El importe decimal no positivo debe producir `INVALID_BASE_RATE` y no incrementar el contador ni abrir el circuito; el `404` estructurado debe producir `ROOM_NOT_FOUND` con el mismo criterio; las respuestas malformadas deben producir `MODULE1_UNAVAILABLE` y contar como fallos del circuito. Un `200` y un `404` `ROOM_NOT_FOUND` con campos adicionales (por ejemplo `details`) deben procesarse igual que sin ellos y no contar como respuesta malformada ni como fallo del circuito.
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Completar la validación de entrada en `GetBaseRateService` y la traducción de errores en el adaptador.
+- [x] T014 [US2] Completar la validación de entrada en `GetBaseRateService` y la traducción de errores en el adaptador.
 
 **Checkpoint**: El cálculo se detiene cuando falta una tarifa utilizable o la entrada no es válida.
 
@@ -160,7 +162,7 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 
 **Purpose**: Verificar la consulta independiente por fecha, la ausencia de persistencia o caché y el comportamiento de timeout y circuit breaker.
 
-- [ ] T015 Ejecutar las suites unitarias, de integración y contract test; verificar que cada fecha se consulta independientemente, que no se persiste ni cachea tarifa base, que el timeout es de 500 ms y que el circuit breaker se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s [SPEC FR-002, FR-003, FR-005, SC-004, SC-005].
+- [x] T015 Ejecutar las suites unitarias, de integración y contract test; verificar que cada fecha se consulta independientemente, que no se persiste ni cachea tarifa base, que el timeout es de 500 ms y que el circuit breaker se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s [SPEC FR-002, FR-003, FR-005, SC-004, SC-005].
 
 ## Dependencies & Execution Order
 

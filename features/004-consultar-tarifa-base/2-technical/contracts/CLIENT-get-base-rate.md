@@ -56,6 +56,7 @@ Respuesta `200`:
 | `200` con `currency` distinta de `COP` | `MODULE1_UNAVAILABLE` | Sí | Sí | [PLAN] |
 | `200` con `roomId` o `date` distintos de los solicitados | `MODULE1_UNAVAILABLE` | Sí | Sí | [PLAN] |
 | `200` con `baseRate` como número JSON en vez de texto decimal | `MODULE1_UNAVAILABLE` | Sí | Sí | [PLAN] |
+| `200` con `baseRate` decimal en texto con más de 2 decimales significativos | `MODULE1_UNAVAILABLE` | Sí | Sí | [PLAN] |
 | `200` con `baseRate` decimal en texto menor o igual a cero | `INVALID_BASE_RATE` | No | No | [SPEC FR-006] [PLAN] |
 | `200` con `baseRate` no decimal, cuerpo no JSON, campos ausentes o tipo incorrecto | `MODULE1_UNAVAILABLE` | Sí | Sí | [SPEC FR-006] [PLAN] |
 | `404` con cuerpo estructurado `ROOM_NOT_FOUND` | `ROOM_NOT_FOUND`; detiene el cálculo invocante | No | No | [SPEC FR-004] [CONV] |
