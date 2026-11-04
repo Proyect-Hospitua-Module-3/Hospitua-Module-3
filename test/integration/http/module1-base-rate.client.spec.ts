@@ -73,6 +73,12 @@ describe('Module1BaseRateClient HTTP integration', () => {
     expect(rate.amount.toString()).toBe(expected);
   });
 
+  it('accepts an uppercase roomId when Module 1 echoes it in lowercase', async () => {
+    fixture.setReply({ status: 200, body: VALID_BODY });
+
+    await expect(client.getBaseRate(ROOM_ID.toUpperCase(), DATE)).resolves.toBeDefined();
+  });
+
   it('makes two upstream requests for identical queries without caching or persistence', async () => {
     fixture.setReplies([
       { status: 200, body: VALID_BODY },

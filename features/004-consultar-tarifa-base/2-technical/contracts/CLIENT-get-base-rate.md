@@ -43,7 +43,7 @@ Respuesta `200`:
 
 | Campo | Tipo | Regla |
 |---|---|---|
-| `roomId` | UUID | Igual al `roomId` enviado en la petición [PLAN] |
+| `roomId` | UUID | Igual al `roomId` enviado en la petición, sin distinguir mayúsculas (Módulo 1 lo devuelve en minúsculas) [PLAN] |
 | `date` | string `YYYY-MM-DD` | Igual a la fecha enviada en la petición [PLAN] |
 | `baseRate` | decimal en texto | Importe decimal estrictamente positivo [SPEC FR-001, FR-006] [PLAN] |
 | `currency` | string | `COP` [BASE] [PLAN] |

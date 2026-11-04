@@ -40,9 +40,9 @@ Verificar los siete escenarios de aceptación de la spec: consulta correcta, res
 
 ##### Preconditions & Default Setup
 
-- **Initial State** : rama `feature/004-consultar-tarifa-base`.
-- **Environment** : Dependencias instaladas con `npm ci`.
-- **Test Accounts** : No aplica.
+* **Initial State** : rama `feature/004-consultar-tarifa-base`.
+* **Environment** : Dependencias instaladas con `npm ci`.
+* **Test Accounts** : No aplica.
 
 --------------------------------------------------------------------------------
 
@@ -57,6 +57,7 @@ Verificar los siete escenarios de aceptación de la spec: consulta correcta, res
 | 3 | HU1, escenario 1: Consulta exitosa: Enviar cuatro formatos decimales permitidos para `baseRate`. Prueba: `accepts baseRate 250000 at scale 2`; `accepts baseRate 250000.5 at scale 2`; `accepts baseRate 250000.50 at scale 2`; `accepts baseRate 250000.500 at scale 2` | `npm test -- --runInBand --runTestsByPath test/integration/http/module1-base-rate.client.spec.ts -t "accepts baseRate"` | `baseRate`: 250000, 250000.5, 250000.50, 250000.500. | Los cuatro formatos se aceptan y se representan a escala 2. | [✔] | — |
 | 4 | HU1, escenario 1: Consulta exitosa sin reutilizar una respuesta anterior: Hacer dos consultas HTTP idénticas cuando Módulo 1 devuelve importes distintos. Prueba: `makes two upstream requests for identical queries without caching or persistence` | `npm test -- --runInBand --runTestsByPath test/integration/http/module1-base-rate.client.spec.ts -t "makes two upstream requests for identical queries without caching or persistence"` | Consultas HTTP idénticas; importes upstream distintos. | Se hacen dos peticiones a Módulo 1 y se devuelven los dos importes distintos; no hay caché. | [✔] | — |
 | 5 | HU1, escenario 2: Estancia que cruza un cambio de tarifa: Consultar fechas de noches consecutivas y verificar que cada consulta obtiene su valor independientemente. Prueba: `queries each date independently and observes successive values` | `npm test -- --runInBand --runTestsByPath test/unit/application/pricing/get-base-rate.service.spec.ts -t "queries each date independently and observes successive values"` | Fechas de noches consecutivas; fecha repetida. | Cada llamada lleva su propia fecha; no se reutiliza ni conserva el valor anterior. | [✔] | — |
+| 6 | HU1, escenario 1: Consulta exitosa con `roomId` en mayúsculas: Consultar con el `roomId` en mayúsculas cuando Módulo 1 devuelve el eco en minúsculas. Prueba: `accepts an uppercase roomId when Module 1 echoes it in lowercase` | `npm test -- --runInBand --runTestsByPath test/integration/http/module1-base-rate.client.spec.ts -t "accepts an uppercase roomId when Module 1 echoes it in lowercase"` | `roomId` en mayúsculas; eco de `roomId` en minúsculas. | Devuelve la tarifa; el eco de `roomId` se compara sin distinguir mayúsculas. | [✔] | — |
 
 --------------------------------------------------------------------------------
 
@@ -92,12 +93,14 @@ Verificar los siete escenarios de aceptación de la spec: consulta correcta, res
 
 | Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
 | :---: | --- | --- | --- | --- | :---: | --- |
-| 1 | Ejecutar los cinco specs existentes de 004. | `npm test -- --runInBand --runTestsByPath test/unit/domain/shared/money.vo.spec.ts test/unit/domain/pricing/base-rate.spec.ts test/unit/application/pricing/get-base-rate.service.spec.ts test/integration/http/module1-base-rate.client.spec.ts test/contract/pricing/module1-base-rate.contract.spec.ts` | Cinco specs existentes de la feature 004. | `Test Suites: 5 passed`; `Tests: 91 passed`; sin pruebas omitidas ni fallidas. | [✔] | — |
+| 1 | Ejecutar los cinco specs existentes de 004. | `npm test -- --runInBand --runTestsByPath test/unit/domain/shared/money.vo.spec.ts test/unit/domain/pricing/base-rate.spec.ts test/unit/application/pricing/get-base-rate.service.spec.ts test/integration/http/module1-base-rate.client.spec.ts test/contract/pricing/module1-base-rate.contract.spec.ts` | Cinco specs existentes de la feature 004. | `Test Suites: 5 passed`; `Tests: 94 passed`; sin pruebas omitidas ni fallidas. | [✔] | — |
 | 2 | Ejecutar la suite E2E exclusiva de 004. | `npm run test:e2e -- --runInBand --runTestsByPath test/e2e/pricing/base-rate.e2e-spec.ts` | Suite E2E de la feature 004. | `Test Suites: 1 passed`; `Tests: 7 passed`; sin pruebas omitidas ni fallidas. | [✔] | — |
 
 --------------------------------------------------------------------------------
 
 ##### Edge Cases & Boundary Conditions
+Tomados de los casos límite de la spec.
+
 * **EC-001** : Cuatro fallos seguidos, un éxito y otro fallo no abren el circuito. → Sección 3, paso 1.
 * **EC-002** : Los rechazos con el circuito abierto no extienden la ventana de 30 s. → Sección 3, paso 1.
 * **EC-003** : `baseRate` con ceros finales se acepta y con más de dos decimales significativos se rechaza. → Sección 1, paso 3; Sección 2, paso 3.

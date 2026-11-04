@@ -134,7 +134,8 @@ export class Module1BaseRateClient implements BaseRateClientPort {
       typeof response.date !== 'string' ||
       typeof response.baseRate !== 'string' ||
       typeof response.currency !== 'string' ||
-      response.roomId !== roomId ||
+      // Módulo 1 devuelve el UUID en minúsculas.
+      response.roomId.toLowerCase() !== roomId.toLowerCase() ||
       response.date !== date ||
       response.currency !== 'COP' ||
       !BASE_RATE_DECIMAL_TEXT_FORMAT.test(response.baseRate) ||

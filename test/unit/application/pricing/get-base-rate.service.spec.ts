@@ -82,6 +82,17 @@ describe('GetBaseRateService', () => {
     },
   );
 
+  it.each(['a0000000-0000-0000-0000-000000000101', '11111111-1111-1111-1111-111111111111'])(
+    'accepts the non-RFC hexadecimal UUID %s and calls Module 1 with it',
+    async (seededRoomId) => {
+      const rate = BaseRate.create('250000.00');
+      client.getBaseRate.mockResolvedValue(rate);
+
+      await expect(service.execute(seededRoomId, '2026-10-08')).resolves.toBe(rate);
+      expect(client.getBaseRate).toHaveBeenCalledWith(seededRoomId, '2026-10-08');
+    },
+  );
+
   it('accepts an uppercase roomId and a valid leap day', async () => {
     const rate = BaseRate.create('250000.00');
     client.getBaseRate.mockResolvedValue(rate);

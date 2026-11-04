@@ -4,7 +4,8 @@ import { BaseRate } from '../../../domain/model/pricing/base-rate';
 import { GetBaseRateUseCase } from '../../../domain/ports/in/pricing/get-base-rate.use-case';
 import { BaseRateClientPort } from '../../../domain/ports/out/pricing/base-rate.client.port';
 
-const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Módulo 1 siembra ids que no siguen el RFC (p. ej. a0000000-0000-0000-0000-000000000101).
+const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/;
 
 export class GetBaseRateService implements GetBaseRateUseCase {
