@@ -38,7 +38,7 @@ npm run start:dev
 Además de la base de datos, el JWT y los usuarios del seed, el `.env` necesita las variables de Módulo 1 (feature 004).
 Ambas son obligatorias: si falta alguna o el timeout no es un entero positivo, la aplicación no arranca.
 
-- `MODULE1_BASE_URL`: URL base de Módulo 1 para consultar la tarifa base (p. ej. `http://localhost:3001`).
+- `MODULE1_BASE_URL`: URL base de Módulo 1 para consultar la tarifa base (p. ej. `http://localhost:8080`, el puerto por defecto de Módulo 1).
 - `MODULE1_TIMEOUT_MS`: tiempo máximo de espera por consulta, en milisegundos (`500`).
 
 La documentación interactiva queda en <http://localhost:3000/docs> (Swagger). Para probar:
