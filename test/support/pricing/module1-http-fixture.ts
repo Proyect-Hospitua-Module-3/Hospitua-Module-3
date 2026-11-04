@@ -1,3 +1,4 @@
+// Feature 004 · Consultar tarifa base
 import { AddressInfo } from 'node:net';
 import { createServer, Server, ServerResponse } from 'node:http';
 

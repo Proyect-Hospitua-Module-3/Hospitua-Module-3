@@ -117,15 +117,24 @@ describe('GetBaseRateUseCase (e2e)', () => {
   it.each([
     ['UUID inválido', 'no-es-un-uuid', DATE],
     ['fecha imposible', ROOM_ID, '2026-02-30'],
-  ])('rechaza localmente una consulta con %s sin llamar a Módulo 1', async (_case, roomId, date) => {
-    await expect(useCase.execute(roomId, date)).rejects.toBeInstanceOf(InvalidBaseRateQueryError);
-    expectRequestsToModule1(0);
-  });
+  ])(
+    'rechaza localmente una consulta con %s sin llamar a Módulo 1',
+    async (_case, roomId, date) => {
+      await expect(useCase.execute(roomId, date)).rejects.toBeInstanceOf(InvalidBaseRateQueryError);
+      expectRequestsToModule1(0);
+    },
+  );
 
   it('consulta de nuevo la misma habitación y fecha sin reutilizar una tarifa anterior', async () => {
     fixture.setReplies([
-      { status: 200, body: { roomId: ROOM_ID, date: DATE, baseRate: '250000.00', currency: 'COP' } },
-      { status: 200, body: { roomId: ROOM_ID, date: DATE, baseRate: '275000.00', currency: 'COP' } },
+      {
+        status: 200,
+        body: { roomId: ROOM_ID, date: DATE, baseRate: '250000.00', currency: 'COP' },
+      },
+      {
+        status: 200,
+        body: { roomId: ROOM_ID, date: DATE, baseRate: '275000.00', currency: 'COP' },
+      },
     ]);
 
     const first = await useCase.execute(ROOM_ID, DATE);

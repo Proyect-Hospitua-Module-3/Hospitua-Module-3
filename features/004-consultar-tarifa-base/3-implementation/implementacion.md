@@ -46,6 +46,9 @@ La feature expone un puerto interno para que la 005 consulte una fecha. No guard
 | `test/unit/application/pricing/get-base-rate.service.spec.ts` | Resultado, consultas independientes por fecha, validación previa al puerto con `errorCode`, UUID en mayúsculas y 29 de febrero. |
 | `test/integration/http/module1-base-rate.client.spec.ts` | Servidor HTTP simulado: éxito, errores 4xx/5xx (incluido 403 con `ROOM_NOT_FOUND`), timeout, corte de conexión (`ECONNRESET`), circuito, campos extra, half-open con timers falsos (incluida la sonda con `ROOM_NOT_FOUND`) y validación de configuración al arrancar. |
 | `test/contract/pricing/module1-base-rate.contract.spec.ts` | Clasificación del cuerpo de éxito, `ROOM_NOT_FOUND`, `INVALID_BASE_RATE` y `MODULE1_UNAVAILABLE`. |
-| `test/support/pricing/module1-http-fixture.ts` | Servidor HTTP local configurable para las pruebas. |
+| `test/e2e/pricing/base-rate.e2e-spec.ts` | Puerto interno `GetBaseRateUseCase` hasta el cliente HTTP real, con un servidor local en lugar de Módulo 1: éxito, entrada inválida sin llamada a Módulo 1, sin reutilización de tarifa, `ROOM_NOT_FOUND` y `MODULE1_UNAVAILABLE`. |
+| `test/support/pricing/module1-http-fixture.ts` | Servidor HTTP local configurable para las pruebas; expone `requestLog` con las peticiones recibidas. |
 
 No se consulta la tarifa base durante liquidación; esa operación consume el valor guardado por la cotización (BR-004).
+
+El mapeo de `INVALID_QUERY_PARAMS`, `ROOM_NOT_FOUND`, `INVALID_BASE_RATE` y `MODULE1_UNAVAILABLE` al `ExceptionFilter` queda a cargo de la 005 (T014 y T022).

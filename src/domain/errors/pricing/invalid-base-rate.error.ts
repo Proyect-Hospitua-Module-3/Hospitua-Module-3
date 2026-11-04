@@ -1,3 +1,4 @@
+// Feature 004 · Consultar tarifa base
 import { DomainError } from '../domain.error';
 
 export class InvalidBaseRateError extends DomainError {

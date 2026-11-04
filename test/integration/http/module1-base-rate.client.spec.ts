@@ -1,3 +1,4 @@
+// Feature 004 · Consultar tarifa base
 import { ConfigService } from '@nestjs/config';
 import { HttpModule, HttpService } from '@nestjs/axios';
 import { Test, TestingModule } from '@nestjs/testing';

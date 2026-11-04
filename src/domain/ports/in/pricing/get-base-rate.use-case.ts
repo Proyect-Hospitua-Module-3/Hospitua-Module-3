@@ -1,3 +1,4 @@
+// Feature 004 · Consultar tarifa base
 import { BaseRate } from '../../../model/pricing/base-rate';
 
 export const GET_BASE_RATE_USE_CASE = Symbol('GetBaseRateUseCase');

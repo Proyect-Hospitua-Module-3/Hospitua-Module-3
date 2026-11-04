@@ -65,6 +65,7 @@ test/
 │   └── application/pricing/get-base-rate.service.spec.ts
 ├── integration/http/module1-base-rate.client.spec.ts
 ├── contract/pricing/module1-base-rate.contract.spec.ts
+├── e2e/pricing/base-rate.e2e-spec.ts
 └── support/pricing/module1-http-fixture.ts
 ```
 

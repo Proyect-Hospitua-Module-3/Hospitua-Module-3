@@ -13,6 +13,7 @@ Facturación, Consumos y Liquidación. Servicio NestJS con arquitectura hexagona
 | [001 Actualizar porcentaje de IVA](features/001-actualizar-porcentaje-iva/) | `PUT /admin/vat-rate` | [Mapa de implementación](features/001-actualizar-porcentaje-iva/3-implementation/implementacion.md) |
 | [009 Modificar precio tarifa según temporada](features/009-modificar-precio-tarifa-segun-temporada/) | `GET`, `POST`, `PUT`, `DELETE` en `/admin/season-rules` | [Mapa de implementación](features/009-modificar-precio-tarifa-segun-temporada/3-implementation/implementacion.md) |
 | [011 Revisar temporada del año](features/011-revisar-temporada-del-año/) | `GET /admin/season-calendar`, `PUT /admin/season-calendar/{year}` | [Mapa de implementación](features/011-revisar-temporada-del-año/3-implementation/implementacion.md) |
+| [004 Consultar tarifa base](features/004-consultar-tarifa-base/) | Sin endpoint: puerto interno `GetBaseRateUseCase` para la 005 | [Mapa de implementación](features/004-consultar-tarifa-base/3-implementation/implementacion.md) |
 
 El código de cada feature está repartido por capas (arquitectura hexagonal). Cada feature tiene en su carpeta
 `3-implementation/` un mapa con todos sus archivos, y cada archivo empieza con la marca `Feature NNN`
@@ -33,6 +34,12 @@ npx prisma migrate deploy       # crea las tablas
 npx prisma db seed              # crea los usuarios admin y ota-demo del .env
 npm run start:dev
 ```
+
+Además de la base de datos, el JWT y los usuarios del seed, el `.env` necesita las variables de Módulo 1 (feature 004).
+Ambas son obligatorias: si falta alguna o el timeout no es un entero positivo, la aplicación no arranca.
+
+- `MODULE1_BASE_URL`: URL base de Módulo 1 para consultar la tarifa base (p. ej. `http://localhost:3001`).
+- `MODULE1_TIMEOUT_MS`: tiempo máximo de espera por consulta, en milisegundos (`500`).
 
 La documentación interactiva queda en <http://localhost:3000/docs> (Swagger). Para probar:
 

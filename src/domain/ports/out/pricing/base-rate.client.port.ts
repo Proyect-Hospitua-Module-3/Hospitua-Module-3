@@ -1,3 +1,4 @@
+// Feature 004 · Consultar tarifa base
 import { BaseRate } from '../../../model/pricing/base-rate';
 
 export const BASE_RATE_CLIENT = Symbol('BaseRateClientPort');

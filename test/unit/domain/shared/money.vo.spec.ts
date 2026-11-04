@@ -1,3 +1,4 @@
+// Feature 004 · Consultar tarifa base
 import { Money } from '../../../../src/domain/model/shared/money.vo';
 
 describe('Money', () => {

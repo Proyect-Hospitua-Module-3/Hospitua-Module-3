@@ -1,3 +1,4 @@
+// Feature 004 · Consultar tarifa base
 import { InvalidBaseRateError } from '../../errors/pricing/invalid-base-rate.error';
 import { Money } from '../shared/money.vo';
 

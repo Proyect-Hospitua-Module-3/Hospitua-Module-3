@@ -1,3 +1,4 @@
+// Feature 004 · Consultar tarifa base
 import { InvalidBaseRateError } from '../../../../src/domain/errors/pricing/invalid-base-rate.error';
 import { BaseRate } from '../../../../src/domain/model/pricing/base-rate';
 

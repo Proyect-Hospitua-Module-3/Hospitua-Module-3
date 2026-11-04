@@ -15,7 +15,7 @@
 
 ##### Test Objectives
 
-Verificar los siete escenarios de aceptación de la spec: consulta correcta, resolución independiente por noche, detención ante error de Módulo 1, rechazo de respuesta inutilizable, rechazo de importe no positivo, validación de entrada y habitación inexistente. Adicionalmente, comprobar la validación de configuración al iniciar el cliente HTTP, la clasificación de errores según el estado HTTP y la recuperación del circuit breaker ante errores funcionales. La feature es un puerto interno sin endpoint propio; las verificaciones se realizan con pruebas automatizadas del servicio y del adaptador HTTP.
+Verificar los siete escenarios de aceptación de la spec: consulta correcta, resolución independiente por noche, detención ante error de Módulo 1, rechazo de respuesta inutilizable, rechazo de importe no positivo, validación de entrada y habitación inexistente. Adicionalmente, comprobar la validación de configuración al iniciar el cliente HTTP, la clasificación de errores según el estado HTTP y la recuperación del circuit breaker ante errores funcionales. La feature es un puerto interno sin endpoint propio; las verificaciones se realizan con pruebas automatizadas del servicio y del adaptador HTTP, y además con una prueba E2E del puerto interno hasta el cliente HTTP real.
 
 ##### Document References
 
@@ -31,7 +31,7 @@ Verificar los siete escenarios de aceptación de la spec: consulta correcta, res
 #### Prerequisites & Environment
 
 ##### Test Case Limitations
-* Solo se ejecutan pruebas automatizadas. La feature es un puerto interno sin endpoint ni interfaz.
+* Solo se ejecutan pruebas automatizadas. La feature es un puerto interno sin endpoint ni interfaz; además de las pruebas del servicio y del adaptador hay una prueba E2E del puerto interno.
 * La ventana de 30 s se verifica con temporizadores simulados.
 
 ##### Dependencies & Assumptions
@@ -94,6 +94,7 @@ Verificar los siete escenarios de aceptación de la spec: consulta correcta, res
 | :---: | --- | --- | --- | --- | :---: | --- |
 | 1 | Ejecutar los cinco specs existentes de 004. | `npm test -- --runInBand --runTestsByPath test/unit/domain/shared/money.vo.spec.ts test/unit/domain/pricing/base-rate.spec.ts test/unit/application/pricing/get-base-rate.service.spec.ts test/integration/http/module1-base-rate.client.spec.ts test/contract/pricing/module1-base-rate.contract.spec.ts` | Cinco specs existentes de la feature 004. | `Test Suites: 5 passed`; `Tests: 91 passed`; sin pruebas omitidas ni fallidas. | [✔] | — |
 | 2 | Ejecutar la suite E2E exclusiva de 004. | `npm run test:e2e -- --runInBand --runTestsByPath test/e2e/pricing/base-rate.e2e-spec.ts` | Suite E2E de la feature 004. | `Test Suites: 1 passed`; `Tests: 7 passed`; sin pruebas omitidas ni fallidas. | [✔] | — |
+
 --------------------------------------------------------------------------------
 
 ##### Edge Cases & Boundary Conditions

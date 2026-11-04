@@ -1,3 +1,4 @@
+// Feature 004 · Consultar tarifa base
 import { HttpService } from '@nestjs/axios';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -40,9 +41,6 @@ export class Module1BaseRateClient implements BaseRateClientPort {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
   private consecutiveFailures = 0;
-  private nextRequestId = 0;
-  // errorFilter suppresses business errors; requestId maps each filtered result back to its error.
-  private readonly filteredErrors = new Map<number, RoomNotFoundError | InvalidBaseRateError>();
   private readonly breaker: CircuitBreaker;
 
   constructor(
@@ -64,24 +62,19 @@ export class Module1BaseRateClient implements BaseRateClientPort {
     this.baseUrl = configuredBaseUrl.replace(/\/$/, '');
     this.timeoutMs = timeout;
     this.breaker = new CircuitBreaker(
-      (requestId: number, roomId: string, date: string) => this.request(requestId, roomId, date),
+      (roomId: string, date: string) => this.request(roomId, date),
       {
-        // Deliberately kept with Axios timeout to bound the breaker action's execution.
+        // Se mantiene a propósito junto al timeout de Axios: acota la ejecución de la
+        // acción del breaker.
         timeout: this.timeoutMs,
         resetTimeout: CIRCUIT_RESET_TIMEOUT_MS,
-        // Automatic percentage trips are disabled. The explicit consecutive
-        // failure counter below opens the breaker exactly on failure five.
+        // La apertura automática por porcentaje está desactivada. El contador explícito de
+        // fallos consecutivos de abajo abre el circuito exactamente en el quinto fallo.
         errorThresholdPercentage: CIRCUIT_ERROR_THRESHOLD_PERCENTAGE,
         volumeThreshold: 0,
-        errorFilter: (...args: unknown[]) => {
-          const [error, requestId] = args;
-          if (typeof requestId !== 'number') return false;
-          if (error instanceof RoomNotFoundError || error instanceof InvalidBaseRateError) {
-            this.filteredErrors.set(requestId, error);
-            return true;
-          }
-          return false;
-        },
+        // Los errores funcionales no cuentan como fallo; en half-open cierran el circuito.
+        errorFilter: (error: unknown) =>
+          error instanceof RoomNotFoundError || error instanceof InvalidBaseRateError,
       },
     );
     this.breaker.on('success', () => {
@@ -90,19 +83,9 @@ export class Module1BaseRateClient implements BaseRateClientPort {
   }
 
   async getBaseRate(roomId: string, date: string): Promise<BaseRate> {
-    const requestId = ++this.nextRequestId;
     try {
-      const result = (await this.breaker.fire(requestId, roomId, date)) as BaseRate | boolean;
-      if (result === true) {
-        const filteredError = this.filteredErrors.get(requestId);
-        this.filteredErrors.delete(requestId);
-        if (filteredError) throw filteredError;
-        throw new Module1UnavailableError();
-      }
-      if (result === false) throw new Module1UnavailableError();
-      return result;
+      return (await this.breaker.fire(roomId, date)) as BaseRate;
     } catch (error: unknown) {
-      this.filteredErrors.delete(requestId);
       const translated = this.translateFailure(error);
       if (this.isDependencyFailure(translated)) {
         this.consecutiveFailures += 1;
@@ -117,13 +100,12 @@ export class Module1BaseRateClient implements BaseRateClientPort {
     }
   }
 
-  // Opossum passes _requestId to errorFilter to correlate a filtered result with its request.
-  private async request(_requestId: number, roomId: string, date: string): Promise<BaseRate> {
+  private async request(roomId: string, date: string): Promise<BaseRate> {
     try {
       const response = await firstValueFrom(
         this.http.get<unknown>(`${this.baseUrl}/api/rooms/${roomId}/base-rate`, {
           params: { date },
-          // This timeout cancels the HTTP request; the breaker timeout above also remains active.
+          // Este timeout cancela la petición HTTP; el del circuito (arriba) también sigue activo.
           timeout: this.timeoutMs,
         }),
       );

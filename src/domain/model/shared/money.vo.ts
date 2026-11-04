@@ -1,3 +1,4 @@
+// Feature 004 · Consultar tarifa base
 import Decimal from 'decimal.js';
 
 const MONEY_SCALE = 2;
