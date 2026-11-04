@@ -29,10 +29,14 @@ El servicio interno `GetBaseRateService` (puerto `GetBaseRateUseCase`) del conte
 features/004-consultar-tarifa-base/
 ├── 1-functional/
 │   └── consultar_tarifa_base.md
-└── 2-technical/
-    ├── plan.md
-    └── contracts/
-        └── CLIENT-get-base-rate.md
+├── 2-technical/
+│   ├── plan.md
+│   └── contracts/
+│       └── CLIENT-get-base-rate.md
+├── 3-implementation/
+│   └── implementacion.md
+└── 4-testing/
+    └── TC-004-consultar-tarifa-base.md
 ```
 
 ### Source Code (repository root)
@@ -75,7 +79,7 @@ test/
 
 ### Servicio y puerto
 
-`GetBaseRateService` valida que `roomId` tenga formato UUID y que la fecha sea válida en formato `YYYY-MM-DD` antes de invocar `BaseRateClientPort`. Si la entrada no es válida, lanza `InvalidBaseRateQueryError` con `INVALID_QUERY_PARAMS` (HTTP 400) sin llamar a Módulo 1. El puerto de entrada `GetBaseRateUseCase` expone `execute(roomId: string, date: string): Promise<BaseRate>`.
+`GetBaseRateService` valida que `roomId` tenga formato UUID (8-4-4-4-12 hexadecimal, sin distinguir mayúsculas y sin exigir versión ni variante del RFC 4122, porque Módulo 1 siembra ids como `a0000000-0000-0000-0000-000000000101`) y que la fecha sea válida en formato `YYYY-MM-DD` antes de invocar `BaseRateClientPort`. Si la entrada no es válida, lanza `InvalidBaseRateQueryError` con `INVALID_QUERY_PARAMS` (HTTP 400) sin llamar a Módulo 1. El puerto de entrada `GetBaseRateUseCase` expone `execute(roomId: string, date: string): Promise<BaseRate>`.
 
 ```ts
 interface GetBaseRateUseCase {
@@ -188,4 +192,4 @@ La feature no expone un controller. Los códigos HTTP son códigos `ApiError` qu
 ## Notes
 
 - 004 consulta una fecha por llamada y satisface FR-003 al resolver cada fecha de forma independiente, sin caché ni agrupación. La iteración del rango de noches (entrada inclusiva y salida exclusiva) corresponde a la feature 005. La respuesta del cliente y la clasificación de errores se describen en `CLIENT-get-base-rate.md` [SPEC FR-006, SC-002, SC-003, SC-005].
-- Módulo 1 informó que hoy la tarifa base de una habitación no cambia por fecha; 004 consulta cada noche porque la interfaz del contrato es por fecha y no depende de esa propiedad.
+- La tarifa base de Módulo 1 no cambia por fecha (contrato acordado con Módulo 1); 004 consulta cada noche igualmente porque la interfaz del contrato es por fecha y no depende de esa propiedad.

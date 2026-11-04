@@ -16,7 +16,7 @@ Define la llamada saliente que realiza el contexto `pricing` de Módulo 3 para o
 |---|---|
 | Método y ruta | `GET {MODULE1_BASE_URL}/api/rooms/{roomId}/base-rate?date=YYYY-MM-DD` |
 | Autenticación | Sin token, comunicación interna [BASE] |
-| `roomId` | UUID de la habitación en la ruta; Módulo 3 inserta el `roomId`, ya validado como UUID, en la ruta sin transformarlo [PLAN] |
+| `roomId` | UUID de la habitación en la ruta; Módulo 3 inserta el `roomId`, ya validado como UUID, en la ruta sin transformarlo. Se acepta cualquier UUID 8-4-4-4-12 hexadecimal, sin exigir versión ni variante del RFC 4122, porque Módulo 1 siembra ids como `a0000000-0000-0000-0000-000000000101` [PLAN] |
 | `date` | Fecha consultada, obligatoria, formato `YYYY-MM-DD` |
 | Objetivo de Módulo 1 | p95 < 200 ms, acordado con Módulo 1 |
 | Timeout | `MODULE1_TIMEOUT_MS = 500` [SPEC NFR-002] [PLAN] |

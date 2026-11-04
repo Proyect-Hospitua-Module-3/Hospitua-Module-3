@@ -40,7 +40,7 @@ Verificar los siete escenarios de aceptación de la spec: consulta correcta, res
 
 ##### Preconditions & Default Setup
 
-* **Initial State** : rama `feature/004-consultar-tarifa-base`.
+* **Initial State** : no requiere datos ni servicios externos; Módulo 1 se simula con un servidor HTTP local.
 * **Environment** : Dependencias instaladas con `npm ci`.
 * **Test Accounts** : No aplica.
 
@@ -73,6 +73,8 @@ Verificar los siete escenarios de aceptación de la spec: consulta correcta, res
 | 6 | HU2, escenario 5: La habitación no existe en Módulo 1: Responder 404 con `ApiError.errorCode: ROOM_NOT_FOUND`. Prueba: `maps structured ROOM_NOT_FOUND, including additional fields, without opening the circuit` | `npm test -- --runInBand --runTestsByPath test/integration/http/module1-base-rate.client.spec.ts -t "maps structured ROOM_NOT_FOUND, including additional fields, without opening the circuit"` | 404; `ApiError.errorCode: ROOM_NOT_FOUND`. | Lanza `ROOM_NOT_FOUND`; campos adicionales no cambian la clasificación. | [✔] | — |
 | 7 | HU2, escenario 1: Módulo 1 responde `ROOM_NOT_FOUND` con un estado distinto de 404: Responder 403 con `ApiError.errorCode: ROOM_NOT_FOUND`. Prueba: `maps 403 with a ROOM_NOT_FOUND body to a dependency failure` | `npm test -- --runInBand --runTestsByPath test/integration/http/module1-base-rate.client.spec.ts -t "maps 403 with a ROOM_NOT_FOUND body to a dependency failure"` | 403; `errorCode: ROOM_NOT_FOUND`. | Solo el 404 se clasifica como `ROOM_NOT_FOUND`; este caso lanza `MODULE1_UNAVAILABLE`. | [✔] | — |
 | 8 | Configuración inválida al arrancar: URL ausente o en blanco; timeout ausente, `abc`, `0`, `-5` o `1.5`. Prueba: `fails at startup with` (7 casos) | `npm test -- --runInBand --runTestsByPath test/integration/http/module1-base-rate.client.spec.ts -t "fails at startup with"` | `MODULE1_BASE_URL` y `MODULE1_TIMEOUT_MS` inválidos. | El cliente no se construye y lanza el mensaje de configuración correspondiente. | [✔] | — |
+| 9 | HU2, escenario 2 (casos límite de la spec): Módulo 1 devuelve una moneda distinta de COP, o un `roomId` o una fecha distintos de los consultados. Prueba: `maps wrong currency to a dependency failure`; `maps mismatched room echo to a dependency failure`; `maps mismatched date echo to a dependency failure`; `maps wrong currency to MODULE1_UNAVAILABLE` (contrato) | `npm test -- --runInBand --runTestsByPath test/integration/http/module1-base-rate.client.spec.ts -t "maps (wrong currency\|mismatched room echo\|mismatched date echo) to a dependency failure"` y `npm test -- --runInBand --runTestsByPath test/contract/pricing/module1-base-rate.contract.spec.ts -t "maps wrong currency to MODULE1_UNAVAILABLE"` | `currency` distinta de `COP`; eco de `roomId` distinto; eco de `date` distinto. | Cada respuesta se traduce a `MODULE1_UNAVAILABLE`; no hay importe sustituto. | [✔] | — |
+| 10 | HU2, escenario 1: Módulo 1 responde 404 sin el cuerpo estructurado `ROOM_NOT_FOUND`. Prueba: `maps 404 without structured body to a dependency failure`; `maps 404 without ROOM_NOT_FOUND to MODULE1_UNAVAILABLE` (contrato) | `npm test -- --runInBand --runTestsByPath test/integration/http/module1-base-rate.client.spec.ts -t "maps 404 without structured body to a dependency failure"` y `npm test -- --runInBand --runTestsByPath test/contract/pricing/module1-base-rate.contract.spec.ts -t "maps 404 without ROOM_NOT_FOUND to MODULE1_UNAVAILABLE"` | 404 sin cuerpo `ApiError` con `ROOM_NOT_FOUND`. | Lanza `MODULE1_UNAVAILABLE`, no `ROOM_NOT_FOUND`. | [✔] | — |
 
 --------------------------------------------------------------------------------
 
@@ -93,17 +95,24 @@ Verificar los siete escenarios de aceptación de la spec: consulta correcta, res
 
 | Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
 | :---: | --- | --- | --- | --- | :---: | --- |
-| 1 | Ejecutar los cinco specs existentes de 004. | `npm test -- --runInBand --runTestsByPath test/unit/domain/shared/money.vo.spec.ts test/unit/domain/pricing/base-rate.spec.ts test/unit/application/pricing/get-base-rate.service.spec.ts test/integration/http/module1-base-rate.client.spec.ts test/contract/pricing/module1-base-rate.contract.spec.ts` | Cinco specs existentes de la feature 004. | `Test Suites: 5 passed`; `Tests: 94 passed`; sin pruebas omitidas ni fallidas. | [✔] | — |
+| 1 | Ejecutar los cinco specs de 004. | `npm test -- --runInBand --runTestsByPath test/unit/domain/shared/money.vo.spec.ts test/unit/domain/pricing/base-rate.spec.ts test/unit/application/pricing/get-base-rate.service.spec.ts test/integration/http/module1-base-rate.client.spec.ts test/contract/pricing/module1-base-rate.contract.spec.ts` | Cinco specs de la feature 004. | `Test Suites: 5 passed`; `Tests: 94 passed`; sin pruebas omitidas ni fallidas. | [✔] | — |
 | 2 | Ejecutar la suite E2E exclusiva de 004. | `npm run test:e2e -- --runInBand --runTestsByPath test/e2e/pricing/base-rate.e2e-spec.ts` | Suite E2E de la feature 004. | `Test Suites: 1 passed`; `Tests: 7 passed`; sin pruebas omitidas ni fallidas. | [✔] | — |
 
 --------------------------------------------------------------------------------
 
 ##### Edge Cases & Boundary Conditions
-Tomados de los casos límite de la spec.
+Casos límite de la spec:
 
-* **EC-001** : Cuatro fallos seguidos, un éxito y otro fallo no abren el circuito. → Sección 3, paso 1.
-* **EC-002** : Los rechazos con el circuito abierto no extienden la ventana de 30 s. → Sección 3, paso 1.
-* **EC-003** : `baseRate` con ceros finales se acepta y con más de dos decimales significativos se rechaza. → Sección 1, paso 3; Sección 2, paso 3.
+* **EC-001** : Módulo 1 responde después de 500 ms: falla de dependencia sin esperar más. → Sección 2, paso 1.
+* **EC-002** : Módulo 1 devuelve una moneda distinta de COP: falla de dependencia. → Sección 2, paso 9.
+* **EC-003** : Módulo 1 responde con un `roomId` o una fecha distintos de los consultados: falla de dependencia. → Sección 2, paso 9.
+* **EC-004** : Estancia de una sola noche y cambio posterior de tarifa sobre una cotización ya guardada: no aplican a 004, que consulta una fecha por llamada y no guarda cotizaciones. Corresponden a la feature 005.
+
+Casos límite adicionales del plan y del contrato:
+
+* **EC-005** : Cuatro fallos seguidos, un éxito y otro fallo no abren el circuito. → Sección 3, paso 1.
+* **EC-006** : Los rechazos con el circuito abierto no extienden la ventana de 30 s. → Sección 3, paso 1.
+* **EC-007** : `baseRate` con ceros finales se acepta y con más de dos decimales significativos se rechaza. → Sección 1, paso 3; Sección 2, paso 3.
 
 --------------------------------------------------------------------------------
 
