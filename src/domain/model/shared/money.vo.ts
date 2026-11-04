@@ -5,8 +5,8 @@ const MONEY_SCALE = 2;
 const ZERO_AMOUNT = new Decimal(0);
 const MONEY_FORMAT = /^[+-]?\d+(\.\d+)?$/;
 
-// Generic decimal money value. Business rules such as positivity belong to the
-// value object that uses the money (for example, BaseRate).
+// Importe decimal genérico. Las reglas de negocio, como que sea positivo, corresponden
+// al value object que usa el importe (por ejemplo, BaseRate).
 export class Money {
   private constructor(private readonly value: Decimal) {}
 

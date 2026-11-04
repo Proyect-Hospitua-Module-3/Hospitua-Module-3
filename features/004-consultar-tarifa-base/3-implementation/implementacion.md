@@ -16,7 +16,7 @@ La feature expone un puerto interno para que la 005 consulte una fecha. No guard
 | `src/domain/model/pricing/base-rate.ts` | Tarifa base COP; valida el formato decimal en texto y un máximo de 2 decimales significativos, además de exigir un importe estrictamente positivo. Exporta el formato decimal y la función de precisión que reutiliza el cliente HTTP. |
 | `src/domain/errors/pricing/invalid-base-rate-query.error.ts` | Rechaza UUID o fecha inválidos antes de llamar al adaptador. |
 | `src/domain/errors/pricing/room-not-found.error.ts` | Habitación ausente en Módulo 1. |
-| `src/domain/errors/pricing/invalid-base-rate.error.ts` | Importe decimal no positivo. |
+| `src/domain/errors/pricing/invalid-base-rate.error.ts` | Importe de tarifa inválido: no positivo, no decimal o con más de 2 decimales significativos. |
 | `src/domain/errors/pricing/malformed-base-rate-response.error.ts` | Respuesta exitosa de Módulo 1 inválida. |
 | `src/domain/errors/pricing/module1-unavailable.error.ts` | Timeout, error HTTP/red o circuito abierto. |
 | `src/domain/ports/in/pricing/get-base-rate.use-case.ts` | Puerto interno exportado para consumidores como la feature 005. |
@@ -48,6 +48,7 @@ La feature expone un puerto interno para que la 005 consulte una fecha. No guard
 | `test/contract/pricing/module1-base-rate.contract.spec.ts` | Clasificación del cuerpo de éxito, `ROOM_NOT_FOUND`, `INVALID_BASE_RATE` y `MODULE1_UNAVAILABLE`. |
 | `test/e2e/pricing/base-rate.e2e-spec.ts` | Puerto interno `GetBaseRateUseCase` hasta el cliente HTTP real, con un servidor local en lugar de Módulo 1: éxito, entrada inválida sin llamada a Módulo 1, sin reutilización de tarifa, `ROOM_NOT_FOUND` y `MODULE1_UNAVAILABLE`. |
 | `test/support/pricing/module1-http-fixture.ts` | Servidor HTTP local configurable para las pruebas; expone `requestLog` con las peticiones recibidas. |
+| `test/support/e2e-env.ts` | Setup de las E2E (registrado en `setupFiles` de `test/jest-e2e.json`): da valores por defecto a `MODULE1_BASE_URL` y `MODULE1_TIMEOUT_MS`, que exige `AppModule` al arrancar, para que las E2E de todas las features no dependan del `.env` local. |
 
 No se consulta la tarifa base durante liquidación; esa operación consume el valor guardado por la cotización (BR-004).
 

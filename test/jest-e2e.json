@@ -1,5 +1,6 @@
 {
   "rootDir": ".",
+  "setupFiles": ["<rootDir>/support/e2e-env.ts"],
   "testRegex": ".e2e-spec.ts$",
   "moduleFileExtensions": ["ts", "js", "json"],
   "transform": {
