@@ -180,3 +180,42 @@ model SeasonCalendarActiveBase {
   @@index([year])
   @@map("season_calendar_active_base")
 }
+
+// ---------------------------------------------------------------------------
+// pricing — 005 Consultar tarifa dinámica
+// Insert-only: ningún camino de código hace UPDATE ni DELETE (cotización inmutable).
+// CHECK: SQL manual en la migración.
+// ---------------------------------------------------------------------------
+
+// Cotización del hospedaje de una habitación, pedida por Módulo 2 al crear la reserva.
+// `id` es el quoteId que se devuelve a Módulo 2.
+model LodgingQuote {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roomId        String   @map("room_id") @db.Uuid
+  checkInDate   DateTime @map("check_in_date") @db.Date
+  checkOutDate  DateTime @map("check_out_date") @db.Date // exclusiva
+  currency      String   @db.Char(3)
+  lodgingAmount Decimal  @map("lodging_amount") @db.Decimal(14, 2)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  nights LodgingQuoteNight[]
+
+  @@map("lodging_quote")
+}
+
+// Una fila por noche de la cotización, con lo necesario para reconstruir su valor:
+// tarifa base de Módulo 1, temporada y ajuste aplicados y tarifa resultante.
+// La clave (quote_id, night_date) cumple el UNIQUE(quote_id, night_date) del plan.
+model LodgingQuoteNight {
+  quoteId           String   @map("quote_id") @db.Uuid
+  nightDate         DateTime @map("night_date") @db.Date
+  baseRate          Decimal  @map("base_rate") @db.Decimal(14, 2)
+  seasonName        String   @map("season_name")
+  adjustmentPercent Decimal  @map("adjustment_percent") @db.Decimal(6, 2)
+  rate              Decimal  @db.Decimal(14, 2)
+
+  quote LodgingQuote @relation(fields: [quoteId], references: [id])
+
+  @@id([quoteId, nightDate])
+  @@map("lodging_quote_night")
+}

@@ -363,3 +363,18 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 - **Dos errores de calendario, a propósito**: `SeasonConfigurationInconsistentError` es la comprobación propia de 005 en el límite con 011 y 009 (el `seasonId` que devuelve `ResolveSeasonByDateUseCase` no está en el snapshot de `GetEffectiveSeasonRulesUseCase`), que exigen los contratos de ambos. Es distinto de `SeasonCalendarInconsistentError` y `SeasonCalendarUnavailableError`, que lanza el propio puerto de 011. En los endpoints de 005 los tres terminan en `422 UNEXPECTED_ERROR`, porque 011 no les define un código HTTP y el plan base no tiene uno específico.
 - Dependencias de otros equipos: 004 y 011 ya definen sus puertos (`GetBaseRateUseCase.execute(roomId, date)` y `ResolveSeasonByDateUseCase.resolve`); con 007 queda confirmar la firma de `LodgingQuoteQueryPort.findByIds` (con `roomId` y `baseRate` por noche), ya acordada en su T002 (T003).
 - Cualquier conflicto entre este plan y la spec funcional (`1-functional/consultar_tarifa_dinamica.md`) se resuelve a favor de la spec, conforme a la nota final de `docs/plan-tecnico-base.md`.
+
+### Decisiones de implementación
+
+Tomadas al implementar las Historias 1, 2 y 3; el detalle, los archivos reales y dónde se prueba cada una están en [`3-implementation/implementacion.md`](../3-implementation/implementacion.md).
+
+- **La OTA recibe `403` hasta la HU4 (propuesta al equipo, esperando respuesta)**: la HU4 necesita `ReservationClientPort` de 007. Mientras no exista, `GET /pricing/dynamic-rate` rechaza con `403` cualquier token válido, también el de una OTA, para que ninguna OTA consulte habitaciones que no son de sus reservas. Un token inválido sigue siendo `401` y uno de Administrador `403`, como dice el contrato. Al llegar la HU4 se cambia `InternalCallOnlyGuard` por `RolesGuard` con `@Roles('OTA')` en el `GET`.
+- **"Trae JWT" en el `POST` = trae cabecera `Authorization`**: cualquier solicitud con esa cabecera recibe `403`, aunque el token sea inválido o el cuerpo esté mal; así nadie de fuera de la red interna crea cotizaciones (FR-016).
+- **Paralelismo (T019)**: hasta 4 noches a la vez. Tras la primera noche que falla no se empiezan noches nuevas y la consulta falla completa. Revisar con latencias reales de Módulo 1 (T045).
+- **Sin tope de noches**: la spec no fija un máximo, así que no se inventa uno; una estancia muy larga hace una llamada a Módulo 1 por noche.
+- **Un solo error para parámetros inválidos**: `InvalidPricingRequestError` (`INVALID_QUERY_PARAMS`) para la query del `GET` y el cuerpo del `POST`, como dicen los contratos.
+- **El `roomId` de la cotización se guarda en minúsculas**: PostgreSQL guarda el `uuid` así, y la cotización que se lee después debe ser idéntica a la que se crea. A Módulo 1 se le pregunta con el id tal como llegó.
+- **Rango propio `StayRange`**: el `DateRange` compartido del plan base (T006 base) todavía no existe; 005 usa su propio rango `[entrada, salida)` sobre `CalendarDate` de 011.
+- **Clave de `lodging_quote_night`**: la clave primaria `(quote_id, night_date)` cumple el `UNIQUE(quote_id, night_date)` de T001, sin un id propio por noche. La cotización y sus noches se guardan con un solo `create` anidado de Prisma, que es atómico.
+- **Estructura de archivos**: la real sigue la de 004, 009 y 011 (`errors/pricing/`, `ports/in|out/pricing/`, `adapters/in/http/pricing/`, `test/*/pricing/`), no el árbol de arriba. No hay carpeta `application/dto/`: las consultas y comandos son tipos declarados junto a cada puerto de entrada.
+- **Pruebas de integración**: igual que 001, 009 y 011, usan una base ya migrada en `TEST_DATABASE_URL` (no Testcontainers) y se omiten sin esa variable.
