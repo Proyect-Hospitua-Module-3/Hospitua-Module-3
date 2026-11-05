@@ -359,7 +359,7 @@ Se usa `UNKNOWN_SEASON_REFERENCE` y no `SEASON_NOT_FOUND` porque este último es
 - Una consulta administrativa puede mostrar huecos como default regular; una referencia rota o conflicto real no se disfraza como default.
 - Publicar una revisión no cambia las tarifas ya consultadas, cotizaciones existentes, liquidaciones ni facturas; solo los cálculos futuros observan la revisión efectiva para su `asOf`.
 
-### Decisiones de implementación (por confirmar con el equipo)
+### Decisiones de implementación
 
 Tomadas al implementar; el detalle y dónde se prueban está en [`3-implementation/implementacion.md`](../3-implementation/implementacion.md).
 

@@ -133,10 +133,13 @@ El caso de prueba manual, con la plantilla del curso, está en [4-testing/TC-005
 | [money.vo.spec.ts](../../../test/unit/domain/shared/money.vo.spec.ts) | Las funciones `add` y `multiply` que agrega la 005 (el archivo es de la 004) | 4 de 16 |
 | [get-dynamic-rate.service.spec.ts](../../../test/unit/application/pricing/get-dynamic-rate.service.spec.ts) | Composición 004 + 009 + 011, default sin suponer cero, temporada fuera del catálogo, rango que cruza temporadas, un solo snapshot, límite de paralelismo, todo o nada, validación antes de llamar a nadie, determinismo, sin caché | 26 |
 | [create-lodging-quote.service.spec.ts](../../../test/unit/application/pricing/create-lodging-quote.service.spec.ts) | Cotiza lo mismo que la consulta, guarda una vez, no es idempotente, rechazos sin guardar | 12 |
+| [dynamic-rate.contract.spec.ts](../../../test/contract/pricing/dynamic-rate.contract.spec.ts) | Contrato del `GET` (T011): campos exactos de la respuesta, importes como texto con 2 decimales, ejemplos 1 y 2 del contrato, y la forma `ApiError` de cada error de la tabla (salvo `MODULE2_UNAVAILABLE`, que es de la HU4) | 13 |
+| [lodging-quote.contract.spec.ts](../../../test/contract/pricing/lodging-quote.contract.spec.ts) | Contrato del `POST` (T026): campos exactos, `quoteId` UUID, ejemplo del contrato, cada error de la tabla con la forma `ApiError` y sin guardar nada | 12 |
+| [lodging-quote-query.port.spec.ts](../../../test/contract/pricing/lodging-quote-query.port.spec.ts) | Contrato del puerto con 007 (T027), con el archivo de acceso a datos real: ejemplo del contrato, todo como texto, valores tal como se guardaron, ids inexistentes, lista vacía, el error de la base se propaga | 7 |
 | [prisma-lodging-quote.repository.spec.ts](../../../test/integration/persistence/pricing/prisma-lodging-quote.repository.spec.ts) | PostgreSQL real: guardar y leer igual (contrato con 007), columnas, ids inexistentes, atomicidad, restricciones `CHECK` | 5 |
 | [dynamic-rate.e2e-spec.ts](../../../test/e2e/pricing/dynamic-rate.e2e-spec.ts) | Los 2 endpoints de punta a punta con el cliente HTTP real de 004 contra un Módulo 1 simulado: 200, 400, 401, 403, 404, 422, 424, nada guardado tras cada rechazo, la cotización no cambia al cambiar la regla | 35 |
 
-Resultado actual: **las 110 pruebas de la 005 pasan**, incluidas las de integración contra PostgreSQL real. El proyecto completo suma 475 pruebas unitarias, de contrato y de integración, y 123 de punta a punta.
+Resultado actual: **las 142 pruebas de la 005 pasan**, incluidas las de integración contra PostgreSQL real. El proyecto completo suma 507 pruebas unitarias, de contrato y de integración, y 123 de punta a punta.
 
 ```powershell
 $env:TEST_DATABASE_URL = "postgresql://hospitua:hospitua@localhost:5432/modulo3_test?schema=public"
@@ -179,9 +182,9 @@ Dobles de prueba propios: [fake-dynamic-rate-ports.ts](../../../test/support/pri
 | T002 (registro en `pricing.module.ts`) | Hecho |
 | T003 (firma de `findByIds` con 007) | Hecho según el contrato; confirmar con la 007 cuando la implementen |
 | T004–T007 (cálculo, modelos, errores, rango) | Hecho |
-| T008–T014 (Historia 1) | Hecho |
+| T008–T014 (Historia 1) | Hecho. La prueba de contrato T011 está en `test/contract/pricing/dynamic-rate.contract.spec.ts` |
 | T015–T022 (Historia 2) | Hecho. T018 se cubre con la unitaria de 6 noches y el e2e, no con una prueba de integración |
-| T023–T030 (Historia 3) | Hecho |
+| T023–T030 (Historia 3) | Hecho. Las pruebas de contrato T026 y T027 están en `test/contract/pricing/lodging-quote.contract.spec.ts` y `lodging-quote-query.port.spec.ts` |
 | T031 (regla de `dependency-cruiser`) | Pendiente: la herramienta no está instalada en el proyecto (igual que en 001, 009 y 011) |
 | T032–T038 (Historia 4, OTA) | Pendiente: necesita `ReservationClientPort` de la 007 |
 | T039–T042 (casos límite) | Hecho |

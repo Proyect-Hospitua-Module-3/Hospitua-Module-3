@@ -102,4 +102,4 @@ Los importes y porcentajes son decimales exactos en `string`; el consumidor no l
 - **Determinismo**: los mismos `quoteIds` devuelven siempre los mismos datos [SPEC NFR-001].
 - **Sin recalcular**: 007 usa `lodgingAmount` tal cual; 006 congela ese valor en la factura. Ninguno vuelve a leer reglas de temporada [SPEC HU3] [BASE] [007].
 - **Frontera protegida**: `settlement` puede importar este puerto y el modelo `LodgingQuote`, pero nunca `GetDynamicRateService` ni `CreateLodgingQuoteService`. Una regla de `dependency-cruiser` lo verifica, por lo que un check-out, también una salida anticipada, nunca genera una cotización [SPEC FR-014] [PLAN] [BASE].
-- Un cambio en los campos de `LodgingQuote`, en la firma de `findByIds` o en el tratamiento de ids inexistentes requiere coordinar con 007 y actualizar `test/contract/lodging-quote-query.port.spec.ts` [PLAN].
+- Un cambio en los campos de `LodgingQuote`, en la firma de `findByIds` o en el tratamiento de ids inexistentes requiere coordinar con 007 y actualizar `test/contract/pricing/lodging-quote-query.port.spec.ts` [PLAN].

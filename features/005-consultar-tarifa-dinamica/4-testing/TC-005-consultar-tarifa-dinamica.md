@@ -140,7 +140,7 @@ En una terminal en la carpeta `Hospitua-Module-3`, con Docker corriendo. Incluye
 
 | Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
 | :---: | ------ | ------ | ------ | ------ | :---: | ------ |
-| 1 | Pruebas unitarias, de contrato y de integración contra PostgreSQL | `$env:TEST_DATABASE_URL = "postgresql://hospitua:hospitua@localhost:5432/modulo3_test?schema=public"` y luego `npm test` | Base `modulo3_test` migrada (`npx prisma migrate deploy` con `DATABASE_URL` apuntando a ella) | `Test Suites: 31 passed`, `Tests: 475 passed`, ninguna omitida | [✔] | — |
+| 1 | Pruebas unitarias, de contrato y de integración contra PostgreSQL | `$env:TEST_DATABASE_URL = "postgresql://hospitua:hospitua@localhost:5432/modulo3_test?schema=public"` y luego `npm test` | Base `modulo3_test` migrada (`npx prisma migrate deploy` con `DATABASE_URL` apuntando a ella) | `Test Suites: 34 passed`, `Tests: 507 passed`, ninguna omitida | [✔] | — |
 | 2 | Pruebas de punta a punta de los endpoints | `npm run test:e2e` | N/A | `Test Suites: 5 passed`, `Tests: 123 passed` | [✔] | — |
 
 --------------------------------------------------------------------------------

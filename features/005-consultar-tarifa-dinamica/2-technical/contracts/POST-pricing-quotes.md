@@ -141,4 +141,4 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 - **Todo o nada**: nunca existe una cotización parcial [SPEC FR-015].
 - **Consistencia con la consulta**: el valor de cada noche sale del mismo cálculo que [`GET /pricing/dynamic-rate`](./GET-pricing-dynamic-rate.md) [PLAN].
 - **Lectura posterior**: las cotizaciones guardadas se leen mediante [`LodgingQuoteQueryPort`](./PORT-find-lodging-quotes-by-ids.md), que es lo que consume 007 [PLAN].
-- Un cambio en los campos, en el código de respuesta o en las reglas de cálculo requiere coordinar con Módulo 2 y con 007 y actualizar `test/contract/lodging-quote.contract.spec.ts` [PLAN] [BASE].
+- Un cambio en los campos, en el código de respuesta o en las reglas de cálculo requiere coordinar con Módulo 2 y con 007 y actualizar `test/contract/pricing/lodging-quote.contract.spec.ts` [PLAN] [BASE].
