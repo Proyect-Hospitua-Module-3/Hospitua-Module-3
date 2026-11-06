@@ -219,3 +219,41 @@ model LodgingQuoteNight {
   @@id([quoteId, nightDate])
   @@map("lodging_quote_night")
 }
+
+// ---------------------------------------------------------------------------
+// settlement — 007 Generar liquidación
+// Insert-only: ningún camino de código hace UPDATE ni DELETE (liquidación inmutable).
+// CHECK: SQL manual en la migración.
+// ---------------------------------------------------------------------------
+
+// Liquidación Final de la estancia de una habitación, generada al registrar su check-out.
+// quote_id no tiene FK hacia lodging_quote: settlement lee las cotizaciones de pricing
+// solo a través de LodgingQuoteQueryPort (plan base, regla 5).
+model Settlement {
+  id                      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stayId                  String   @unique @map("stay_id") @db.Uuid // una por estancia (FR-010)
+  reservationRef          String   @map("reservation_ref")
+  roomId                  String   @map("room_id") @db.Uuid
+  categoryRoom            String   @map("category_room")
+  checkInDate             DateTime @map("check_in_date") @db.Date // fecha real
+  checkOutDate            DateTime @map("check_out_date") @db.Date // fecha real
+  quoteId                 String   @map("quote_id") @db.Uuid
+  channel                 String // DIRECT | OTA
+  otaId                   String?  @map("ota_id")
+  otaConfirmationCode     String?  @map("ota_confirmation_code")
+  otaCommissionPercentage Decimal? @map("ota_commission_percentage") @db.Decimal(5, 2)
+  currency                String   @db.Char(3)
+  lodgingAmount           Decimal  @map("lodging_amount") @db.Decimal(14, 2)
+  baseLodgingAmount       Decimal  @map("base_lodging_amount") @db.Decimal(14, 2)
+  dynamicAdjustmentAmount Decimal  @map("dynamic_adjustment_amount") @db.Decimal(14, 2) // puede ser negativo
+  otaCommissionAmount     Decimal  @map("ota_commission_amount") @db.Decimal(14, 2)
+  netIncome               Decimal  @map("net_income") @db.Decimal(14, 2)
+  status                  String // siempre FINAL
+  sourceEventId           String   @map("source_event_id") @db.Uuid
+  generatedAt             DateTime @default(now()) @map("generated_at") @db.Timestamptz(6)
+
+  // 002 busca por reserva y habitación; 003, la liquidación más reciente de cada OTA.
+  @@index([reservationRef, roomId])
+  @@index([otaId, generatedAt(sort: Desc)])
+  @@map("settlement")
+}

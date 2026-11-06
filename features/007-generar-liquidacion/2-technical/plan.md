@@ -392,3 +392,17 @@ Cada mensaje dice qué falló y con qué dato (reserva, habitación, OTA), para 
 - Ante cualquier conflicto, la spec funcional `generar_liquidacion.md` es la fuente de verdad; para stack, capas y contratos con Módulo 1 y Módulo 2 manda `docs/plan-tecnico-base.md`
 - Commit después de cada tarea o grupo lógico
 - Evitar: llamar al cálculo de `pricing` desde `settlement` (regla 5 del plan base), usar `number` para importes, asumir un canal o una comisión cuando Módulo 2 no los informa, actualizar una liquidación ya guardada
+
+### Decisiones de implementación
+
+Tomadas al implementar las Historias 1, 2 y 3; el detalle, los archivos reales y dónde se prueba cada una están en [`3-implementation/implementacion.md`](../3-implementation/implementacion.md#7-decisiones-de-implementación).
+
+- **`X-Correlation-Id` = `eventId`**: `ReservationClientPort.getReservation(reservationRef, correlationId?)` recibe el identificador de correlación como segundo parámetro opcional.
+- **Comando inválido → `INVALID_CHECKOUT_EVENT`**, el código con el que 010 manda un evento inválido a dead-letter.
+- **Comisión**: número o texto; más de 2 decimales significativos → `INVALID_COMMISSION`; texto vacío → `MISSING_COMMISSION`. Solo `"OTA"` exacto es intermediario.
+- **Módulo 2**: cualquier `404` es `RESERVATION_NOT_FOUND`; una respuesta 200 fuera de contrato (también OTA sin `otaId` u `otaConfirmationCode`) es `MODULE2_UNAVAILABLE` y cuenta para el circuito.
+- **Sin FK `quote_id` → `lodging_quote`**: settlement lee las cotizaciones solo por su puerto; la integridad del desglose la dan `CHECK` en la tabla.
+- **Estructura de archivos**: la de 004, 005, 009 y 011 (`errors/settlement/`, `ports/in|out/settlement/`), sin `application/dto/`; el comando está junto al puerto de entrada. Sin `DateRange` compartido: las fechas se validan con `CalendarDate` de 011.
+- **T028/T030 con una prueba de arquitectura en Jest** (`test/architecture/settlement-dependencies.spec.ts`), porque `dependency-cruiser` no está instalado.
+- **T032 con un decorador de infraestructura** (`LoggedGenerateSettlementUseCase`), para que el servicio no dependa de NestJS.
+- **Pruebas de integración** con `TEST_DATABASE_URL` (no Testcontainers), igual que 001, 005, 009 y 011.

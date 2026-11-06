@@ -1,4 +1,4 @@
-// Feature 004 · Consultar tarifa base (005 agrega zero, add y multiply)
+// Feature 004 · Consultar tarifa base (005 agrega zero, add y multiply; 007 agrega subtract)
 import Decimal from 'decimal.js';
 
 const MONEY_SCALE = 2;
@@ -24,6 +24,11 @@ export class Money {
   // Suma exacta: los dos importes ya tienen 2 decimales, no hace falta redondear.
   add(other: Money): Money {
     return new Money(this.value.plus(other.value));
+  }
+
+  // Resta exacta; el resultado puede ser negativo (007: ajuste de tarifa dinámica).
+  subtract(other: Money): Money {
+    return new Money(this.value.minus(other.value));
   }
 
   // Multiplica por un factor exacto y redondea half-up a 2 decimales una sola vez,

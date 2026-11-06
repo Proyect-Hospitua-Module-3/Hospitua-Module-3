@@ -7,6 +7,7 @@ import { AuthModule } from './infrastructure/config/auth.module';
 import { BillingModule } from './infrastructure/config/billing.module';
 import { PersistenceModule } from './infrastructure/config/persistence.module';
 import { PricingModule } from './infrastructure/config/pricing.module';
+import { SettlementModule } from './infrastructure/config/settlement.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PricingModule } from './infrastructure/config/pricing.module';
     AuthModule,
     BillingModule,
     PricingModule,
+    SettlementModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: DomainExceptionFilter }],
 })

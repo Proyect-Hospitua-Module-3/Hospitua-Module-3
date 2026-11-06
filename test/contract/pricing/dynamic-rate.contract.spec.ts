@@ -7,6 +7,9 @@ process.env.JWT_SECRET = 'secreto-solo-para-pruebas';
 process.env.JWT_EXPIRES_IN_SECONDS = '3600';
 process.env.MODULE1_BASE_URL = 'http://localhost:3001';
 process.env.MODULE1_TIMEOUT_MS = '500';
+// 007: AppModule también arranca el cliente de Módulo 2.
+process.env.MODULE2_BASE_URL = 'http://localhost:3002';
+process.env.MODULE2_TIMEOUT_MS = '500';
 
 import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';

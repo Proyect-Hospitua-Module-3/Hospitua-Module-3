@@ -34,4 +34,14 @@ describe('Money', () => {
   ])('multiplies %s by %s rounding half-up once at scale 2 → %s', (amount, factor, expected) => {
     expect(Money.of(amount).multiply(new Decimal(factor)).toString()).toBe(expected);
   });
+
+  // 007 · Generar liquidación
+  it.each([
+    ['750000.00', '700000.00', '50000.00'],
+    ['540000.00', '600000.00', '-60000.00'],
+    ['0.30', '0.10', '0.20'],
+    ['637500.00', '637500.00', '0.00'],
+  ])('subtracts %s - %s exactly → %s (can be negative)', (amount, other, expected) => {
+    expect(Money.of(amount).subtract(Money.of(other)).toString()).toBe(expected);
+  });
 });
