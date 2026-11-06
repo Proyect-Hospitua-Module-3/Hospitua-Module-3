@@ -14,7 +14,7 @@
 #### Objectives & Context  *(mandatory)*
 
 ##### Test Objectives
-This test case verifies that **Módulo 2 puede consultar la tarifa dinámica de una habitación y guardar la cotización del hospedaje** (`GET /pricing/dynamic-rate` y `POST /pricing/quotes`) functions successfully under specified operational conditions, y que el sistema:
+This test case verifies that **Módulo 2 y la OTA pueden consultar la tarifa dinámica de una habitación, y Módulo 2 guardar la cotización del hospedaje** (`GET /pricing/dynamic-rate` y `POST /pricing/quotes`) functions successfully under specified operational conditions, y que el sistema:
 
 - ajusta la tarifa base de Módulo 1 con el porcentaje configurado para la temporada de cada noche, sin importar el nombre de la temporada (FR-002, BR-007, SC-001);
 - usa la temporada por defecto con su porcentaje vigente cuando una fecha no tiene clasificación (FR-004);
@@ -23,9 +23,10 @@ This test case verifies that **Módulo 2 puede consultar la tarifa dinámica de 
 - falla de forma explícita, sin resultado parcial, si Módulo 1 no reporta una tarifa base válida o no responde (FR-006, NFR-003, SC-003);
 - guarda la cotización con la tarifa base de cada noche, y esa cotización no cambia aunque después cambien las reglas de temporada (FR-012, FR-013, SC-007);
 - rechaza sin guardar nada las cotizaciones inválidas, sin tarifa base o pedidas por un actor distinto a Módulo 2 (FR-015, FR-016, SC-008);
-- restringe la consulta a Módulo 2 por ahora (FR-010; la OTA llega con la Historia de usuario 4).
+- permite la consulta solo a Módulo 2 y a la OTA, y a la OTA solo para habitaciones de sus reservas, con el mismo resultado que Módulo 2 y sin revelar si una reserva ajena existe (FR-001, FR-010, FR-011, SC-005);
+- falla de forma explícita, sin resultado, si Módulo 2 no responde al verificar la reserva de la OTA (casos límite).
 
-Cubre las Historias de usuario 1, 2 y 3 de la spec. La Historia de usuario 4 (la OTA consulta la tarifa de sus reservas) depende de la feature 007: ver *Test Case Limitations*.
+Cubre las 4 Historias de usuario de la spec.
 
 ##### Document References
 | Reference Name | Type of Reference | Document Location / Link |
@@ -47,8 +48,8 @@ Cubre las Historias de usuario 1, 2 y 3 de la spec. La Historia de usuario 4 (la
 ##### Test Case Limitations
 * Módulo 3 no tiene interfaz gráfica: las pruebas se hacen sobre la API REST con Swagger UI (<http://localhost:3000/docs>).
 * Módulo 1 todavía no existe: se reemplaza con el servidor [modulo1-simulado.js](./modulo1-simulado.js), que responde como su contrato (tarifa base 300 000 COP para cualquier habitación, salvo dos habitaciones especiales para los errores).
-* La Historia de usuario 4 (la OTA consulta la tarifa de sus reservas, SC-005 para la OTA) no se puede probar todavía: necesita el cliente de Módulo 2 de la feature 007. Mientras tanto, una OTA recibe `403` (Sección 2, paso 16).
-* La falla a mitad de la inserción de una cotización, el límite de noches en paralelo y el cambio de reglas en medio de una consulta no se pueden provocar a mano de forma confiable; se verifican con las pruebas automáticas de la Sección 3.
+* Módulo 2 todavía no existe: para la Historia de usuario 4 se reemplaza con el servidor [modulo2-simulado.js](./modulo2-simulado.js), que responde como el contrato de reservas que consume 007, con una reserva fija para cada caso (Sección 3).
+* La falla a mitad de la inserción de una cotización, el límite de noches en paralelo y el cambio de reglas en medio de una consulta no se pueden provocar a mano de forma confiable; se verifican con las pruebas automáticas de la Sección 4.
 
 ##### Dependencies & Assumptions
 * El login propio de Módulo 3 (`POST /auth/login`) funciona.
@@ -63,7 +64,7 @@ Cubre las Historias de usuario 1, 2 y 3 de la spec. La Historia de usuario 4 (la
   1. `Get-Content features/005-consultar-tarifa-dinamica/4-testing/reset-cotizaciones.sql | docker compose exec -T postgres psql -U hospitua -d modulo3`
   2. `Get-Content features/011-revisar-temporada-del-año/4-testing/reset-calendario-temporadas.sql | docker compose exec -T postgres psql -U hospitua -d modulo3`
   3. `Get-Content features/009-modificar-precio-tarifa-segun-temporada/4-testing/reset-catalogo-temporadas.sql | docker compose exec -T postgres psql -U hospitua -d modulo3`
-* **Environment** : local. Docker Desktop corriendo, `docker compose up -d`, `npx prisma migrate deploy`, `npx prisma db seed` y `npm run start:dev` (ver [README](../../../README.md)), con `MODULE1_BASE_URL=http://localhost:8080` en el `.env`. En otra terminal, el Módulo 1 simulado: `node features/005-consultar-tarifa-dinamica/4-testing/modulo1-simulado.js`.
+* **Environment** : local. Docker Desktop corriendo, `docker compose up -d`, `npx prisma migrate deploy`, `npx prisma db seed` y `npm run start:dev` (ver [README](../../../README.md)), con `MODULE1_BASE_URL=http://localhost:8080` en el `.env` y las variables `MODULE2_*` de `.env.example` (la 005 todavía no llama a Módulo 2, pero desde la 007 la aplicación no arranca sin ellas). En otra terminal, el Módulo 1 simulado: `node features/005-consultar-tarifa-dinamica/4-testing/modulo1-simulado.js`. Para la Sección 3, en una tercera terminal, el Módulo 2 simulado (paso 1 de esa sección), con `MODULE2_BASE_URL=http://localhost:8081` en el `.env`.
 * **Test Accounts** :
   * Administrador: usuario `admin`, contraseña en `SEED_ADMIN_PASSWORD` del archivo `.env`.
   * OTA: usuario `ota-demo`, contraseña en `SEED_OTA_PASSWORD` del archivo `.env`.
@@ -128,20 +129,37 @@ Continúa con el estado que dejó la Sección 1 (2 cotizaciones guardadas), sin 
 | 13 | Iniciar sesión como Administrador y autorizar | `POST /auth/login` → **Authorize** | `{ "username": "admin", "password": "<SEED_ADMIN_PASSWORD>" }` | **200** con `accessToken` | [✔] | — |
 | 14 | El Administrador consulta la tarifa (FR-010) | `GET /pricing/dynamic-rate` con el token | `roomId=<habitación>`, `date=2026-12-24` | **403** `FORBIDDEN` | [✔] | — |
 | 15 | El Administrador intenta cotizar (FR-016, BR-008) | `POST /pricing/quotes` con el token | Los datos del paso 12 de la Sección 1 | **403** `FORBIDDEN` | [✔] | — |
-| 16 | La OTA consulta la tarifa (hasta la HU4) | Login como `ota-demo` → **Authorize** → `GET /pricing/dynamic-rate` | `roomId=<habitación>`, `date=2026-12-24` | **403** `FORBIDDEN` | [✔] | — |
+| 16 | La OTA consulta sin decir de qué reserva (FR-010) | Login como `ota-demo` → **Authorize** → `GET /pricing/dynamic-rate` | `roomId=<habitación>`, `date=2026-12-24` (sin `reservationRef`) | **400** `INVALID_QUERY_PARAMS` | [✔] | — |
 | 17 | La OTA intenta cotizar (FR-016, BR-008) | `POST /pricing/quotes` con el token de la OTA | Los datos del paso 12 de la Sección 1 | **403** `FORBIDDEN` | [✔] | — |
 | 18 | Token inválido | **Authorize** → Logout → **Authorize** con `abc` → `GET /pricing/dynamic-rate` | `roomId=<habitación>`, `date=2026-12-24` | **401** `UNAUTHENTICATED` | [✔] | — |
 | 19 | Los rechazos no guardaron nada (SC-008) | Consulta **Cotizaciones** | N/A | Siguen exactamente las 2 cotizaciones de la Sección 1 | [✔] | — |
 
 --------------------------------------------------------------------------------
 
-##### Section 3: Pruebas automáticas (casos que no se pueden provocar a mano)
-En una terminal en la carpeta `Hospitua-Module-3`, con Docker corriendo. Incluyen también las pruebas de 001, 004, 009 y 011.
+##### Section 3: La OTA consulta la tarifa de las habitaciones de sus reservas (HU4)
+Continúa con el estado que dejaron las Secciones 1 y 2 (Alta en +50 %). El Módulo 2 simulado responde con reservas fijas, descritas al inicio de [modulo2-simulado.js](./modulo2-simulado.js); la OTA del seed es `booking`.
 
 | Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
 | :---: | ------ | ------ | ------ | ------ | :---: | ------ |
-| 1 | Pruebas unitarias, de contrato y de integración contra PostgreSQL | `$env:TEST_DATABASE_URL = "postgresql://hospitua:hospitua@localhost:5432/modulo3_test?schema=public"` y luego `npm test` | Base `modulo3_test` migrada (`npx prisma migrate deploy` con `DATABASE_URL` apuntando a ella) | `Test Suites: 34 passed`, `Tests: 507 passed`, ninguna omitida | [✔] | — |
-| 2 | Pruebas de punta a punta de los endpoints | `npm run test:e2e` | N/A | `Test Suites: 5 passed`, `Tests: 123 passed` | [✔] | — |
+| 1 | Iniciar el Módulo 2 simulado con la cotización de la reserva | En otra terminal: `$env:QUOTE_ID = "<quoteId>"; node features/005-consultar-tarifa-dinamica/4-testing/modulo2-simulado.js` | El `quoteId` anotado en la Sección 1, paso 12 | La terminal muestra `Módulo 2 simulado en http://localhost:8081` | [✔] | — |
+| 2 | Iniciar sesión como la OTA y autorizar | **Authorize** → **Logout** → `POST /auth/login` → **Authorize** con su `accessToken` | `{ "username": "ota-demo", "password": "<SEED_OTA_PASSWORD>" }` | **200** con `accessToken` | [✔] | — |
+| 3 | Habitación de una reserva propia (HU4, escenario 1) | `GET /pricing/dynamic-rate` | `roomId=<habitación>`, `checkInDate=2026-12-23`, `checkOutDate=2026-12-26`, `reservationRef=RES-OTA-PROPIA` | **200**: 23 `Regular 0.00 → 300000.00`; 24 y 25 `Alta 50.00 → 450000.00`; `total: "1200000.00"`. La terminal del Módulo 2 simulado muestra `GET /api/reservations/RES-OTA-PROPIA` | [✔] | — |
+| 4 | El resultado es el mismo que para Módulo 2 (FR-011) | **Authorize** → **Logout** → `GET /pricing/dynamic-rate` | Los datos del paso 3, sin `reservationRef` | **200** con exactamente la misma respuesta del paso 3: la tarifa vigente, no la de la cotización guardada | [✔] | — |
+| 5 | Reserva de otra OTA (HU4, escenario 2) | Autorizar otra vez con el token de la OTA (paso 2) → `GET /pricing/dynamic-rate` | Los datos del paso 3, con `reservationRef=RES-OTRA-OTA` | **403** `FORBIDDEN`, mensaje "No tienes permiso para consultar la tarifa de esta habitación.". La terminal del Módulo 1 simulado no muestra peticiones nuevas | [✔] | — |
+| 6 | Reserva del canal directo | `GET /pricing/dynamic-rate` | Los datos del paso 3, con `reservationRef=RES-DIRECTA` | **403** `FORBIDDEN` con el mismo mensaje del paso 5 | [✔] | — |
+| 7 | Reserva que no incluye la habitación consultada | `GET /pricing/dynamic-rate` | Los datos del paso 3, con `reservationRef=RES-SIN-HABITACION` | **403** `FORBIDDEN` con el mismo mensaje del paso 5 | [✔] | — |
+| 8 | Reserva que no existe (FR-010: no se revela) | `GET /pricing/dynamic-rate` | Los datos del paso 3, con `reservationRef=RES-NO-EXISTE` | **403** `FORBIDDEN` con el mismo mensaje del paso 5, nunca `RESERVATION_NOT_FOUND` | [✔] | — |
+| 9 | Módulo 2 no responde al verificar la reserva (caso límite) | `GET /pricing/dynamic-rate` | Los datos del paso 3, con `reservationRef=RES-CAIDA` | **424** `MODULE2_UNAVAILABLE`, sin `nights` | [✔] | — |
+
+--------------------------------------------------------------------------------
+
+##### Section 4: Pruebas automáticas (casos que no se pueden provocar a mano)
+En una terminal en la carpeta `Hospitua-Module-3`, con Docker corriendo. Incluyen también las pruebas de 001, 004, 007, 009 y 011.
+
+| Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
+| :---: | ------ | ------ | ------ | ------ | :---: | ------ |
+| 1 | Pruebas unitarias, de contrato y de integración contra PostgreSQL | `$env:TEST_DATABASE_URL = "postgresql://hospitua:hospitua@localhost:5432/modulo3_test?schema=public"` y luego `npm test` | Base `modulo3_test` migrada (`npx prisma migrate deploy` con `DATABASE_URL` apuntando a ella) | `Test Suites: 48 passed`, `Tests: 703 passed`, ninguna omitida | [✔] | — |
+| 2 | Pruebas de punta a punta de los endpoints | `npm run test:e2e` | N/A | `Test Suites: 5 passed`, `Tests: 129 passed` | [✔] | — |
 
 --------------------------------------------------------------------------------
 
@@ -149,13 +167,14 @@ En una terminal en la carpeta `Hospitua-Module-3`, con Docker corriendo. Incluye
 Tomados de los casos límite de la spec.
 
 * **EC-001** : La habitación no tiene tarifa base en Módulo 1: se rechaza, nunca se calcula sobre cero o un valor supuesto. → Sección 2, pasos 6, 7, 11 y 12.
-* **EC-002** : Módulo 1 no responde: la consulta falla de forma explícita, sin resultado parcial. → Sección 2, paso 8; la falla de una sola noche dentro de un rango, en las pruebas automáticas (Sección 3).
+* **EC-002** : Módulo 1 no responde: la consulta falla de forma explícita, sin resultado parcial. → Sección 2, paso 8; la falla de una sola noche dentro de un rango, en las pruebas automáticas (Sección 4).
 * **EC-003** : La regla de temporada cambia después de una consulta: la consulta nueva refleja la regla vigente y la cotización guardada no cambia. → Sección 1, pasos 14 a 16.
 * **EC-004** : Consulta repetida sin cambios de configuración: mismo resultado. → Sección 1, paso 11.
 * **EC-005** : Rango de una sola noche: salida = entrada + 1 día devuelve esa noche; salida = entrada se rechaza. → Sección 1, paso 10; Sección 2, paso 1.
 * **EC-006** : Cotización pedida por un actor distinto a Módulo 2: se rechaza. → Sección 2, pasos 15 y 17.
-* **EC-007** : La OTA consulta una habitación que no es de sus reservas, o Módulo 2 no responde al verificarla: pendiente de la Historia de usuario 4 (007). Hoy toda OTA recibe `403`. → Sección 2, paso 16.
-* **EC-008** : Una falla a mitad de guardar la cotización no deja una cotización parcial. → pruebas automáticas de integración (Sección 3).
+* **EC-007** : La OTA consulta una habitación que no pertenece a una reserva intermediada por ella: se rechaza de la misma forma exista o no la reserva. → Sección 3, pasos 5 a 8.
+* **EC-008** : Una falla a mitad de guardar la cotización no deja una cotización parcial. → pruebas automáticas de integración (Sección 4).
+* **EC-009** : Módulo 2 no responde al verificar la reserva indicada por la OTA: la consulta falla de forma explícita, sin resultado. → Sección 3, paso 9.
 
 --------------------------------------------------------------------------------
 

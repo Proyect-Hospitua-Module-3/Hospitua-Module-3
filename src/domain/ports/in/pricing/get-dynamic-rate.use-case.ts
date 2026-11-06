@@ -12,7 +12,16 @@ export interface DynamicRateQuery {
   date?: string;
   checkInDate?: string;
   checkOutDate?: string;
+  // Solo la OTA (HU4): reserva a la que pertenece la habitación. En una llamada interna
+  // de Módulo 2 se ignora.
+  reservationRef?: string;
 }
+
+// Quién consulta (contrato GET, "Autenticación y autorización"): Módulo 2 por la red
+// interna, sin token, o una OTA con su otaId del token.
+export type DynamicRateCaller = { kind: 'INTERNAL' } | { kind: 'OTA'; otaId: string };
+
+export const INTERNAL_CALLER: DynamicRateCaller = Object.freeze({ kind: 'INTERNAL' });
 
 export interface DynamicRateResult {
   roomId: string;
@@ -23,6 +32,8 @@ export interface DynamicRateResult {
 }
 
 // Solo lectura: no guarda nada (FR-007). Falla completa si cualquier noche falla (FR-006).
+// La OTA solo consulta habitaciones de sus reservas (FR-010); el resultado no depende de
+// quién consulta (FR-011).
 export interface GetDynamicRateUseCase {
-  execute(query: DynamicRateQuery): Promise<DynamicRateResult>;
+  execute(query: DynamicRateQuery, caller?: DynamicRateCaller): Promise<DynamicRateResult>;
 }

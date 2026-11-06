@@ -4,7 +4,7 @@ import { InvalidPricingRequestError } from '../../../../../domain/errors/pricing
 
 // Cualquier error de forma en la query del GET o en el cuerpo del POST es
 // INVALID_QUERY_PARAMS (contratos GET y POST de 005). Los campos que no están en el DTO
-// se descartan (por ejemplo reservationRef en una llamada interna, que se ignora).
+// se descartan.
 export const pricingRequestPipe = new ValidationPipe({
   whitelist: true,
   exceptionFactory: (errors: ValidationError[]) => {

@@ -1,6 +1,7 @@
-// Feature 005 · Consultar tarifa dinámica (T011, T013, T014, T022, T026, T030)
+// Feature 005 · Consultar tarifa dinámica (T011, T013, T014, T022, T026, T030, T035)
 // GET /pricing/dynamic-rate y POST /pricing/quotes de punta a punta: HTTP → guards →
-// casos de uso → cliente HTTP real de 004 contra un Módulo 1 simulado. 009, 011 y las
+// casos de uso → cliente HTTP real de 004 contra un Módulo 1 simulado y, para la OTA
+// (HU4), cliente HTTP real de 007 contra un Módulo 2 simulado. 009, 011 y las
 // cotizaciones guardadas se reemplazan por dobles, para que corra sin PostgreSQL; el
 // archivo de acceso a datos real se prueba en test/integration.
 process.env.JWT_SECRET = 'secreto-solo-para-pruebas';
@@ -25,6 +26,7 @@ import {
   FakeSeasonRules,
   InMemoryLodgingQuoteRepository,
 } from '../../support/pricing/fake-dynamic-rate-ports';
+import { Module1HttpFixture } from '../../support/pricing/module1-http-fixture';
 import { Module1RatesServer } from '../../support/pricing/module1-rates-server';
 
 const ROOM_ID = '3f2b8c1e-5a47-4d09-9b6e-1c2d3e4f5a6b';
@@ -34,6 +36,8 @@ const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 describe('Tarifa dinámica y cotización (e2e)', () => {
   let app: INestApplication;
   let module1: Module1RatesServer;
+  // Módulo 2 simulado: responde GET /api/reservations/{ref} (contrato CLIENT-get-reservation de 007).
+  let module2: Module1HttpFixture;
   let rules: FakeSeasonRules;
   let calendar: FakeSeasonCalendar;
   let quotes: InMemoryLodgingQuoteRepository;
@@ -46,6 +50,11 @@ describe('Tarifa dinámica y cotización (e2e)', () => {
     await module1.start();
     process.env.MODULE1_BASE_URL = module1.baseUrl;
     process.env.MODULE1_TIMEOUT_MS = '500';
+    module2 = new Module1HttpFixture();
+    await module2.start();
+    module2.setReply({ status: 404, body: {} });
+    process.env.MODULE2_BASE_URL = module2.baseUrl;
+    process.env.MODULE2_TIMEOUT_MS = '500';
 
     rules = new FakeSeasonRules();
     calendar = new FakeSeasonCalendar();
@@ -79,6 +88,7 @@ describe('Tarifa dinámica y cotización (e2e)', () => {
   afterEach(async () => {
     await app?.close();
     await module1?.stop();
+    await module2?.stop();
   });
 
   const dynamicRate = (query: Record<string, string>) =>
@@ -168,6 +178,7 @@ describe('Tarifa dinámica y cotización (e2e)', () => {
       });
 
       expect(response.status).toBe(200);
+      expect(module2.requests).toBe(0);
     });
 
     it('400 INVALID_DATE_RANGE sin llamar a Módulo 1', async () => {
@@ -252,17 +263,101 @@ describe('Tarifa dinámica y cotización (e2e)', () => {
       expect(module1.requests).toHaveLength(0);
     });
 
-    it.each([
-      ['Administrador', () => adminToken],
-      // Hasta la HU4 (necesita el cliente de Módulo 2 de 007), la OTA tampoco consulta.
-      ['OTA', () => otaToken],
-    ])('403 FORBIDDEN con token de %s, sin llamar a Módulo 1', async (_, token) => {
-      const response = await dynamicRate({ roomId: ROOM_ID, date: '2026-12-24' }).set(
-        'Authorization',
-        `Bearer ${token()}`,
-      );
+    it('403 FORBIDDEN con token de Administrador, sin llamar a Módulo 1 ni a Módulo 2', async () => {
+      const response = await dynamicRate({
+        roomId: ROOM_ID,
+        date: '2026-12-24',
+        reservationRef: 'RES-000123',
+      }).set('Authorization', `Bearer ${adminToken}`);
 
       expectApiError(response, 403, 'FORBIDDEN', '/pricing/dynamic-rate');
+      expect(module1.requests).toHaveLength(0);
+      expect(module2.requests).toBe(0);
+    });
+  });
+
+  describe('GET /pricing/dynamic-rate — la OTA (HU4, T035)', () => {
+    const RESERVATION_REF = 'RES-000123';
+    const STAY = { roomId: ROOM_ID, checkInDate: '2026-12-23', checkOutDate: '2026-12-26' };
+
+    // Como en la realidad: Módulo 2 cotizó la habitación con el POST y guardó el quoteId
+    // en la reserva, que Módulo 2 simulado devuelve a la 007.
+    async function otaReservation(changes: Record<string, unknown> = {}): Promise<void> {
+      const quote = await createQuote(STAY).expect(200);
+      module2.setReply({
+        status: 200,
+        body: {
+          reservationRef: RESERVATION_REF,
+          quoteIds: [quote.body.quoteId],
+          channel: 'OTA',
+          otaId: 'booking',
+          otaConfirmationCode: 'BK-778899',
+          otaCommissionPercentage: 15,
+          ...changes,
+        },
+      });
+    }
+
+    const asOta = (query: Record<string, string>) =>
+      dynamicRate(query).set('Authorization', `Bearer ${otaToken}`);
+
+    it('200: habitación de una reserva propia, igual que para Módulo 2 (HU4, escenario 1)', async () => {
+      await otaReservation();
+
+      const response = await asOta({ ...STAY, reservationRef: RESERVATION_REF });
+      const internal = await dynamicRate(STAY);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(internal.body);
+      expect(response.body.total).toBe('1020000.00');
+      expect(module2.requestLog[0]).toMatchObject({
+        method: 'GET',
+        url: `/api/reservations/${RESERVATION_REF}`,
+      });
+    });
+
+    it.each<[string, () => Promise<void>]>([
+      ['reserva de otra OTA', () => otaReservation({ otaId: 'expedia' })],
+      [
+        'reserva del canal directo',
+        () =>
+          otaReservation({ channel: 'DIRECT', otaId: undefined, otaConfirmationCode: undefined }),
+      ],
+      [
+        'reserva que no incluye la habitación',
+        () => otaReservation({ quoteIds: ['c9d0e1f2-a3b4-4c5d-8e6f-7a8b9c0d1e2f'] }),
+      ],
+      ['reserva inexistente (404 de Módulo 2)', async () => module2.setReply({ status: 404 })],
+    ])(
+      '403 FORBIDDEN con %s: mismo cuerpo y sin llamar a Módulo 1 (HU4, escenario 2)',
+      async (_, prepare) => {
+        await prepare();
+        const module1Calls = module1.requests.length;
+
+        const response = await asOta({ ...STAY, reservationRef: RESERVATION_REF });
+
+        expectApiError(response, 403, 'FORBIDDEN', '/pricing/dynamic-rate');
+        expect(response.body.message).toBe(
+          'No tienes permiso para consultar la tarifa de esta habitación.',
+        );
+        expect(module1.requests).toHaveLength(module1Calls);
+      },
+    );
+
+    it('400 INVALID_QUERY_PARAMS si la OTA no envía reservationRef, sin consultar a Módulo 2', async () => {
+      const response = await asOta(STAY);
+
+      expectApiError(response, 400, 'INVALID_QUERY_PARAMS', '/pricing/dynamic-rate');
+      expect(module2.requests).toBe(0);
+    });
+
+    it('424 MODULE2_UNAVAILABLE si Módulo 2 falla al verificar la reserva, sin resultado', async () => {
+      module2.setReply({ status: 503, body: {} });
+
+      const response = await asOta({ ...STAY, reservationRef: RESERVATION_REF });
+
+      expectApiError(response, 424, 'MODULE2_UNAVAILABLE', '/pricing/dynamic-rate');
+      expect(response.body.nights).toBeUndefined();
       expect(module1.requests).toHaveLength(0);
     });
   });

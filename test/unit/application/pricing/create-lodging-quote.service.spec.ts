@@ -11,6 +11,7 @@ import { CreateLodgingQuoteCommand } from '../../../../src/domain/ports/in/prici
 import {
   ALTA_ID,
   FakeBaseRates,
+  FakeReservationClient,
   FakeSeasonCalendar,
   FakeSeasonRules,
   InMemoryLodgingQuoteRepository,
@@ -82,7 +83,11 @@ describe('CreateLodgingQuoteService', () => {
   });
 
   it('cotiza lo mismo que devuelve la consulta de tarifa dinámica (contrato POST, regla 2)', async () => {
-    const consulted = await new GetDynamicRateService(calculator).execute(STAY);
+    const consulted = await new GetDynamicRateService(
+      calculator,
+      new FakeReservationClient(),
+      quotes,
+    ).execute(STAY);
 
     const quote = await service.create(STAY);
 

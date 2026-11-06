@@ -1,4 +1,5 @@
-// Feature 005 · Consultar tarifa dinámica (T008–T010, T015–T017, T021, T039, T042)
+// Feature 005 · Consultar tarifa dinámica (T008–T010, T015–T017, T021, T032–T034, T039, T042)
+import { DynamicRateAccessDeniedError } from '../../../../src/domain/errors/pricing/dynamic-rate-access-denied.error';
 import { InvalidBaseRateError } from '../../../../src/domain/errors/pricing/invalid-base-rate.error';
 import { InvalidDateRangeError } from '../../../../src/domain/errors/pricing/invalid-date-range.error';
 import { InvalidPricingRequestError } from '../../../../src/domain/errors/pricing/invalid-pricing-request.error';
@@ -7,12 +8,16 @@ import { RoomNotFoundError } from '../../../../src/domain/errors/pricing/room-no
 import { SeasonCalendarUnavailableError } from '../../../../src/domain/errors/pricing/season-calendar-unavailable.error';
 import { SeasonConfigurationInconsistentError } from '../../../../src/domain/errors/pricing/season-configuration-inconsistent.error';
 import { SeasonRulesUnavailableError } from '../../../../src/domain/errors/pricing/season-rules-unavailable.error';
+import { Module2UnavailableError } from '../../../../src/domain/errors/settlement/module2-unavailable.error';
+import { LodgingQuote } from '../../../../src/domain/model/pricing/lodging-quote';
+import { ReservationData } from '../../../../src/domain/model/settlement/reservation-data';
 import {
   DynamicRateCalculator,
   NIGHTS_IN_PARALLEL,
 } from '../../../../src/application/services/pricing/dynamic-rate-calculator';
 import { GetDynamicRateService } from '../../../../src/application/services/pricing/get-dynamic-rate.service';
 import {
+  DynamicRateCaller,
   DynamicRateQuery,
   DynamicRateResult,
 } from '../../../../src/domain/ports/in/pricing/get-dynamic-rate.use-case';
@@ -20,8 +25,10 @@ import {
   ALTA_ID,
   BAJA_ID,
   FakeBaseRates,
+  FakeReservationClient,
   FakeSeasonCalendar,
   FakeSeasonRules,
+  InMemoryLodgingQuoteRepository,
   REGULAR_ID,
 } from '../../../support/pricing/fake-dynamic-rate-ports';
 
@@ -48,14 +55,20 @@ describe('GetDynamicRateService', () => {
   let baseRates: FakeBaseRates;
   let rules: FakeSeasonRules;
   let calendar: FakeSeasonCalendar;
+  let reservations: FakeReservationClient;
+  let quotes: InMemoryLodgingQuoteRepository;
   let service: GetDynamicRateService;
 
   beforeEach(() => {
     baseRates = new FakeBaseRates();
     rules = new FakeSeasonRules();
     calendar = new FakeSeasonCalendar();
+    reservations = new FakeReservationClient();
+    quotes = new InMemoryLodgingQuoteRepository();
     service = new GetDynamicRateService(
       new DynamicRateCalculator(baseRates, rules, calendar, () => NOW),
+      reservations,
+      quotes,
     );
   });
 
@@ -235,6 +248,168 @@ describe('GetDynamicRateService', () => {
       expect(error).toBeInstanceOf(InvalidPricingRequestError);
       expect((error as InvalidPricingRequestError).errorCode).toBe('INVALID_QUERY_PARAMS');
       expectNoPortCalls();
+    });
+  });
+
+  describe('acceso de la OTA (HU4)', () => {
+    const OTA: DynamicRateCaller = { kind: 'OTA', otaId: 'booking' };
+    const RESERVATION_REF = 'RES-000123';
+    const QUOTE_ID = 'a1f2c3d4-e5b6-4789-8a9b-0c1d2e3f4a5b';
+    const OTHER_ROOM_ID = '7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7';
+
+    // Cotización guardada de una habitación (lo que Módulo 2 guardó al crear la reserva).
+    function storeQuote(roomId: string): void {
+      quotes.quotes.set(
+        QUOTE_ID,
+        LodgingQuote.restore({
+          quoteId: QUOTE_ID,
+          roomId,
+          checkInDate: '2026-12-23',
+          checkOutDate: '2026-12-24',
+          currency: 'COP',
+          lodgingAmount: '300000.00',
+          nights: [
+            {
+              date: '2026-12-23',
+              baseRate: '300000.00',
+              seasonName: 'Regular',
+              adjustmentPercent: '0.00',
+              rate: '300000.00',
+            },
+          ],
+        }),
+      );
+    }
+
+    // Reserva de Módulo 2 intermediada por la OTA del token (contrato CLIENT-get-reservation).
+    function reservation(changes: Partial<ReservationData> = {}): ReservationData {
+      return {
+        reservationRef: RESERVATION_REF,
+        quoteIds: [QUOTE_ID],
+        channel: 'OTA',
+        otaId: 'booking',
+        otaConfirmationCode: 'BK-778899',
+        otaCommissionPercentage: '15.00',
+        ...changes,
+      };
+    }
+
+    const otaQuery = (changes: DynamicRateQuery = {}): DynamicRateQuery =>
+      query({
+        checkInDate: '2026-12-23',
+        checkOutDate: '2026-12-26',
+        reservationRef: RESERVATION_REF,
+        ...changes,
+      });
+
+    beforeEach(() => {
+      calendar.assign(['2026-12-24', '2026-12-25'], ALTA_ID);
+      storeQuote(ROOM_ID);
+      reservations.reservations.set(RESERVATION_REF, reservation());
+    });
+
+    it('habitación de una reserva propia: el mismo resultado que obtiene Módulo 2 (T032, FR-011)', async () => {
+      const asOta = plain(await service.execute(otaQuery(), OTA));
+      const asModule2 = plain(await service.execute(otaQuery()));
+
+      expect(asOta).toEqual(asModule2);
+      expect(asOta.total).toBe('1020000.00');
+      expect(reservations.calls).toEqual([RESERVATION_REF]);
+    });
+
+    it('reconoce la habitación aunque el roomId llegue en mayúsculas', async () => {
+      const result = await service.execute(otaQuery({ roomId: ROOM_ID.toUpperCase() }), OTA);
+
+      expect(result.total.toString()).toBe('1020000.00');
+    });
+
+    it.each<[string, () => void]>([
+      [
+        'reserva de otra OTA',
+        () => reservations.reservations.set(RESERVATION_REF, reservation({ otaId: 'expedia' })),
+      ],
+      [
+        'reserva del canal directo',
+        () =>
+          reservations.reservations.set(
+            RESERVATION_REF,
+            reservation({ channel: null, otaId: undefined, otaConfirmationCode: undefined }),
+          ),
+      ],
+      [
+        // El canal manda aunque llegue el otaId de esta OTA.
+        'reserva de un canal que no es OTA con el otaId de la OTA',
+        () => reservations.reservations.set(RESERVATION_REF, reservation({ channel: 'DIRECT' })),
+      ],
+      [
+        'reserva que no incluye la habitación consultada',
+        () => {
+          quotes.quotes.clear();
+          storeQuote(OTHER_ROOM_ID);
+        },
+      ],
+      [
+        'reserva sin cotizaciones',
+        () => reservations.reservations.set(RESERVATION_REF, reservation({ quoteIds: [] })),
+      ],
+      ['cotización de la reserva que no existe', () => quotes.quotes.clear()],
+      ['reserva inexistente (404 de Módulo 2)', () => reservations.reservations.clear()],
+    ])(
+      '%s → DynamicRateAccessDeniedError con el mismo mensaje, sin llamar a 004, 009 ni 011 (T033)',
+      async (_, prepare) => {
+        prepare();
+
+        const error = await service.execute(otaQuery(), OTA).catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(DynamicRateAccessDeniedError);
+        expect((error as DynamicRateAccessDeniedError).errorCode).toBe('FORBIDDEN');
+        expect((error as Error).message).toBe(new DynamicRateAccessDeniedError().message);
+        expectNoPortCalls();
+      },
+    );
+
+    it('un token de OTA sin otaId no coincide con ninguna reserva', async () => {
+      await expect(service.execute(otaQuery(), { kind: 'OTA', otaId: '' })).rejects.toThrow(
+        DynamicRateAccessDeniedError,
+      );
+      expectNoPortCalls();
+    });
+
+    it('Módulo 2 no responde: la consulta falla completa, sin llamar a 004, 009 ni 011 (T034)', async () => {
+      const failure = new Module2UnavailableError(RESERVATION_REF);
+      reservations.failure = failure;
+
+      await expect(service.execute(otaQuery(), OTA)).rejects.toBe(failure);
+      expectNoPortCalls();
+    });
+
+    it.each([
+      ['sin reservationRef', undefined],
+      ['reservationRef vacío', '  '],
+    ])('%s → INVALID_QUERY_PARAMS sin consultar a Módulo 2', async (_, reservationRef) => {
+      const error = await service
+        .execute(otaQuery({ reservationRef }), OTA)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(InvalidPricingRequestError);
+      expect(reservations.calls).toHaveLength(0);
+      expectNoPortCalls();
+    });
+
+    it('el rango se valida antes de consultar a Módulo 2 (contrato GET, regla 1)', async () => {
+      await expect(
+        service.execute(otaQuery({ checkInDate: '2026-12-26', checkOutDate: '2026-12-23' }), OTA),
+      ).rejects.toThrow(InvalidDateRangeError);
+      expect(reservations.calls).toHaveLength(0);
+    });
+
+    it('Módulo 2 (sin token) no consulta la reserva y se ignora reservationRef (T034)', async () => {
+      reservations.reservations.clear();
+
+      const result = await service.execute(otaQuery());
+
+      expect(result.total.toString()).toBe('1020000.00');
+      expect(reservations.calls).toHaveLength(0);
     });
   });
 
