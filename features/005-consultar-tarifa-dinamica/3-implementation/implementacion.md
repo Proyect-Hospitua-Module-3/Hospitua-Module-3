@@ -9,7 +9,7 @@ Este documento es el mapa de dónde está el código de la 005. El código no vi
 
 > Para encontrar todos los archivos de la 005 en VS Code: `Ctrl+Shift+F` y buscar `Feature 005`.
 
-**Alcance de esta entrega**: Historias de usuario 1, 2 y 3. La Historia 4 (la OTA consulta la tarifa de sus reservas) necesita el cliente de Módulo 2 (`ReservationClientPort`) que crea la 007; mientras no exista, cualquier llamada con token recibe `403` (ver sección 7).
+**Alcance de esta entrega**: Historias de usuario 1, 2 y 3. La Historia 4 (la OTA consulta la tarifa de sus reservas) necesita el cliente de Módulo 2 (`ReservationClientPort`) que crea la 007, que ya está en develop; mientras la HU4 no esté implementada, cualquier llamada con token recibe `403` (ver sección 7).
 
 ---
 
@@ -98,7 +98,8 @@ HTTP ─► OptionalJwtAuthGuard        ¿llegó Authorization? sin token = Mód
 | [prisma-lodging-quote.repository.ts](../../../src/infrastructure/adapters/out/persistence/repositories/pricing/prisma-lodging-quote.repository.ts) | Archivo de acceso a datos: `insert` (cotización y noches en un solo `create` anidado, atómico) y `findByIds` (ids inexistentes o que no son UUID se ignoran) | FR-012, FR-013, FR-015 |
 | [lodging-quote.mapper.ts](../../../src/infrastructure/adapters/out/persistence/mappers/pricing/lodging-quote.mapper.ts) | Dominio ↔ filas (fechas `DATE` como texto `YYYY-MM-DD`, importes como texto) | — |
 | [domain-exception.filter.ts](../../../src/infrastructure/adapters/in/http/domain-exception.filter.ts) | **Compartido.** La 005 agrega `INVALID_DATE_RANGE` 400, `INVALID_QUERY_PARAMS` 400, y los de Módulo 1 (004) que salen por sus endpoints: `ROOM_NOT_FOUND` 404, `INVALID_BASE_RATE` 424, `MODULE1_UNAVAILABLE` 424 | FR-006 |
-| [pricing.module.ts](../../../src/infrastructure/config/pricing.module.ts) | **Compartido con 004, 009 y 011.** Conecta la 005 con los puertos de 004, 009 y 011 por token y exporta `LODGING_QUOTE_QUERY` para la 007 | — |
+| [logged-create-lodging-quote.use-case.ts](../../../src/infrastructure/logging/pricing/logged-create-lodging-quote.use-case.ts) | Envuelve la cotización y deja un log estructurado de cada una (T046): `quoteId`, `roomId`, rango, total y duración; si se rechaza, lo pedido y el `errorCode`. Sin datos del huésped | — |
+| [pricing.module.ts](../../../src/infrastructure/config/pricing.module.ts) | **Compartido con 004, 009 y 011.** Conecta la 005 con los puertos de 004, 009 y 011 por token, envuelve la cotización con su log y exporta `LODGING_QUOTE_QUERY` para la 007 | — |
 
 ### Base de datos
 
@@ -130,16 +131,17 @@ El caso de prueba manual, con la plantilla del curso, está en [4-testing/TC-005
 | [calculate-dynamic-rate.spec.ts](../../../test/unit/domain/pricing/calculate-dynamic-rate.spec.ts) | La fórmula con ajustes positivos, negativos, cero, −100 y +100; half-up; el nombre de la temporada no cambia nada | 14 |
 | [stay-range.spec.ts](../../../test/unit/domain/pricing/stay-range.spec.ts) | Noches de una estadía (cruce de mes, año y bisiesto), rangos inválidos, `date` = una noche | 7 |
 | [lodging-quote.spec.ts](../../../test/unit/domain/pricing/lodging-quote.spec.ts) | Ejemplo del contrato, suma exacta, inmutable, noches que no cuadran, `restore` sin recalcular | 7 |
-| [money.vo.spec.ts](../../../test/unit/domain/shared/money.vo.spec.ts) | Las funciones `add` y `multiply` que agrega la 005 (el archivo es de la 004) | 4 de 16 |
+| [money.vo.spec.ts](../../../test/unit/domain/shared/money.vo.spec.ts) | Las funciones `add` y `multiply` que agrega la 005 (el archivo es de la 004) | 4 de 20 |
 | [get-dynamic-rate.service.spec.ts](../../../test/unit/application/pricing/get-dynamic-rate.service.spec.ts) | Composición 004 + 009 + 011, default sin suponer cero, temporada fuera del catálogo, rango que cruza temporadas, un solo snapshot, límite de paralelismo, todo o nada, validación antes de llamar a nadie, determinismo, sin caché | 26 |
 | [create-lodging-quote.service.spec.ts](../../../test/unit/application/pricing/create-lodging-quote.service.spec.ts) | Cotiza lo mismo que la consulta, guarda una vez, no es idempotente, rechazos sin guardar | 12 |
 | [dynamic-rate.contract.spec.ts](../../../test/contract/pricing/dynamic-rate.contract.spec.ts) | Contrato del `GET` (T011): campos exactos de la respuesta, importes como texto con 2 decimales, ejemplos 1 y 2 del contrato, y la forma `ApiError` de cada error de la tabla (salvo `MODULE2_UNAVAILABLE`, que es de la HU4) | 13 |
 | [lodging-quote.contract.spec.ts](../../../test/contract/pricing/lodging-quote.contract.spec.ts) | Contrato del `POST` (T026): campos exactos, `quoteId` UUID, ejemplo del contrato, cada error de la tabla con la forma `ApiError` y sin guardar nada | 12 |
 | [lodging-quote-query.port.spec.ts](../../../test/contract/pricing/lodging-quote-query.port.spec.ts) | Contrato del puerto con 007 (T027), con el archivo de acceso a datos real: ejemplo del contrato, todo como texto, valores tal como se guardaron, ids inexistentes, lista vacía, el error de la base se propaga | 7 |
 | [prisma-lodging-quote.repository.spec.ts](../../../test/integration/persistence/pricing/prisma-lodging-quote.repository.spec.ts) | PostgreSQL real: guardar y leer igual (contrato con 007), columnas, ids inexistentes, atomicidad, restricciones `CHECK` | 5 |
+| [logged-create-lodging-quote.use-case.spec.ts](../../../test/unit/infrastructure/pricing/logged-create-lodging-quote.use-case.spec.ts) | El log de cada cotización (T046): campos exactos, sin el detalle por noche, rechazo con su `errorCode` y el mismo error relanzado, error sin código como `UNEXPECTED_ERROR` | 4 |
 | [dynamic-rate.e2e-spec.ts](../../../test/e2e/pricing/dynamic-rate.e2e-spec.ts) | Los 2 endpoints de punta a punta con el cliente HTTP real de 004 contra un Módulo 1 simulado: 200, 400, 401, 403, 404, 422, 424, nada guardado tras cada rechazo, la cotización no cambia al cambiar la regla | 35 |
 
-Resultado actual: **las 142 pruebas de la 005 pasan**, incluidas las de integración contra PostgreSQL real. El proyecto completo suma 507 pruebas unitarias, de contrato y de integración, y 123 de punta a punta.
+Resultado actual: **las 146 pruebas de la 005 pasan**, incluidas las de integración contra PostgreSQL real. El proyecto completo (ya con la 007) suma 684 pruebas unitarias, de contrato, de integración y de arquitectura, y 123 de punta a punta.
 
 ```powershell
 $env:TEST_DATABASE_URL = "postgresql://hospitua:hospitua@localhost:5432/modulo3_test?schema=public"
@@ -167,7 +169,7 @@ Dobles de prueba propios: [fake-dynamic-rate-ports.ts](../../../test/support/pri
 | FR-011 / BR-005 Mismo resultado para cualquier actor | No hay ninguna rama por actor en el cálculo | (se completa con la HU4) |
 | FR-012 Cotizar y guardar con la tarifa base por noche | `CreateLodgingQuoteService` + `insert` | unitarias; e2e 200; integración |
 | FR-013 / BR-006 / SC-007 La cotización no cambia | Solo `INSERT`; `restore` sin recalcular | e2e "no cambia si cambia la regla"; integración |
-| FR-014 Salida anticipada no cotiza | Nada en la 005 llama a la cotización desde un check-out | (regla de arquitectura T031 pendiente) |
+| FR-014 Salida anticipada no cotiza | Nada en la 005 llama a la cotización desde un check-out | prueba de arquitectura de la 007 (T031) |
 | FR-015 / SC-008 Rechazo sin guardar nada | Validación antes de calcular; transacción única | unitarias T024; e2e; integración "atomicidad" |
 | FR-016 / BR-008 Solo Módulo 2 cotiza | `InternalCallOnlyGuard` en el POST | e2e 403 con OTA, Administrador y token inválido |
 | NFR-001 / SC-006 Determinismo | Un `asOf` y un snapshot por consulta | unitaria de determinismo |
@@ -180,18 +182,18 @@ Dobles de prueba propios: [fake-dynamic-rate-ports.ts](../../../test/support/pri
 |---|---|
 | T001 (tablas y migración) | Hecho |
 | T002 (registro en `pricing.module.ts`) | Hecho |
-| T003 (firma de `findByIds` con 007) | Hecho según el contrato; confirmar con la 007 cuando la implementen |
+| T003 (firma de `findByIds` con 007) | Hecho: la 007 ya la usa, con `roomId` y `baseRate` por noche |
 | T004–T007 (cálculo, modelos, errores, rango) | Hecho |
 | T008–T014 (Historia 1) | Hecho. La prueba de contrato T011 está en `test/contract/pricing/dynamic-rate.contract.spec.ts` |
 | T015–T022 (Historia 2) | Hecho. T018 se cubre con la unitaria de 6 noches y el e2e, no con una prueba de integración |
 | T023–T030 (Historia 3) | Hecho. Las pruebas de contrato T026 y T027 están en `test/contract/pricing/lodging-quote.contract.spec.ts` y `lodging-quote-query.port.spec.ts` |
-| T031 (regla de `dependency-cruiser`) | Pendiente: la herramienta no está instalada en el proyecto (igual que en 001, 009 y 011) |
-| T032–T038 (Historia 4, OTA) | Pendiente: necesita `ReservationClientPort` de la 007 |
+| T031 (regla de `dependency-cruiser`) | Hecho con la prueba de arquitectura de la 007 ([settlement-dependencies.spec.ts](../../../test/architecture/settlement-dependencies.spec.ts)): falla si un archivo de `settlement` importa los servicios de cálculo de `pricing` o sus puertos de entrada. `dependency-cruiser` sigue sin estar instalado |
+| T032–T038 (Historia 4, OTA) | Pendiente: `ReservationClientPort` de la 007 ya está en develop; falta implementarla |
 | T039–T042 (casos límite) | Hecho |
 | T043 (OpenAPI) | Hecho: Swagger en `/docs` |
-| T044 (contrato con Módulo 1) | Lo cubre la 004 con su prueba de contrato |
+| T044 (contrato con Módulo 1) | Hecho: lo cubre la 004 con su prueba de contrato (`test/contract/pricing/module1-base-rate.contract.spec.ts`) |
 | T045 (ajustar timeout y paralelismo con datos reales) | Pendiente: no hay un Módulo 1 real todavía |
-| T046 (logs estructurados) | Pendiente |
+| T046 (logs estructurados) | Hecho: `LoggedCreateLodgingQuoteUseCase`, con el mismo patrón que la 007 |
 
 Con la 005 también quedan cubiertas tareas de otras features que esperaban un consumidor real: 011 T022/T026 (la 005 usa la clasificación del calendario) y 009 T022/T027 (la 005 usa el ajuste de las reglas).
 
@@ -201,6 +203,8 @@ Con la 005 también quedan cubiertas tareas de otras features que esperaban un c
 
 Están en las Notes del [plan](../2-technical/plan.md#decisiones-de-implementación). La más importante: **mientras no exista la HU4, cualquier token en `GET /pricing/dynamic-rate` recibe `403`**, también el de una OTA, para que ninguna OTA vea tarifas de habitaciones que no son de sus reservas. Un token inválido sigue siendo `401` y uno de Administrador `403`, como dice el contrato.
 
+**Riesgo conocido: dos relojes.** El `asOf` de cada consulta sale del reloj del servidor de la app (`DynamicRateCalculator`), mientras que la 009 y la 011 marcan desde cuándo rige cada regla o revisión del calendario con la hora de la base de datos. Si los dos relojes están desfasados, una regla recién cambiada puede tardar en verse lo que dure ese desfase; en la práctica, milisegundos. Corregirlo del todo exigiría cambiar los puertos de la 009 y la 011, así que solo se documenta.
+
 ---
 
 ## 8. Dependencias con otras features
@@ -208,7 +212,7 @@ Están en las Notes del [plan](../2-technical/plan.md#decisiones-de-implementaci
 - **004 Consultar tarifa base**: la 005 usa `GET_BASE_RATE_USE_CASE` (una noche por llamada). Su cliente HTTP ya tiene timeout y circuit breaker, así que la 005 no agrega otro.
 - **009 Modificar precio tarifa según temporada**: un solo `getAll(asOf)` por consulta; el porcentaje sale de ahí.
 - **011 Revisar temporada del año**: `resolve({ date, asOf })` por noche, con el mismo `asOf`. Si el calendario apunta a una temporada que no está en el snapshot, la 005 falla con `422` en vez de elegir otra.
-- **007 Generar liquidación**: lee las cotizaciones con `LODGING_QUOTE_QUERY` (`findByIds`). La HU4 de la 005 necesita el `ReservationClientPort` de la 007.
+- **007 Generar liquidación**: lee las cotizaciones con `LODGING_QUOTE_QUERY` (`findByIds`), y su prueba de arquitectura cubre la T031. La HU4 de la 005 necesita el `ReservationClientPort` de la 007, que ya existe (`SettlementModule` exporta `RESERVATION_CLIENT`). Ojo al implementar la HU4: `SettlementModule` ya importa `PricingModule`, así que si `PricingModule` importa `SettlementModule` habrá una dependencia circular.
 - **Archivos compartidos que tocó la 005**: `money.vo.ts` (+ su prueba), `domain-exception.filter.ts`, `pricing.module.ts`, `schema.prisma`, y el archivo nuevo `auth/optional-jwt-auth.guard.ts`.
 - **Migraciones**: igual que en 009 y 011, la próxima se debe generar con `prisma migrate diff` desde el esquema anterior.
 

@@ -62,6 +62,7 @@ import { SeasonRulesCatalogAdapter } from '../adapters/out/catalog/season-rules-
 import { PrismaLodgingQuoteRepository } from '../adapters/out/persistence/repositories/pricing/prisma-lodging-quote.repository';
 import { PrismaSeasonCalendarRepository } from '../adapters/out/persistence/repositories/pricing/prisma-season-calendar.repository';
 import { PrismaSeasonRuleRepository } from '../adapters/out/persistence/repositories/pricing/prisma-season-rule.repository';
+import { LoggedCreateLodgingQuoteUseCase } from '../logging/pricing/logged-create-lodging-quote.use-case';
 import { AuthModule } from './auth.module';
 
 // Bounded context `pricing`: binding puerto → adaptador por token (regla 4 del plan base).
@@ -143,8 +144,9 @@ import { AuthModule } from './auth.module';
     {
       provide: CREATE_LODGING_QUOTE_USE_CASE,
       inject: [DynamicRateCalculator, LODGING_QUOTE_REPOSITORY],
+      // Con log estructurado de cada cotización (T046).
       useFactory: (calculator: DynamicRateCalculator, quotes: LodgingQuoteRepositoryPort) =>
-        new CreateLodgingQuoteService(calculator, quotes),
+        new LoggedCreateLodgingQuoteUseCase(new CreateLodgingQuoteService(calculator, quotes)),
     },
   ],
   // 005 (tarifa dinámica) lee la tarifa base (004), las reglas de 009 y resuelve la temporada de cada fecha con 011.

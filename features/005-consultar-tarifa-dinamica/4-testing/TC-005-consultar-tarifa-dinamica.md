@@ -63,7 +63,7 @@ Cubre las Historias de usuario 1, 2 y 3 de la spec. La Historia de usuario 4 (la
   1. `Get-Content features/005-consultar-tarifa-dinamica/4-testing/reset-cotizaciones.sql | docker compose exec -T postgres psql -U hospitua -d modulo3`
   2. `Get-Content features/011-revisar-temporada-del-año/4-testing/reset-calendario-temporadas.sql | docker compose exec -T postgres psql -U hospitua -d modulo3`
   3. `Get-Content features/009-modificar-precio-tarifa-segun-temporada/4-testing/reset-catalogo-temporadas.sql | docker compose exec -T postgres psql -U hospitua -d modulo3`
-* **Environment** : local. Docker Desktop corriendo, `docker compose up -d`, `npx prisma migrate deploy`, `npx prisma db seed` y `npm run start:dev` (ver [README](../../../README.md)), con `MODULE1_BASE_URL=http://localhost:8080` en el `.env`. En otra terminal, el Módulo 1 simulado: `node features/005-consultar-tarifa-dinamica/4-testing/modulo1-simulado.js`.
+* **Environment** : local. Docker Desktop corriendo, `docker compose up -d`, `npx prisma migrate deploy`, `npx prisma db seed` y `npm run start:dev` (ver [README](../../../README.md)), con `MODULE1_BASE_URL=http://localhost:8080` en el `.env` y las variables `MODULE2_*` de `.env.example` (la 005 todavía no llama a Módulo 2, pero desde la 007 la aplicación no arranca sin ellas). En otra terminal, el Módulo 1 simulado: `node features/005-consultar-tarifa-dinamica/4-testing/modulo1-simulado.js`.
 * **Test Accounts** :
   * Administrador: usuario `admin`, contraseña en `SEED_ADMIN_PASSWORD` del archivo `.env`.
   * OTA: usuario `ota-demo`, contraseña en `SEED_OTA_PASSWORD` del archivo `.env`.
@@ -136,11 +136,11 @@ Continúa con el estado que dejó la Sección 1 (2 cotizaciones guardadas), sin 
 --------------------------------------------------------------------------------
 
 ##### Section 3: Pruebas automáticas (casos que no se pueden provocar a mano)
-En una terminal en la carpeta `Hospitua-Module-3`, con Docker corriendo. Incluyen también las pruebas de 001, 004, 009 y 011.
+En una terminal en la carpeta `Hospitua-Module-3`, con Docker corriendo. Incluyen también las pruebas de 001, 004, 007, 009 y 011.
 
 | Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
 | :---: | ------ | ------ | ------ | ------ | :---: | ------ |
-| 1 | Pruebas unitarias, de contrato y de integración contra PostgreSQL | `$env:TEST_DATABASE_URL = "postgresql://hospitua:hospitua@localhost:5432/modulo3_test?schema=public"` y luego `npm test` | Base `modulo3_test` migrada (`npx prisma migrate deploy` con `DATABASE_URL` apuntando a ella) | `Test Suites: 34 passed`, `Tests: 507 passed`, ninguna omitida | [✔] | — |
+| 1 | Pruebas unitarias, de contrato y de integración contra PostgreSQL | `$env:TEST_DATABASE_URL = "postgresql://hospitua:hospitua@localhost:5432/modulo3_test?schema=public"` y luego `npm test` | Base `modulo3_test` migrada (`npx prisma migrate deploy` con `DATABASE_URL` apuntando a ella) | `Test Suites: 48 passed`, `Tests: 684 passed`, ninguna omitida | [✔] | — |
 | 2 | Pruebas de punta a punta de los endpoints | `npm run test:e2e` | N/A | `Test Suites: 5 passed`, `Tests: 123 passed` | [✔] | — |
 
 --------------------------------------------------------------------------------
