@@ -205,6 +205,8 @@ Están en las Notes del [plan](../2-technical/plan.md#decisiones-de-implementaci
 
 **Riesgo conocido: dos relojes.** El `asOf` de cada consulta sale del reloj del servidor de la app (`DynamicRateCalculator`), mientras que la 009 y la 011 marcan desde cuándo rige cada regla o revisión del calendario con la hora de la base de datos. Si los dos relojes están desfasados, una regla recién cambiada puede tardar en verse lo que dure ese desfase; en la práctica, milisegundos. Corregirlo del todo exigiría cambiar los puertos de la 009 y la 011, así que solo se documenta.
 
+**Riesgo aceptado: sin tope de noches.** La spec no fija un máximo y Módulo 2, dueño de las reservas, confirmó que no limita la duración de una estancia (2026-11-06). Si llega un rango muy largo, por ejemplo por una fecha mal escrita, la 005 hace una llamada a Módulo 1 y una al calendario por cada noche (hasta 4 noches a la vez).
+
 ---
 
 ## 8. Dependencias con otras features
