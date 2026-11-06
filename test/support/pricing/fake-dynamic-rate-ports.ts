@@ -1,7 +1,10 @@
 // Feature 005 · Consultar tarifa dinámica
 // Dobles de los puertos que usa 005: tarifa base (004), reglas de temporada (009),
-// calendario (011) y cotizaciones guardadas (005). Sin red ni base de datos.
+// calendario (011), cotizaciones guardadas (005) y reservas de Módulo 2 (007, para la
+// HU4). Sin red ni base de datos.
+import { ReservationNotFoundError } from '../../../src/domain/errors/settlement/reservation-not-found.error';
 import { BaseRate } from '../../../src/domain/model/pricing/base-rate';
+import { ReservationData } from '../../../src/domain/model/settlement/reservation-data';
 import { LodgingQuote } from '../../../src/domain/model/pricing/lodging-quote';
 import { GetBaseRateUseCase } from '../../../src/domain/ports/in/pricing/get-base-rate.use-case';
 import {
@@ -16,6 +19,7 @@ import {
 } from '../../../src/domain/ports/in/pricing/resolve-season-by-date.use-case';
 import { LodgingQuoteQueryPort } from '../../../src/domain/ports/out/pricing/lodging-quote-query.port';
 import { LodgingQuoteRepositoryPort } from '../../../src/domain/ports/out/pricing/lodging-quote.repository.port';
+import { ReservationClientPort } from '../../../src/domain/ports/out/settlement/reservation.client.port';
 
 // Mismo id fijo que siembra 009 para Regular.
 export const REGULAR_ID = '00000000-0000-4000-8000-000000000001';
@@ -138,5 +142,21 @@ export class InMemoryLodgingQuoteRepository
       const quote = this.quotes.get(id.toLowerCase());
       return quote ? [quote] : [];
     });
+  }
+}
+
+// 005 HU4: Módulo 2 en memoria. Una reserva que no está → ReservationNotFoundError (el 404
+// de Módulo 2); `failure` simula que Módulo 2 no responde.
+export class FakeReservationClient implements ReservationClientPort {
+  reservations = new Map<string, ReservationData>();
+  failure?: Error;
+  calls: string[] = [];
+
+  async getReservation(reservationRef: string): Promise<ReservationData> {
+    this.calls.push(reservationRef);
+    if (this.failure) throw this.failure;
+    const reservation = this.reservations.get(reservationRef);
+    if (!reservation) throw new ReservationNotFoundError(reservationRef);
+    return reservation;
   }
 }

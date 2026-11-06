@@ -33,7 +33,10 @@ import {
   BASE_RATE_CLIENT,
   BaseRateClientPort,
 } from '../../domain/ports/out/pricing/base-rate.client.port';
-import { LODGING_QUOTE_QUERY } from '../../domain/ports/out/pricing/lodging-quote-query.port';
+import {
+  LODGING_QUOTE_QUERY,
+  LodgingQuoteQueryPort,
+} from '../../domain/ports/out/pricing/lodging-quote-query.port';
 import {
   LODGING_QUOTE_REPOSITORY,
   LodgingQuoteRepositoryPort,
@@ -54,10 +57,15 @@ import {
   SEASON_RULE_REPOSITORY,
   SeasonRuleRepositoryPort,
 } from '../../domain/ports/out/pricing/season-rule.repository.port';
+import {
+  RESERVATION_CLIENT,
+  ReservationClientPort,
+} from '../../domain/ports/out/settlement/reservation.client.port';
 import { DynamicRateController } from '../adapters/in/http/pricing/dynamic-rate.controller';
 import { LodgingQuoteController } from '../adapters/in/http/pricing/lodging-quote.controller';
 import { SeasonAdminController } from '../adapters/in/http/pricing/season-admin.controller';
 import { Module1BaseRateClient } from '../adapters/out/http/module1-base-rate.client';
+import { Module2ReservationClient } from '../adapters/out/http/module2-reservation.client';
 import { SeasonRulesCatalogAdapter } from '../adapters/out/catalog/season-rules-catalog.adapter';
 import { PrismaLodgingQuoteRepository } from '../adapters/out/persistence/repositories/pricing/prisma-lodging-quote.repository';
 import { PrismaSeasonCalendarRepository } from '../adapters/out/persistence/repositories/pricing/prisma-season-calendar.repository';
@@ -136,10 +144,20 @@ import { AuthModule } from './auth.module';
         seasonCalendar: ResolveSeasonByDateUseCase,
       ) => new DynamicRateCalculator(baseRates, seasonRules, seasonCalendar),
     },
+    // HU4: el mismo cliente de Módulo 2 de 007, registrado también aquí. Importar
+    // SettlementModule crearía una dependencia circular (SettlementModule ya importa
+    // PricingModule), y así las consultas de las OTA tienen su propio circuit breaker y no
+    // abren el que usa la liquidación.
+    Module2ReservationClient,
+    { provide: RESERVATION_CLIENT, useExisting: Module2ReservationClient },
     {
       provide: GET_DYNAMIC_RATE_USE_CASE,
-      inject: [DynamicRateCalculator],
-      useFactory: (calculator: DynamicRateCalculator) => new GetDynamicRateService(calculator),
+      inject: [DynamicRateCalculator, RESERVATION_CLIENT, LODGING_QUOTE_QUERY],
+      useFactory: (
+        calculator: DynamicRateCalculator,
+        reservations: ReservationClientPort,
+        quotes: LodgingQuoteQueryPort,
+      ) => new GetDynamicRateService(calculator, reservations, quotes),
     },
     {
       provide: CREATE_LODGING_QUOTE_USE_CASE,

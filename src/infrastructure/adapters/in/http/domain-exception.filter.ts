@@ -45,6 +45,8 @@ const HTTP_STATUS_BY_ERROR_CODE: Record<string, number> = {
   // los endpoints de 005; INVALID_QUERY_PARAMS lo usan 004 y 005.
   INVALID_DATE_RANGE: 400,
   INVALID_QUERY_PARAMS: 400,
+  // DynamicRateAccessDeniedError: la OTA consulta una habitación que no es de sus reservas (HU4).
+  FORBIDDEN: 403,
   ROOM_NOT_FOUND: 404,
   INVALID_BASE_RATE: 424,
   MODULE1_UNAVAILABLE: 424,

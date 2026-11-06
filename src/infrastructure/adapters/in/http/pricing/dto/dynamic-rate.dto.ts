@@ -29,6 +29,15 @@ export class DynamicRateQueryDto {
   @IsOptional()
   @IsString()
   checkOutDate?: string;
+
+  @ApiPropertyOptional({
+    example: 'RES-000123',
+    description:
+      'Solo la OTA (obligatorio con su token): reserva a la que pertenece la habitación. Sin token se ignora',
+  })
+  @IsOptional()
+  @IsString()
+  reservationRef?: string;
 }
 
 export class DynamicRateNightDto {

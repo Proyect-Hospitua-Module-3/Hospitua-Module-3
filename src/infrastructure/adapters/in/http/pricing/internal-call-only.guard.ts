@@ -4,9 +4,8 @@ import { Request } from 'express';
 
 // Solo llamadas internas de Módulo 2, que van por la red interna sin token. Cualquier
 // solicitud con cabecera Authorization (OTA, Administrador o un token cualquiera) → 403.
-// - POST /pricing/quotes: siempre (FR-016, BR-008).
-// - GET /pricing/dynamic-rate: mientras no exista la HU4 (necesita el cliente de
-//   Módulo 2 de 007), para que ninguna OTA consulte sin la restricción a sus reservas.
+// Lo usa POST /pricing/quotes (FR-016, BR-008). GET /pricing/dynamic-rate usa
+// InternalOrOtaGuard, porque también lo consulta la OTA (HU4).
 @Injectable()
 export class InternalCallOnlyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {

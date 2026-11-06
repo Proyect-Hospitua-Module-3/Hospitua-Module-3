@@ -78,7 +78,7 @@ src/
 └── infrastructure/
     └── adapters/
         ├── in/http/
-        │   ├── dynamic-rate.controller.ts     # GET /pricing/dynamic-rate (Módulo 2 sin token, u OTA con @Roles("OTA"))
+        │   ├── dynamic-rate.controller.ts     # GET /pricing/dynamic-rate (Módulo 2 sin token, u OTA con su JWT)
         │   ├── lodging-quote.controller.ts    # POST /pricing/quotes (solo llamada interna de Módulo 2, sin token)
         │   └── dto/                           # DTOs HTTP con class-validator
         └── out/persistence/
@@ -110,7 +110,7 @@ test/
 | `GetBaseRateUseCase` (`get-base-rate.use-case.ts`) | 004 | `execute(roomId, date)` → `BaseRate` con el importe como `Money` (COP, mayor que cero), o `RoomNotFoundError` / `InvalidBaseRateError` / `Module1UnavailableError`; consulta una fecha por llamada | Definido (`execute(roomId, date)`) |
 | `GetEffectiveSeasonRulesUseCase` (`get-effective-season-rules.use-case.ts`) | 009 | `getAll(asOf)` → `{ defaultSeasonId, seasons[{ seasonId, name, adjustmentPercent (decimal firmado -100..100), isDefault }] }`, según `PORT-get-season-rules.md` | Definido |
 | `ResolveSeasonByDateUseCase` (`resolve-season-by-date.use-case.ts`) | 011 | `resolve({ date, asOf })` → `SeasonClassification` con el `seasonId` de la fecha y su `source` (`BASE` \| `EXCEPTION` \| `DEFAULT`); la excepción puntual prevalece sobre BASE propio o heredado de la revisión del año anterior y, sin asignación, devuelve el `defaultSeasonId` de 009 con `source = DEFAULT`. El resultado identifica también el año/revisión propietario de la entrada. Falla con `SeasonCalendarInconsistentError` o `SeasonCalendarUnavailableError`, según `PORT-resolve-season-by-date.md` | Definido |
-| `ReservationClientPort` (`reservation.client.port.ts`) | 007 | Solo para la OTA (HU4): `getReservation(reservationRef)` → `{ reservationRef, quoteIds, channel, otaId?, … }` con `GET /api/reservations/{reservationRef}` de Módulo 2 (timeout y circuit breaker de 007), o `ReservationNotFoundError` / `Module2UnavailableError` | Definido |
+| `ReservationClientPort` (`reservation.client.port.ts`) | 007 | Solo para la OTA (HU4): `getReservation(reservationRef, correlationId?)` → `{ reservationRef, quoteIds, channel, otaId?, … }` con `GET /api/reservations/{reservationRef}` de Módulo 2 (timeout y circuit breaker de 007), o `ReservationNotFoundError` / `Module2UnavailableError` | Implementado por 007 |
 
 ### Cotización de hospedaje: detalles técnicos
 
@@ -135,7 +135,7 @@ Parámetros: `roomId`, y `checkInDate` + `checkOutDate` (fecha de salida **exclu
 
 La OTA envía además `reservationRef` (obligatorio para ella; en una llamada interna se ignora).
 
-Autorización (FR-010, BR-002, plan base "Autorización por rol"): Módulo 2 por la red interna sin token, u OTA con JWT `role = OTA`. El controller usa `@Roles("OTA")` cuando llega token; sin token, la llamada es interna. La regla "la OTA solo consulta habitaciones de sus reservas" se valida en el caso de uso: después de validar el rango y antes de calcular, consulta la reserva a Módulo 2 (`ReservationClientPort`), exige que sea de canal `OTA`, que su `otaId` sea el del token y que alguna de sus cotizaciones (`LodgingQuoteQueryPort.findByIds`) tenga el `roomId` consultado; si no, `DynamicRateAccessDeniedError` → 403. El 404 de Módulo 2 también termina en 403, con el mismo mensaje.
+Autorización (FR-010, BR-002, plan base "Autorización por rol"): Módulo 2 por la red interna sin token, u OTA con JWT `role = OTA`. Cuando llega token, el guard del controller exige `role = OTA` (ver Decisiones de implementación); sin token, la llamada es interna. La regla "la OTA solo consulta habitaciones de sus reservas" se valida en el caso de uso: después de validar el rango y antes de calcular, consulta la reserva a Módulo 2 (`ReservationClientPort`), exige que sea de canal `OTA`, que su `otaId` sea el del token y que alguna de sus cotizaciones (`LodgingQuoteQueryPort.findByIds`) tenga el `roomId` consultado; si no, `DynamicRateAccessDeniedError` → 403. El 404 de Módulo 2 también termina en 403, con el mismo mensaje.
 
 ```json
 {
@@ -281,16 +281,16 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 
 ### Tests for User Story 4
 
-- [ ] T032 [P] [US4] Unit test de `GetDynamicRateService` con actor OTA: reserva con `otaId` igual al del token y una cotización con el `roomId` consultado → mismo resultado que para Módulo 2 (FR-001, FR-011)
-- [ ] T033 [P] [US4] Unit test de rechazos de la OTA → `DynamicRateAccessDeniedError`, sin invocar 004, 009 ni 011: reserva de otra OTA, reserva del canal directo, `roomId` que no está en las cotizaciones de la reserva y `ReservationNotFoundError` de Módulo 2 (FR-010, SC-005)
-- [ ] T034 [P] [US4] Unit test: `Module2UnavailableError` al consultar la reserva hace fallar la consulta completa, sin resultado (casos límite); con actor interno (Módulo 2) no se consulta la reserva y se ignora `reservationRef` si llega
-- [ ] T035 [US4] Test e2e de `GET /pricing/dynamic-rate`: OTA con reserva propia → 200; OTA con reserva ajena o inexistente → 403 con el mismo cuerpo; OTA sin `reservationRef` → 400 `INVALID_QUERY_PARAMS`; token inválido o expirado → 401; token `Administrador` → 403; Módulo 2 no disponible → 424 `MODULE2_UNAVAILABLE`; sin token → llamada interna permitida
+- [x] T032 [P] [US4] Unit test de `GetDynamicRateService` con actor OTA: reserva con `otaId` igual al del token y una cotización con el `roomId` consultado → mismo resultado que para Módulo 2 (FR-001, FR-011)
+- [x] T033 [P] [US4] Unit test de rechazos de la OTA → `DynamicRateAccessDeniedError`, sin invocar 004, 009 ni 011: reserva de otra OTA, reserva del canal directo, `roomId` que no está en las cotizaciones de la reserva y `ReservationNotFoundError` de Módulo 2 (FR-010, SC-005)
+- [x] T034 [P] [US4] Unit test: `Module2UnavailableError` al consultar la reserva hace fallar la consulta completa, sin resultado (casos límite); con actor interno (Módulo 2) no se consulta la reserva y se ignora `reservationRef` si llega
+- [x] T035 [US4] Test e2e de `GET /pricing/dynamic-rate`: OTA con reserva propia → 200; OTA con reserva ajena o inexistente → 403 con el mismo cuerpo; OTA sin `reservationRef` → 400 `INVALID_QUERY_PARAMS`; token inválido o expirado → 401; token `Administrador` → 403; Módulo 2 no disponible → 424 `MODULE2_UNAVAILABLE`; sin token → llamada interna permitida
 
 ### Implementation for User Story 4
 
-- [ ] T036 [US4] Extender `DynamicRateController`: con token, validar con `RolesGuard` que `role = OTA`, extraer el claim `otaId` y exigir `reservationRef` (si falta, 400 `INVALID_QUERY_PARAMS`); sin token, tratar la llamada como interna e ignorar `reservationRef` (plan base, Autorización por rol). Pasar el actor y `reservationRef` al caso de uso
-- [ ] T037 [US4] Inyectar por token `ReservationClientPort` de 007 en `pricing.module.ts` y, en `GetDynamicRateService`, aplicar la regla de alcance de la OTA (FR-010, BR-002) después de validar el rango y **antes** de tocar 004, 009 y 011: `ReservationClientPort.getReservation(reservationRef)`, exigir que la reserva sea de canal `OTA` con `otaId` igual al del token y que `LodgingQuoteQueryPort.findByIds(quoteIds)` incluya una cotización con el `roomId` consultado; si no, `DynamicRateAccessDeniedError`. Traducir `ReservationNotFoundError` a `DynamicRateAccessDeniedError` y propagar `Module2UnavailableError`
-- [ ] T038 [US4] Crear `DynamicRateAccessDeniedError` y registrarlo en el `ExceptionFilter` global → 403 `FORBIDDEN`, con el mismo mensaje accionable en todos los casos (por ejemplo, "No tiene permiso para consultar la tarifa de esta habitación."), sin confirmar ni negar la existencia de la reserva; confirmar que `Module2UnavailableError` → 424 `MODULE2_UNAVAILABLE`
+- [x] T036 [US4] Extender `DynamicRateController`: con token, validar con `RolesGuard` que `role = OTA`, extraer el claim `otaId` y exigir `reservationRef` (si falta, 400 `INVALID_QUERY_PARAMS`); sin token, tratar la llamada como interna e ignorar `reservationRef` (plan base, Autorización por rol). Pasar el actor y `reservationRef` al caso de uso. *Hecho con `InternalOrOtaGuard` en lugar de `RolesGuard`, y `reservationRef` se exige en el caso de uso (ver Decisiones de implementación)*
+- [x] T037 [US4] Inyectar por token `ReservationClientPort` de 007 en `pricing.module.ts` y, en `GetDynamicRateService`, aplicar la regla de alcance de la OTA (FR-010, BR-002) después de validar el rango y **antes** de tocar 004, 009 y 011: `ReservationClientPort.getReservation(reservationRef)`, exigir que la reserva sea de canal `OTA` con `otaId` igual al del token y que `LodgingQuoteQueryPort.findByIds(quoteIds)` incluya una cotización con el `roomId` consultado; si no, `DynamicRateAccessDeniedError`. Traducir `ReservationNotFoundError` a `DynamicRateAccessDeniedError` y propagar `Module2UnavailableError`
+- [x] T038 [US4] Crear `DynamicRateAccessDeniedError` y registrarlo en el `ExceptionFilter` global → 403 `FORBIDDEN`, con el mismo mensaje accionable en todos los casos (por ejemplo, "No tiene permiso para consultar la tarifa de esta habitación."), sin confirmar ni negar la existencia de la reserva; confirmar que `Module2UnavailableError` → 424 `MODULE2_UNAVAILABLE`
 
 **Checkpoint**: la OTA consulta la tarifa dinámica de las habitaciones de sus reservas y nunca la de una reserva ajena, ni siquiera por un mensaje de error distinto.
 
@@ -366,9 +366,13 @@ Ninguna respuesta de ambos endpoints es 5xx (plan base).
 
 ### Decisiones de implementación
 
-Tomadas al implementar las Historias 1, 2 y 3 y las tareas finales; el detalle, los archivos reales y dónde se prueba cada una están en [`3-implementation/implementacion.md`](../3-implementation/implementacion.md).
+Tomadas al implementar las Historias 1 a 4 y las tareas finales; el detalle, los archivos reales y dónde se prueba cada una están en [`3-implementation/implementacion.md`](../3-implementation/implementacion.md).
 
-- **La OTA recibe `403` hasta la HU4 (propuesta al equipo, esperando respuesta)**: la HU4 necesita `ReservationClientPort` de 007 (ya está en develop). Mientras la HU4 no esté implementada, `GET /pricing/dynamic-rate` rechaza con `403` cualquier token válido, también el de una OTA, para que ninguna OTA consulte habitaciones que no son de sus reservas. Un token inválido sigue siendo `401` y uno de Administrador `403`, como dice el contrato. Al llegar la HU4 se cambia `InternalCallOnlyGuard` por `RolesGuard` con `@Roles('OTA')` en el `GET`.
+- **Guard del `GET`: `InternalOrOtaGuard` en lugar de `RolesGuard` (T036)**: `RolesGuard` responde `401` cuando no llega token, y en este endpoint una llamada sin token es la de Módulo 2. El guard nuevo (carpeta `pricing/` de los controllers) deja pasar sin token y, con token, solo el rol `OTA`; cualquier otro rol recibe `403`. `OptionalJwtAuthGuard` sigue respondiendo `401` a un token inválido. `RolesGuard`, que es compartido, no se modifica.
+- **`reservationRef` se exige en el caso de uso, no en el controller (T036)**: así el controller no tiene lógica y la regla se prueba con las unitarias del servicio. Se valida después de los parámetros y el rango, y antes de consultar a Módulo 2; vacío o con solo espacios es `400 INVALID_QUERY_PARAMS`.
+- **Cliente de Módulo 2 registrado también en `PricingModule` (T037)**: `SettlementModule` ya importa `PricingModule`, así que importar `SettlementModule` desde `pricing` crearía una dependencia circular. `PricingModule` registra el mismo adaptador de 007 (`Module2ReservationClient`) con el token `RESERVATION_CLIENT`, sin tocar archivos de 007. Cada contexto tiene su propio circuit breaker: las consultas de las OTA no pueden abrir el que usa la liquidación.
+- **Comparaciones del acceso de la OTA**: el canal tiene que ser exactamente `OTA` y el `otaId` de la reserva, exactamente el del token, igual que en 007. El `roomId` se compara sin distinguir mayúsculas, porque las cotizaciones lo guardan en minúsculas. Un token de OTA sin `otaId` no coincide con ninguna reserva y recibe `403`.
+- **`DynamicRateAccessDeniedError` con `errorCode` `FORBIDDEN` (T038)**: el filtro global registra `FORBIDDEN → 403`. El mensaje es el mismo en los cuatro casos (otra OTA, canal directo, reserva sin la habitación, reserva inexistente): "No tienes permiso para consultar la tarifa de esta habitación.".
 - **"Trae JWT" en el `POST` = trae cabecera `Authorization`**: cualquier solicitud con esa cabecera recibe `403`, aunque el token sea inválido o el cuerpo esté mal; así nadie de fuera de la red interna crea cotizaciones (FR-016).
 - **Paralelismo (T019)**: hasta 4 noches a la vez. Tras la primera noche que falla no se empiezan noches nuevas y la consulta falla completa. Revisar con latencias reales de Módulo 1 (T045).
 - **Sin tope de noches**: la spec no fija un máximo y Módulo 2, dueño de las reservas, confirmó que no limita la duración de una estancia (2026-11-06), así que no se inventa uno. Riesgo aceptado: si llega un rango muy largo, por ejemplo por una fecha mal escrita, la 005 hace una llamada a Módulo 1 y una al calendario por cada noche.
