@@ -48,6 +48,14 @@ const HTTP_STATUS_BY_ERROR_CODE: Record<string, number> = {
   ROOM_NOT_FOUND: 404,
   INVALID_BASE_RATE: 424,
   MODULE1_UNAVAILABLE: 424,
+  // settlement — 007 no tiene endpoint; estos códigos son para los endpoints que reutilizan
+  // su cálculo o su cliente de Módulo 2 (002 y la HU4 de 005), con el HTTP del plan 002.
+  // SETTLEMENT_ALREADY_EXISTS e INVALID_CHECKOUT_EVENT son internos (los maneja 010).
+  RESERVATION_NOT_FOUND: 404,
+  QUOTE_NOT_FOUND: 404,
+  MISSING_COMMISSION: 409,
+  INVALID_COMMISSION: 409,
+  MODULE2_UNAVAILABLE: 424,
 };
 
 // Errores HTTP del framework que no son de negocio (ruta inexistente, JSON mal formado).

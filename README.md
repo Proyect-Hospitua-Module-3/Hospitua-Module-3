@@ -15,6 +15,7 @@ Facturación, Consumos y Liquidación. Servicio NestJS con arquitectura hexagona
 | [011 Revisar temporada del año](features/011-revisar-temporada-del-año/) | `GET /admin/season-calendar`, `PUT /admin/season-calendar/{year}` | [Mapa de implementación](features/011-revisar-temporada-del-año/3-implementation/implementacion.md) |
 | [004 Consultar tarifa base](features/004-consultar-tarifa-base/) | Sin endpoint: puerto interno `GetBaseRateUseCase` para la 005 | [Mapa de implementación](features/004-consultar-tarifa-base/3-implementation/implementacion.md) |
 | [005 Consultar tarifa dinámica](features/005-consultar-tarifa-dinamica/) | `GET /pricing/dynamic-rate`, `POST /pricing/quotes` (Módulo 2, sin token) | [Mapa de implementación](features/005-consultar-tarifa-dinamica/3-implementation/implementacion.md) |
+| [007 Generar liquidación](features/007-generar-liquidacion/) | Sin endpoint: caso de uso interno `GenerateSettlementUseCase` para 010 y 006 | [Mapa de implementación](features/007-generar-liquidacion/3-implementation/implementacion.md) |
 
 El código de cada feature está repartido por capas (arquitectura hexagonal). Cada feature tiene en su carpeta
 `3-implementation/` un mapa con todos sus archivos, y cada archivo empieza con la marca `Feature NNN`
@@ -36,11 +37,13 @@ npx prisma db seed              # crea los usuarios admin y ota-demo del .env
 npm run start:dev
 ```
 
-Además de la base de datos, el JWT y los usuarios del seed, el `.env` necesita las variables de Módulo 1 (feature 004).
-Ambas son obligatorias: si falta alguna o el timeout no es un entero positivo, la aplicación no arranca.
+Además de la base de datos, el JWT y los usuarios del seed, el `.env` necesita las variables de Módulo 1 (feature 004)
+y de Módulo 2 (feature 007). Todas son obligatorias: si falta alguna o un timeout no es un entero positivo, la aplicación no arranca.
 
 - `MODULE1_BASE_URL`: URL base de Módulo 1 para consultar la tarifa base (p. ej. `http://localhost:8080`, el puerto por defecto de Módulo 1).
 - `MODULE1_TIMEOUT_MS`: tiempo máximo de espera por consulta, en milisegundos (`500`).
+- `MODULE2_BASE_URL`: URL base de Módulo 2 para consultar reservas al generar la liquidación (p. ej. `http://localhost:8081`).
+- `MODULE2_TIMEOUT_MS`: tiempo máximo de espera por consulta, en milisegundos (`500`).
 
 La documentación interactiva queda en <http://localhost:3000/docs> (Swagger). Para probar:
 

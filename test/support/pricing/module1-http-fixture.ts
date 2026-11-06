@@ -1,6 +1,7 @@
 // Feature 004 · Consultar tarifa base
+// Servidor HTTP simulado genérico: 007 también lo usa para simular Módulo 2.
 import { AddressInfo } from 'node:net';
-import { createServer, Server, ServerResponse } from 'node:http';
+import { createServer, IncomingHttpHeaders, Server, ServerResponse } from 'node:http';
 
 export type Module1Reply = {
   status: number;
@@ -13,6 +14,8 @@ export type Module1Reply = {
 export type Module1Request = {
   method: string;
   url: string;
+  // 007: para verificar Accept y X-Correlation-Id.
+  headers: IncomingHttpHeaders;
 };
 
 export class Module1HttpFixture {
@@ -26,7 +29,11 @@ export class Module1HttpFixture {
   async start(): Promise<void> {
     this.server = createServer((request, response) => {
       this.requests += 1;
-      this.requestLog.push({ method: request.method ?? '', url: request.url ?? '' });
+      this.requestLog.push({
+        method: request.method ?? '',
+        url: request.url ?? '',
+        headers: request.headers,
+      });
       this.send(response, this.queuedReplies.shift() ?? this.reply);
     });
     const server = this.server;
