@@ -1,16 +1,30 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
+import { CreateLodgingQuoteService } from '../../application/services/pricing/create-lodging-quote.service';
+import { DynamicRateCalculator } from '../../application/services/pricing/dynamic-rate-calculator';
 import { GetBaseRateService } from '../../application/services/pricing/get-base-rate.service';
+import { GetDynamicRateService } from '../../application/services/pricing/get-dynamic-rate.service';
 import { GetEffectiveSeasonRulesService } from '../../application/services/pricing/get-effective-season-rules.service';
 import { ModifySeasonRuleService } from '../../application/services/pricing/modify-season-rule.service';
 import { ReplaceSeasonCalendarService } from '../../application/services/pricing/replace-season-calendar.service';
 import { ResolveSeasonByDateService } from '../../application/services/pricing/resolve-season-by-date.service';
 import { ReviewSeasonCalendarService } from '../../application/services/pricing/review-season-calendar.service';
-import { GET_BASE_RATE_USE_CASE } from '../../domain/ports/in/pricing/get-base-rate.use-case';
-import { GET_EFFECTIVE_SEASON_RULES_USE_CASE } from '../../domain/ports/in/pricing/get-effective-season-rules.use-case';
+import { CREATE_LODGING_QUOTE_USE_CASE } from '../../domain/ports/in/pricing/create-lodging-quote.use-case';
+import {
+  GET_BASE_RATE_USE_CASE,
+  GetBaseRateUseCase,
+} from '../../domain/ports/in/pricing/get-base-rate.use-case';
+import { GET_DYNAMIC_RATE_USE_CASE } from '../../domain/ports/in/pricing/get-dynamic-rate.use-case';
+import {
+  GET_EFFECTIVE_SEASON_RULES_USE_CASE,
+  GetEffectiveSeasonRulesUseCase,
+} from '../../domain/ports/in/pricing/get-effective-season-rules.use-case';
 import { MODIFY_SEASON_RULE_USE_CASE } from '../../domain/ports/in/pricing/modify-season-rule.use-case';
 import { REPLACE_SEASON_CALENDAR_USE_CASE } from '../../domain/ports/in/pricing/replace-season-calendar.use-case';
-import { RESOLVE_SEASON_BY_DATE_USE_CASE } from '../../domain/ports/in/pricing/resolve-season-by-date.use-case';
+import {
+  RESOLVE_SEASON_BY_DATE_USE_CASE,
+  ResolveSeasonByDateUseCase,
+} from '../../domain/ports/in/pricing/resolve-season-by-date.use-case';
 import {
   REVIEW_SEASON_CALENDAR_USE_CASE,
   ReviewSeasonCalendarUseCase,
@@ -19,6 +33,11 @@ import {
   BASE_RATE_CLIENT,
   BaseRateClientPort,
 } from '../../domain/ports/out/pricing/base-rate.client.port';
+import { LODGING_QUOTE_QUERY } from '../../domain/ports/out/pricing/lodging-quote-query.port';
+import {
+  LODGING_QUOTE_REPOSITORY,
+  LodgingQuoteRepositoryPort,
+} from '../../domain/ports/out/pricing/lodging-quote.repository.port';
 import {
   SEASON_CALENDAR_REFERENCE,
   SeasonCalendarReferencePort,
@@ -35,9 +54,12 @@ import {
   SEASON_RULE_REPOSITORY,
   SeasonRuleRepositoryPort,
 } from '../../domain/ports/out/pricing/season-rule.repository.port';
+import { DynamicRateController } from '../adapters/in/http/pricing/dynamic-rate.controller';
+import { LodgingQuoteController } from '../adapters/in/http/pricing/lodging-quote.controller';
 import { SeasonAdminController } from '../adapters/in/http/pricing/season-admin.controller';
 import { Module1BaseRateClient } from '../adapters/out/http/module1-base-rate.client';
 import { SeasonRulesCatalogAdapter } from '../adapters/out/catalog/season-rules-catalog.adapter';
+import { PrismaLodgingQuoteRepository } from '../adapters/out/persistence/repositories/pricing/prisma-lodging-quote.repository';
 import { PrismaSeasonCalendarRepository } from '../adapters/out/persistence/repositories/pricing/prisma-season-calendar.repository';
 import { PrismaSeasonRuleRepository } from '../adapters/out/persistence/repositories/pricing/prisma-season-rule.repository';
 import { AuthModule } from './auth.module';
@@ -46,7 +68,7 @@ import { AuthModule } from './auth.module';
 // Los servicios de aplicación no tienen decoradores de NestJS: se construyen aquí.
 @Module({
   imports: [AuthModule, HttpModule],
-  controllers: [SeasonAdminController],
+  controllers: [SeasonAdminController, DynamicRateController, LodgingQuoteController],
   providers: [
     // 004 — consulta de tarifa base a Módulo 1
     Module1BaseRateClient,
@@ -94,12 +116,44 @@ import { AuthModule } from './auth.module';
       useFactory: (calendars: SeasonCalendarRepositoryPort, catalog: SeasonCatalogQueryPort) =>
         new ResolveSeasonByDateService(calendars, catalog),
     },
+
+    // 005 — tarifa dinámica y cotización del hospedaje (usa 004, 009 y 011 por token)
+    PrismaLodgingQuoteRepository,
+    { provide: LODGING_QUOTE_REPOSITORY, useExisting: PrismaLodgingQuoteRepository },
+    // Solo lectura de cotizaciones; lo consume 007 (settlement).
+    { provide: LODGING_QUOTE_QUERY, useExisting: PrismaLodgingQuoteRepository },
+    {
+      provide: DynamicRateCalculator,
+      inject: [
+        GET_BASE_RATE_USE_CASE,
+        GET_EFFECTIVE_SEASON_RULES_USE_CASE,
+        RESOLVE_SEASON_BY_DATE_USE_CASE,
+      ],
+      useFactory: (
+        baseRates: GetBaseRateUseCase,
+        seasonRules: GetEffectiveSeasonRulesUseCase,
+        seasonCalendar: ResolveSeasonByDateUseCase,
+      ) => new DynamicRateCalculator(baseRates, seasonRules, seasonCalendar),
+    },
+    {
+      provide: GET_DYNAMIC_RATE_USE_CASE,
+      inject: [DynamicRateCalculator],
+      useFactory: (calculator: DynamicRateCalculator) => new GetDynamicRateService(calculator),
+    },
+    {
+      provide: CREATE_LODGING_QUOTE_USE_CASE,
+      inject: [DynamicRateCalculator, LODGING_QUOTE_REPOSITORY],
+      useFactory: (calculator: DynamicRateCalculator, quotes: LodgingQuoteRepositoryPort) =>
+        new CreateLodgingQuoteService(calculator, quotes),
+    },
   ],
   // 005 (tarifa dinámica) lee la tarifa base (004), las reglas de 009 y resuelve la temporada de cada fecha con 011.
+  // 007 (liquidación) lee las cotizaciones guardadas de 005 con LODGING_QUOTE_QUERY.
   exports: [
     GET_BASE_RATE_USE_CASE,
     GET_EFFECTIVE_SEASON_RULES_USE_CASE,
     RESOLVE_SEASON_BY_DATE_USE_CASE,
+    LODGING_QUOTE_QUERY,
   ],
 })
 export class PricingModule {}

@@ -184,7 +184,7 @@ Las suites de integración de 009 y 011 borran las mismas tablas; se turnan con 
 
 ## 7. Decisiones de implementación
 
-Están en las Notes del [plan](../2-technical/plan.md#decisiones-de-implementación-por-confirmar-con-el-equipo), por confirmar con el equipo: un solo `INVALID_CALENDAR_RANGE`; `expectedRevision: 0` igual a `null`; `effectiveAt` truncado a milisegundos; huecos y conflictos recortados a la ventana; resolución estricta ante dos BASE; `id` interno más `entry_id` estable; `CalendarDateRange` propio; la lectura espera a las publicaciones en curso; el `PUT` responde con la forma del `GET`; sin carpeta `application/dto/`; integración con `TEST_DATABASE_URL`.
+Están en las Notes del [plan](../2-technical/plan.md#decisiones-de-implementación): un solo `INVALID_CALENDAR_RANGE`; `expectedRevision: 0` igual a `null`; `effectiveAt` truncado a milisegundos; huecos y conflictos recortados a la ventana; resolución estricta ante dos BASE; `id` interno más `entry_id` estable; `CalendarDateRange` propio; la lectura espera a las publicaciones en curso; el `PUT` responde con la forma del `GET`; sin carpeta `application/dto/`; integración con `TEST_DATABASE_URL`.
 
 ---
 

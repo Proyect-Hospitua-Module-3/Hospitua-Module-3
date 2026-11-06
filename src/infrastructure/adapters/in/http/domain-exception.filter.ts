@@ -40,6 +40,14 @@ const HTTP_STATUS_BY_ERROR_CODE: Record<string, number> = {
   DUPLICATE_SEASON_EXCEPTION: 409,
   SEASON_CALENDAR_CONFLICT: 409,
   UNKNOWN_SEASON_REFERENCE: 422,
+  // pricing — 005 (SEASON_CONFIGURATION_INCONSISTENT es interno). ROOM_NOT_FOUND,
+  // INVALID_BASE_RATE y MODULE1_UNAVAILABLE son errores de 004 (Módulo 1) que salen por
+  // los endpoints de 005; INVALID_QUERY_PARAMS lo usan 004 y 005.
+  INVALID_DATE_RANGE: 400,
+  INVALID_QUERY_PARAMS: 400,
+  ROOM_NOT_FOUND: 404,
+  INVALID_BASE_RATE: 424,
+  MODULE1_UNAVAILABLE: 424,
 };
 
 // Errores HTTP del framework que no son de negocio (ruta inexistente, JSON mal formado).

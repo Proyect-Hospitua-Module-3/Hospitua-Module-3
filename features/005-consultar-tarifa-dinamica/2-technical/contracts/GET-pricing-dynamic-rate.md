@@ -210,4 +210,4 @@ Un error en cualquier noche hace fallar la consulta completa: nunca se devuelve 
 - **Sin valores supuestos**: nunca se devuelve una tarifa calculada sobre una tarifa base en cero o supuesta [SPEC FR-006].
 - **Sin retroactividad**: las cotizaciones ya guardadas (`POST /pricing/quotes`) no se ven afectadas por cambios posteriores de temporada o de tarifa base; esta consulta siempre refleja la configuración del momento en que se ejecuta [SPEC casos límite, HU3].
 - **Sin persistencia**: la tarifa dinámica nunca se guarda [SPEC FR-007].
-- Un cambio en los parámetros, en la forma de la respuesta o en las reglas de cálculo requiere coordinar con Módulo 2 (y avisar a las OTA) y actualizar `test/contract/dynamic-rate.contract.spec.ts` [PLAN].
+- Un cambio en los parámetros, en la forma de la respuesta o en las reglas de cálculo requiere coordinar con Módulo 2 (y avisar a las OTA) y actualizar `test/contract/pricing/dynamic-rate.contract.spec.ts` [PLAN].
