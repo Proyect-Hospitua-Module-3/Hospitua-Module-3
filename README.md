@@ -16,6 +16,7 @@ Facturación, Consumos y Liquidación. Servicio NestJS con arquitectura hexagona
 | [004 Consultar tarifa base](features/004-consultar-tarifa-base/) | Sin endpoint: puerto interno `GetBaseRateUseCase` para la 005 | [Mapa de implementación](features/004-consultar-tarifa-base/3-implementation/implementacion.md) |
 | [005 Consultar tarifa dinámica](features/005-consultar-tarifa-dinamica/) | `GET /pricing/dynamic-rate` (Módulo 2 sin token, u OTA con token para sus reservas), `POST /pricing/quotes` (Módulo 2, sin token) | [Mapa de implementación](features/005-consultar-tarifa-dinamica/3-implementation/implementacion.md) |
 | [007 Generar liquidación](features/007-generar-liquidacion/) | Sin endpoint: caso de uso interno `GenerateSettlementUseCase` para 010 y 006 | [Mapa de implementación](features/007-generar-liquidacion/3-implementation/implementacion.md) |
+| [006 Generar factura final](features/006-generar-factura-final/) | Sin endpoint: caso de uso interno `GenerateFinalInvoiceUseCase` para 010 | [Mapa de implementación](features/006-generar-factura-final/3-implementation/implementacion.md) |
 
 El código de cada feature está repartido por capas (arquitectura hexagonal). Cada feature tiene en su carpeta
 `3-implementation/` un mapa con todos sus archivos, y cada archivo empieza con la marca `Feature NNN`

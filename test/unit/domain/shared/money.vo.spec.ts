@@ -44,4 +44,18 @@ describe('Money', () => {
   ])('subtracts %s - %s exactly → %s (can be negative)', (amount, other, expected) => {
     expect(Money.of(amount).subtract(Money.of(other)).toString()).toBe(expected);
   });
+
+  // 006 · Generar factura final
+  it.each([
+    ['-0.01', true],
+    ['0.00', false],
+    ['0.01', false],
+  ])('isNegative(%s) → %s', (amount, expected) => {
+    expect(Money.of(amount).isNegative()).toBe(expected);
+  });
+
+  it('equals compara el valor decimal, no el texto', () => {
+    expect(Money.of('892500').equals(Money.of('892500.00'))).toBe(true);
+    expect(Money.of('892500.00').equals(Money.of('892500.01'))).toBe(false);
+  });
 });
