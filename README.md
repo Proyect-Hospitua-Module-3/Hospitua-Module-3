@@ -18,6 +18,7 @@ Facturación, Consumos y Liquidación. Servicio NestJS con arquitectura hexagona
 | [007 Generar liquidación](features/007-generar-liquidacion/) | Sin endpoint: caso de uso interno `GenerateSettlementUseCase` para 010 y 006 | [Mapa de implementación](features/007-generar-liquidacion/3-implementation/implementacion.md) |
 | [006 Generar factura final](features/006-generar-factura-final/) | Sin endpoint: caso de uso interno `GenerateFinalInvoiceUseCase` para 010 | [Mapa de implementación](features/006-generar-factura-final/3-implementation/implementacion.md) |
 | [010 Registrar Check-out](features/010-registrar-checkout/) | Sin endpoint: consume la cola RabbitMQ `modulo3.checkout` y orquesta 007 y 006 | [Mapa de implementación](features/010-registrar-checkout/3-implementation/implementacion.md) |
+| [002 Consultar liquidación](features/002-consultar-liquidacion/) | `GET /api/settlements` (Módulo 1 sin token: liquidación final o informativa de una habitación; OTA con token: liquidaciones finales de su reserva) | [Mapa de implementación](features/002-consultar-liquidacion/3-implementation/implementacion.md) |
 
 El código de cada feature está repartido por capas (arquitectura hexagonal). Cada feature tiene en su carpeta
 `3-implementation/` un mapa con todos sus archivos, y cada archivo empieza con la marca `Feature NNN`
