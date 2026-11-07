@@ -252,8 +252,58 @@ model Settlement {
   sourceEventId           String   @map("source_event_id") @db.Uuid
   generatedAt             DateTime @default(now()) @map("generated_at") @db.Timestamptz(6)
 
+  // 006: a lo sumo una factura por liquidación (UNIQUE(invoice.settlement_id)).
+  invoice Invoice?
+
   // 002 busca por reserva y habitación; 003, la liquidación más reciente de cada OTA.
   @@index([reservationRef, roomId])
   @@index([otaId, generatedAt(sort: Desc)])
   @@map("settlement")
+}
+
+// ---------------------------------------------------------------------------
+// Feature 006 · Generar factura final (bounded context billing)
+// Insert-only: ningún camino de código hace UPDATE ni DELETE de invoice (factura inmutable).
+// El único UPDATE es el del consecutivo, dentro de la misma transacción que emite.
+// CHECK y fila inicial del consecutivo: SQL manual en la migración.
+// ---------------------------------------------------------------------------
+
+// Factura fiscal definitiva de una liquidación Final. Copia los datos de la liquidación que
+// 008 y 002 consultan, para no recalcular ni unir con settlement.
+model Invoice {
+  id                  String     @id @db.Uuid
+  invoiceNumber       BigInt     @unique @map("invoice_number") // consecutivo oficial (FR-005)
+  status              String // siempre ISSUED
+  // clock_timestamp() y no now(): now() es la hora en que empezó la transacción, antes de
+  // esperar el bloqueo del consecutivo, y desordenaría issued_at respecto del número.
+  issuedAt            DateTime   @default(dbgenerated("clock_timestamp()")) @map("issued_at") @db.Timestamptz(6)
+  settlementId        String     @unique @map("settlement_id") @db.Uuid
+  settlement          Settlement @relation(fields: [settlementId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  stayId              String     @unique @map("stay_id") @db.Uuid // idempotencia (FR-007)
+  sourceEventId       String     @map("source_event_id") @db.Uuid
+  reservationRef      String     @map("reservation_ref")
+  channel             String // DIRECT | OTA
+  otaId               String?    @map("ota_id")
+  customerName        String     @map("customer_name")
+  customerTaxId       String     @map("customer_tax_id")
+  currency            String     @db.Char(3)
+  lodgingAmount       Decimal    @map("lodging_amount") @db.Decimal(14, 2)
+  otaCommissionAmount Decimal    @map("ota_commission_amount") @db.Decimal(14, 2) // referencia, no se cobra
+  netIncome           Decimal    @map("net_income") @db.Decimal(14, 2) // referencia, no se cobra
+  vatRateApplied      Decimal    @map("vat_rate_applied") @db.Decimal(5, 2) // IVA al emitir, sin FK
+  vatAmount           Decimal    @map("vat_amount") @db.Decimal(14, 2)
+  totalAmount         Decimal    @map("total_amount") @db.Decimal(14, 2) // hospedaje + IVA
+
+  // Los índices de búsqueda los agrega 008 (Gestionar facturación).
+  @@map("invoice")
+}
+
+// Fila única (id = 1) con el último número emitido. Se bloquea con SELECT … FOR UPDATE al
+// emitir; un rollback revierte el incremento, así que no quedan huecos (nextval() sí los
+// dejaría). La crea la migración con last_number = 0 y nunca se reinicia.
+model InvoiceNumberCounter {
+  id         Int    @id
+  lastNumber BigInt @map("last_number")
+
+  @@map("invoice_number_counter")
 }

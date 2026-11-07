@@ -1,4 +1,5 @@
-// Feature 004 · Consultar tarifa base (005 agrega zero, add y multiply; 007 agrega subtract)
+// Feature 004 · Consultar tarifa base (005 agrega zero, add y multiply; 007 agrega subtract;
+// 006 agrega isNegative y equals)
 import Decimal from 'decimal.js';
 
 const MONEY_SCALE = 2;
@@ -43,5 +44,13 @@ export class Money {
 
   isPositive(): boolean {
     return this.value.greaterThan(ZERO_AMOUNT);
+  }
+
+  isNegative(): boolean {
+    return this.value.lessThan(ZERO_AMOUNT);
+  }
+
+  equals(other: Money): boolean {
+    return this.value.equals(other.value);
   }
 }

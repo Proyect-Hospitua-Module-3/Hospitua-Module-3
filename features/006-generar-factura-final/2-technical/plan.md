@@ -221,9 +221,9 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 **Purpose**: Verificar los puertos internos y preparar el agregado `billing` para emitir.
 
-- [ ] T001 Confirmar que el wiring de `billing` exporta `GenerateFinalInvoiceUseCase` solo a `checkout-ingestion` (010); ningún controller REST expone la operación.
-- [ ] T002 Confirmar que 007 exporta `GenerateSettlementUseCase` y que su contrato acepta los datos de check-out (`roomId` y `categoryRoom` incluidos), sin recibir ni persistir `billingCustomer`.
-- [ ] T003 Confirmar que 001 exporta `GetCurrentVatRateUseCase.getCurrent()`, devuelve una tasa decimal validada y distingue `VatRateNotConfiguredError` de `VatRateUnavailableError`; no consultar `vat_rate` directamente desde 006.
+- [x] T001 Confirmar que el wiring de `billing` exporta `GenerateFinalInvoiceUseCase` solo a `checkout-ingestion` (010); ningún controller REST expone la operación.
+- [x] T002 Confirmar que 007 exporta `GenerateSettlementUseCase` y que su contrato acepta los datos de check-out (`roomId` y `categoryRoom` incluidos), sin recibir ni persistir `billingCustomer`.
+- [x] T003 Confirmar que 001 exporta `GetCurrentVatRateUseCase.getCurrent()`, devuelve una tasa decimal validada y distingue `VatRateNotConfiguredError` de `VatRateUnavailableError`; no consultar `vat_rate` directamente desde 006.
 - [ ] T004 Acordar con 002/008 los campos copiados de la factura y mantener sus adaptadores en solo lectura.
 
 **Checkpoint**: las dependencias internas están disponibles con contratos tipados y no hay un nuevo endpoint o integración externa.
@@ -232,13 +232,13 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 **Purpose**: Establecer las invariantes comunes a las dos historias.
 
-- [ ] T005 Definir `BillingCustomer`, `InvoiceBreakdown` e `Invoice` inmutable en `domain/model/billing/`; validar montos no negativos, tasa válida, moneda y `totalAmount = lodgingAmount + vatAmount`.
-- [ ] T006 Definir `GenerateFinalInvoiceCommand`, `GenerateFinalInvoiceResult`, `GenerateFinalInvoiceUseCase` y `InvoiceIssuanceRepositoryPort` con sus tokens.
-- [ ] T007 Definir `FinalSettlementNotFoundError` e `InvoicePersistenceUnavailableError`; acordar con 010 el mapeo de resultados: `NOT_ISSUED` y `VAT_RATE_NOT_CONFIGURED` no reintentables, `VAT_RATE_UNAVAILABLE` y `DATABASE_UNAVAILABLE` reintentables.
-- [ ] T008 Crear esquema Prisma de `Invoice` con `UNIQUE(invoice_number)`, `UNIQUE(settlement_id)` y `UNIQUE(stay_id)`, campos snapshot y FK a `Settlement`.
-- [ ] T009 Crear tabla/fila única transaccional para el consecutivo oficial, seed inicial documentado y migración atómica; no usar `nextval()` para este requisito de consecutivo sin huecos.
-- [ ] T010 Implementar `InvoiceMapper` y `PrismaInvoiceIssuanceRepository.issueIfAbsent`: transacción `READ COMMITTED` con `SELECT … FOR UPDATE` sobre la fila del contador, segundo chequeo idempotente, incremento y creación atómicos; mapear conflictos de unicidad a la factura existente.
-- [ ] T011 Configurar `BillingModule` para consumir 001/007 y exportar 006 al módulo de `checkout-ingestion`.
+- [x] T005 Definir `BillingCustomer`, `InvoiceBreakdown` e `Invoice` inmutable en `domain/model/billing/`; validar montos no negativos, tasa válida, moneda y `totalAmount = lodgingAmount + vatAmount`.
+- [x] T006 Definir `GenerateFinalInvoiceCommand`, `GenerateFinalInvoiceResult`, `GenerateFinalInvoiceUseCase` y `InvoiceIssuanceRepositoryPort` con sus tokens.
+- [x] T007 Definir `FinalSettlementNotFoundError` e `InvoicePersistenceUnavailableError`; acordar con 010 el mapeo de resultados: `NOT_ISSUED` y `VAT_RATE_NOT_CONFIGURED` no reintentables, `VAT_RATE_UNAVAILABLE` y `DATABASE_UNAVAILABLE` reintentables.
+- [x] T008 Crear esquema Prisma de `Invoice` con `UNIQUE(invoice_number)`, `UNIQUE(settlement_id)` y `UNIQUE(stay_id)`, campos snapshot y FK a `Settlement`.
+- [x] T009 Crear tabla/fila única transaccional para el consecutivo oficial, seed inicial documentado y migración atómica; no usar `nextval()` para este requisito de consecutivo sin huecos.
+- [x] T010 Implementar `InvoiceMapper` y `PrismaInvoiceIssuanceRepository.issueIfAbsent`: transacción `READ COMMITTED` con `SELECT … FOR UPDATE` sobre la fila del contador, segundo chequeo idempotente, incremento y creación atómicos; mapear conflictos de unicidad a la factura existente.
+- [x] T011 Configurar `BillingModule` para consumir 001/007 y exportar 006 al módulo de `checkout-ingestion`.
 
 **Checkpoint**: entidad, almacenamiento, error handling y asignador de números preservan las invariantes bajo rollback y concurrencia.
 
@@ -250,20 +250,20 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 ### Tests for User Story 1
 
-- [ ] T012 [P] [US1] Unit tests de `Invoice`: solo acepta snapshots completos, estado `ISSUED`, moneda coherente y total igual a hospedaje más IVA; no ofrece mutadores.
-- [ ] T013 [P] [US1] Unit tests de `GenerateFinalInvoiceService`: llama a 007, obtiene una liquidación `FINAL`, devuelve factura existente sin consultar IVA, propaga errores de liquidación (incluido `SETTLEMENT_ALREADY_EXISTS`), lanza `FinalSettlementNotFoundError` si 007 devuelve una liquidación que no es `FINAL` o de otra estancia, y propaga por separado `VatRateNotConfiguredError` y `VatRateUnavailableError` sin asignar número.
-- [ ] T014 [P] [US1] Unit tests del flujo de validación tributaria: nombre y documento requeridos desde el evento; ausente/parcial/vacío devuelve `{ status: 'NOT_ISSUED', reason: 'BILLING_CUSTOMER_DATA_MISSING' }` sin lanzar excepción y antes de IVA/persistencia; no lee ni actualiza datos tributarios en la liquidación.
-- [ ] T015 [P] [US1] Unit tests de cálculo para canal directo: comisión `0.00`, IVA con redondeo half-up, total hospedaje + IVA.
-- [ ] T016 [P] [US1] Unit tests de reenvío: misma estancia ya emitida devuelve número y valores originales incluso si cambió la tasa vigente.
-- [ ] T017 [US1] Integration tests de `PrismaInvoiceIssuanceRepository` con Postgres: emisión, relectura por estancia, rollback y ausencia de incremento cuando falla la inserción.
-- [ ] T018 [US1] Contract test interno del `GenerateFinalInvoiceUseCase`: comando válido, salida serializable decimal-string e invariantes de errores sin endpoint HTTP.
+- [x] T012 [P] [US1] Unit tests de `Invoice`: solo acepta snapshots completos, estado `ISSUED`, moneda coherente y total igual a hospedaje más IVA; no ofrece mutadores.
+- [x] T013 [P] [US1] Unit tests de `GenerateFinalInvoiceService`: llama a 007, obtiene una liquidación `FINAL`, devuelve factura existente sin consultar IVA, propaga errores de liquidación (incluido `SETTLEMENT_ALREADY_EXISTS`), lanza `FinalSettlementNotFoundError` si 007 devuelve una liquidación que no es `FINAL` o de otra estancia, y propaga por separado `VatRateNotConfiguredError` y `VatRateUnavailableError` sin asignar número.
+- [x] T014 [P] [US1] Unit tests del flujo de validación tributaria: nombre y documento requeridos desde el evento; ausente/parcial/vacío devuelve `{ status: 'NOT_ISSUED', reason: 'BILLING_CUSTOMER_DATA_MISSING' }` sin lanzar excepción y antes de IVA/persistencia; no lee ni actualiza datos tributarios en la liquidación.
+- [x] T015 [P] [US1] Unit tests de cálculo para canal directo: comisión `0.00`, IVA con redondeo half-up, total hospedaje + IVA.
+- [x] T016 [P] [US1] Unit tests de reenvío: misma estancia ya emitida devuelve número y valores originales incluso si cambió la tasa vigente.
+- [x] T017 [US1] Integration tests de `PrismaInvoiceIssuanceRepository` con Postgres: emisión, relectura por estancia, rollback y ausencia de incremento cuando falla la inserción.
+- [x] T018 [US1] Contract test interno del `GenerateFinalInvoiceUseCase`: comando válido, salida serializable decimal-string e invariantes de errores sin endpoint HTTP.
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] Implementar validación de `billingCustomer` exclusivamente desde el evento; si falta o es parcial, devolver `NOT_ISSUED` con `BILLING_CUSTOMER_DATA_MISSING` antes de leer IVA o persistir factura, sin buscar datos en la liquidación ni combinar fuentes.
-- [ ] T020 [US1] Implementar `GenerateFinalInvoiceService.generate`: idempotencia, invocación de 007, validación tributaria, lectura de 001, cálculo y emisión mediante el puerto.
-- [ ] T021 [US1] Implementar cálculo con `Money`/`decimal.js`, redondeo half-up a dos decimales; no usar `number` de JavaScript para importes.
-- [ ] T022 [US1] Implementar el mapeo de errores para que 010 envíe fallos de negocio no recuperables y `VAT_RATE_NOT_CONFIGURED` a DLQ, y publique indisponibilidades en la cola retry de 30 s (hasta 5 reintentos) antes de enviarlas a DLQ.
+- [x] T019 [US1] Implementar validación de `billingCustomer` exclusivamente desde el evento; si falta o es parcial, devolver `NOT_ISSUED` con `BILLING_CUSTOMER_DATA_MISSING` antes de leer IVA o persistir factura, sin buscar datos en la liquidación ni combinar fuentes.
+- [x] T020 [US1] Implementar `GenerateFinalInvoiceService.generate`: idempotencia, invocación de 007, validación tributaria, lectura de 001, cálculo y emisión mediante el puerto.
+- [x] T021 [US1] Implementar cálculo con `Money`/`decimal.js`, redondeo half-up a dos decimales; no usar `number` de JavaScript para importes.
+- [x] T022 [US1] Implementar el mapeo de errores para que 010 envíe fallos de negocio no recuperables y `VAT_RATE_NOT_CONFIGURED` a DLQ, y publique indisponibilidades en la cola retry de 30 s (hasta 5 reintentos) antes de enviarlas a DLQ.
 
 **Checkpoint**: el flujo directo emite una factura una sola vez, sin número cuando falla una precondición.
 
@@ -275,15 +275,15 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 ### Tests for User Story 2
 
-- [ ] T023 [P] [US2] Unit test de canal OTA: conserva comisión/neto de 007, calcula IVA sobre hospedaje bruto y total sin restar ni sumar la comisión.
-- [ ] T024 [P] [US2] Unit test de redondeo con fracciones de peso para IVA y total usando half-up a dos decimales.
-- [ ] T025 [P] [US2] Integration test de lectura de factura: importes, canal, cliente mínimo, fecha y referencias coinciden exactamente con el snapshot emitido; no hay recálculo con el IVA actual.
-- [ ] T026 [US2] Contract test con el modelo de detalle de 008: campos `invoiceNumber`, `ISSUED`, `immutable`, `settlementId`, `stayId`, `customer`, importes decimales string y timestamp.
+- [x] T023 [P] [US2] Unit test de canal OTA: conserva comisión/neto de 007, calcula IVA sobre hospedaje bruto y total sin restar ni sumar la comisión.
+- [x] T024 [P] [US2] Unit test de redondeo con fracciones de peso para IVA y total usando half-up a dos decimales.
+- [x] T025 [P] [US2] Integration test de lectura de factura: importes, canal, cliente mínimo, fecha y referencias coinciden exactamente con el snapshot emitido; no hay recálculo con el IVA actual.
+- [x] T026 [US2] Contract test con el modelo de detalle de 008: campos `invoiceNumber`, `ISSUED`, `immutable`, `settlementId`, `stayId`, `customer`, importes decimales string y timestamp.
 
 ### Implementation for User Story 2
 
-- [ ] T027 [US2] Persistir el desglose explícito (`lodgingAmount`, `otaCommissionAmount`, `netIncome`, `vatRateApplied`, `vatAmount`, `totalAmount`) y `channel`/`otaId` como valores snapshot.
-- [ ] T028 [US2] Documentar en el mapper/contrato que `commissionAmount` es referencia comercial, no componente cobrado al huésped; `totalAmount` siempre es `lodgingAmount + vatAmount`.
+- [x] T027 [US2] Persistir el desglose explícito (`lodgingAmount`, `otaCommissionAmount`, `netIncome`, `vatRateApplied`, `vatAmount`, `totalAmount`) y `channel`/`otaId` como valores snapshot.
+- [x] T028 [US2] Documentar en el mapper/contrato que `commissionAmount` es referencia comercial, no componente cobrado al huésped; `totalAmount` siempre es `lodgingAmount + vatAmount`.
 - [ ] T029 [US2] Verificar que 008 obtiene todos los importes exclusivamente desde `invoice` y que 002 puede consultar la factura sin recalcularla.
 
 **Checkpoint**: los canales directo y OTA producen el desglose fiscal y de conciliación conforme a la spec.
@@ -292,20 +292,20 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 
 **Purpose**: Probar las condiciones límite que protegen consecutivo, idempotencia e inmutabilidad.
 
-- [ ] T030 Integration test concurrente: dos emisiones del mismo `stayId` producen un solo invoice y un solo número; ambas reciben el mismo resultado.
-- [ ] T031 Integration test concurrente de estancias distintas: números únicos estrictamente consecutivos; el orden de commit coincide con el orden asignado.
-- [ ] T032 Integration test de fallo después de reservar el número pero antes de confirmar invoice: la transacción revierte tanto el contador como la factura; la próxima emisión reutiliza el siguiente consecutivo no consumido.
-- [ ] T033 Test de arquitectura: 006 no importa adaptadores Prisma concretos en aplicación/dominio, no llama a `UpdateVatRateUseCase` y no expone endpoint externo.
-- [ ] T034 Revisar logs y selección de campos para asegurar que no contienen datos migratorios ni `billingCustomer`.
-- [ ] T035 Logging estructurado de resultado, correlación, IDs y duración sin datos personales.
+- [x] T030 Integration test concurrente: dos emisiones del mismo `stayId` producen un solo invoice y un solo número; ambas reciben el mismo resultado.
+- [x] T031 Integration test concurrente de estancias distintas: números únicos estrictamente consecutivos; el orden de commit coincide con el orden asignado.
+- [x] T032 Integration test de fallo después de reservar el número pero antes de confirmar invoice: la transacción revierte tanto el contador como la factura; la próxima emisión reutiliza el siguiente consecutivo no consumido.
+- [x] T033 Test de arquitectura: 006 no importa adaptadores Prisma concretos en aplicación/dominio, no llama a `UpdateVatRateUseCase` y no expone endpoint externo.
+- [x] T034 Revisar logs y selección de campos para asegurar que no contienen datos migratorios ni `billingCustomer`.
+- [x] T035 Logging estructurado de resultado, correlación, IDs y duración sin datos personales.
 
 **Checkpoint**: concurrencia, rollback y reintentos no duplican facturas ni abren huecos en el consecutivo; el documento queda inmutable.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T036 Documentar el contrato de integración con 010, el puerto de IVA 001 y la salida de factura consumida por 008.
-- [ ] T037 Confirmar la transacción de emisión es corta y solo serializa la sección crítica del consecutivo; no envolver llamadas a 001/007 en la transacción de Postgres.
-- [ ] T038 Publicar/actualizar las definiciones de tipos compartidos que consumen 002 y 008 sin añadir rutas de escritura para invoices.
+- [x] T036 Documentar el contrato de integración con 010, el puerto de IVA 001 y la salida de factura consumida por 008.
+- [x] T037 Confirmar la transacción de emisión es corta y solo serializa la sección crítica del consecutivo; no envolver llamadas a 001/007 en la transacción de Postgres.
+- [x] T038 Publicar/actualizar las definiciones de tipos compartidos que consumen 002 y 008 sin añadir rutas de escritura para invoices.
 
 ## Dependencies & Execution Order
 
