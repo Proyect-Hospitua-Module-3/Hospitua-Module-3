@@ -58,6 +58,8 @@ const HTTP_STATUS_BY_ERROR_CODE: Record<string, number> = {
   MISSING_COMMISSION: 409,
   INVALID_COMMISSION: 409,
   MODULE2_UNAVAILABLE: 424,
+  // settlement — 002: la OTA no ve liquidaciones Final en la reserva (anti-enumeración).
+  SETTLEMENT_NOT_FOUND: 404,
 };
 
 // Errores HTTP del framework que no son de negocio (ruta inexistente, JSON mal formado).
