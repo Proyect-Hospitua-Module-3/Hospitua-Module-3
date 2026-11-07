@@ -9,7 +9,7 @@ Este documento es el mapa de dónde está el código de la 006. El código no vi
 
 > Para encontrar todos los archivos de la 006 en VS Code: `Ctrl+Shift+F` y buscar `Feature 006`.
 
-**Alcance de esta entrega**: Historias de usuario 1 y 2 completas. La 006 **no tiene endpoint**: es un caso de uso interno que invocará 010 (Registrar check-out). Se podrá probar a mano cuando 010 lo conecte; mientras tanto se verifica con pruebas automáticas (sección 4), organizadas por escenario en el caso de prueba [TC-006](../4-testing/TC-006-generar-factura-final.md). [revisar-facturas.sql](../4-testing/revisar-facturas.sql) tiene consultas de solo lectura para revisar las facturas y el consecutivo en la base.
+**Alcance de esta entrega**: Historias de usuario 1 y 2 completas. La 006 **no tiene endpoint**: es un caso de uso interno que invoca 010 (Registrar check-out) por cada evento de check-out válido; la prueba manual de punta a punta está en el [TC-010](../../010-registrar-checkout/4-testing/TC-010-registrar-checkout.md), sección 6. Aquí se verifica con pruebas automáticas (sección 4), organizadas por escenario en el caso de prueba [TC-006](../4-testing/TC-006-generar-factura-final.md). [revisar-facturas.sql](../4-testing/revisar-facturas.sql) tiene consultas de solo lectura para revisar las facturas y el consecutivo en la base.
 
 ---
 
@@ -84,6 +84,7 @@ La factura **nunca cambia** y existe **una sola por estancia**: un reenvío del 
 |---|---|
 | [invoice.mapper.ts](../../../src/infrastructure/adapters/out/persistence/mappers/billing/invoice.mapper.ts) | Dominio ↔ fila de Prisma; importes como texto, número `bigint` ↔ entero |
 | [prisma-invoice-issuance.repository.ts](../../../src/infrastructure/adapters/out/persistence/repositories/billing/prisma-invoice-issuance.repository.ts) | `READ COMMITTED` + `SELECT … FOR UPDATE` sobre el consecutivo, segundo chequeo, incremento e `INSERT` en una transacción. Ningún `UPDATE`/`DELETE` de `invoice`. Los fallos de conexión/timeout salen como `DATABASE_UNAVAILABLE`; un `CHECK` o una FK se propagan tal cual |
+| [transient-persistence-error.ts](../../../src/infrastructure/adapters/out/persistence/transient-persistence-error.ts) | `isTransientPersistenceError`: decide qué errores de Prisma son transitorios (decisión 6). Lo comparten este repositorio y el decorador de 010 que traduce las fallas de 007 |
 | [logged-generate-final-invoice.use-case.ts](../../../src/infrastructure/logging/billing/logged-generate-final-invoice.use-case.ts) | Log JSON por intento (T035), sin nombre ni documento fiscal (T034) |
 | [billing.module.ts](../../../src/infrastructure/config/billing.module.ts) | Wiring por token. Importa `SettlementModule` (007). Sin controller nuevo. Exporta `GENERATE_FINAL_INVOICE_USE_CASE` para 010 |
 
@@ -183,7 +184,7 @@ Lo que no fijaban la spec, el plan ni los contratos:
 3. **`billingCustomer` sin espacios sobrantes**: se guarda recortado; un campo solo con espacios cuenta como ausente.
 4. **`sourceEventId` de la factura = `eventId` del comando** (el evento que la originó), no el de la liquidación; en operación normal coinciden.
 5. **Segundo chequeo por estancia o por liquidación** (`OR`), porque las dos son únicas; la `UNIQUE` es la última defensa y, si salta, se devuelve la factura existente.
-6. **Errores de base de datos**: solo los transitorios (conexión, timeout, conflicto de transacción: `P1001`, `P1002`, `P1008`, `P1017`, `P2024`, `P2028`, `P2034`, y errores de inicialización) son `DATABASE_UNAVAILABLE`. Un `CHECK` o una FK no se reintentan: salen como inesperados y 010 los manda a DLQ.
+6. **Errores de base de datos**: solo los transitorios (conexión, timeout, conflicto de transacción: `P1001`, `P1002`, `P1008`, `P1017`, `P2024`, `P2028`, `P2034`, y errores de inicialización) son `DATABASE_UNAVAILABLE`. Un `CHECK` o una FK no se reintentan: salen como inesperados y 010 los manda a DLQ. La lista vive en [transient-persistence-error.ts](../../../src/infrastructure/adapters/out/persistence/transient-persistence-error.ts) y 010 la reutiliza para las fallas de 007, que llegan sin tipo.
 7. **`issued_at` con `clock_timestamp()`**, por la misma razón que el historial de IVA de 001.
 8. **Sin índices de búsqueda**: el plan de 008 los define y los crea en su migración; aquí solo están las `UNIQUE`.
 9. **Migración `20261106120000`**, para no coincidir con la de 010 (`20261106000000_create_checkout_event_log`).

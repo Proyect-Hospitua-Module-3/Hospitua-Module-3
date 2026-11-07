@@ -1,4 +1,6 @@
-# Entorno local de Módulo 3. Por ahora solo PostgreSQL; RabbitMQ se agrega con la feature 010.
+# Entorno local de Módulo 3: PostgreSQL y RabbitMQ (feature 010).
+# Módulo 1 usa los mismos puertos y las mismas credenciales de RabbitMQ: si ya tienes su
+# entorno levantado, Módulo 3 puede usar ese broker y no hace falta levantar el de aquí.
 services:
   postgres:
     image: postgres:16
@@ -16,5 +18,22 @@ services:
       timeout: 5s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: hospitua
+      RABBITMQ_DEFAULT_PASS: hospitua
+    ports:
+      - '5672:5672'
+      - '15672:15672' # Interfaz de gestión: http://localhost:15672
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres-data:
+  rabbitmq-data:

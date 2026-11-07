@@ -128,7 +128,7 @@ describeWithDatabase(
 
     afterEach(async () => {
       await moduleRef?.close();
-      await fixture.stop();
+      await fixture?.stop();
     });
 
     afterAll(async () => {
