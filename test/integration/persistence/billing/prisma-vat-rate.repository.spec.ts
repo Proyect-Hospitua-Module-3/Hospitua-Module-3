@@ -5,6 +5,7 @@
 // Sin TEST_DATABASE_URL estas pruebas se omiten. ¡Borra los datos de IVA de esa base!
 import { VatRateValue } from '../../../../src/domain/model/billing/vat-rate-value.vo';
 import { PrismaService } from '../../../../src/infrastructure/adapters/out/persistence/prisma.service';
+import { PrismaVatRateOverviewQuery } from '../../../../src/infrastructure/adapters/out/persistence/repositories/billing/prisma-vat-rate-overview.query';
 import { PrismaVatRateRepository } from '../../../../src/infrastructure/adapters/out/persistence/repositories/billing/prisma-vat-rate.repository';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -107,5 +108,72 @@ describeWithDatabase('PrismaVatRateRepository (PostgreSQL real)', () => {
 
     // El vigente es el último eslabón: nunca un estado mixto.
     expect((await repository.getCurrent())?.value.toString()).toBe(previous);
+  });
+
+  // GET /admin/vat-rate (pantalla de IVA). Va en este archivo porque borra las mismas tablas:
+  // así no corre en paralelo con las pruebas del repositorio.
+  describe('PrismaVatRateOverviewQuery', () => {
+    let query: PrismaVatRateOverviewQuery;
+
+    beforeAll(async () => {
+      query = new PrismaVatRateOverviewQuery(prisma);
+      await prisma.appUser.upsert({
+        where: { id: ADMIN_ID },
+        update: {},
+        create: {
+          id: ADMIN_ID,
+          username: 'it-001-admin',
+          passwordHash: 'x',
+          role: 'Administrador',
+        },
+      });
+    });
+
+    it('sin porcentaje registrado: current = null y sin historial', async () => {
+      await expect(query.getOverview(100)).resolves.toEqual({ current: null, history: [] });
+    });
+
+    it('vigente e historial con el usuario, del más reciente al más antiguo', async () => {
+      await repository.saveNew(VatRateValue.of('19'), ADMIN_ID);
+      const latest = await repository.saveNew(VatRateValue.of('16.5'), ADMIN_ID);
+
+      const overview = await query.getOverview(100);
+
+      expect(overview.current).toEqual({
+        value: '16.50',
+        updatedBy: ADMIN_ID,
+        updatedByUsername: 'it-001-admin',
+        updatedAt: latest.updatedAt,
+      });
+      expect(overview.history).toEqual([
+        {
+          valueBefore: '19.00',
+          valueAfter: '16.50',
+          changedBy: ADMIN_ID,
+          changedByUsername: 'it-001-admin',
+          changedAt: latest.updatedAt,
+        },
+        expect.objectContaining({ valueBefore: null, valueAfter: '19.00' }),
+      ]);
+    });
+
+    it('respeta el límite del historial', async () => {
+      for (const value of ['10', '11', '12']) {
+        await repository.saveNew(VatRateValue.of(value), ADMIN_ID);
+      }
+
+      const overview = await query.getOverview(2);
+
+      expect(overview.history.map((change) => change.valueAfter)).toEqual(['12.00', '11.00']);
+    });
+
+    it('un cambio de un usuario que no está en app_user sale sin nombre', async () => {
+      await repository.saveNew(VatRateValue.of('19'), '00000000-0000-4000-8000-0000000000aa');
+
+      const overview = await query.getOverview(100);
+
+      expect(overview.current?.updatedByUsername).toBeNull();
+      expect(overview.history[0].changedByUsername).toBeNull();
+    });
   });
 });

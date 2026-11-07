@@ -10,7 +10,7 @@ Facturación, Consumos y Liquidación. Servicio NestJS con arquitectura hexagona
 | Feature | Endpoint | Dónde está el código |
 |---|---|---|
 | Base: login propio con JWT | `POST /auth/login` | [src/infrastructure/adapters/in/http/auth/](src/infrastructure/adapters/in/http/auth/) |
-| [001 Actualizar porcentaje de IVA](features/001-actualizar-porcentaje-iva/) | `PUT /admin/vat-rate` | [Mapa de implementación](features/001-actualizar-porcentaje-iva/3-implementation/implementacion.md) |
+| [001 Actualizar porcentaje de IVA](features/001-actualizar-porcentaje-iva/) | `PUT /admin/vat-rate`, `GET /admin/vat-rate` (vigente + historial, para el frontend) · pantalla `/iva` del [frontend](frontend/) | [Mapa de implementación](features/001-actualizar-porcentaje-iva/3-implementation/implementacion.md) |
 | [009 Modificar precio tarifa según temporada](features/009-modificar-precio-tarifa-segun-temporada/) | `GET`, `POST`, `PUT`, `DELETE` en `/admin/season-rules` | [Mapa de implementación](features/009-modificar-precio-tarifa-segun-temporada/3-implementation/implementacion.md) |
 | [011 Revisar temporada del año](features/011-revisar-temporada-del-año/) | `GET /admin/season-calendar`, `PUT /admin/season-calendar/{year}` | [Mapa de implementación](features/011-revisar-temporada-del-año/3-implementation/implementacion.md) |
 | [004 Consultar tarifa base](features/004-consultar-tarifa-base/) | Sin endpoint: puerto interno `GetBaseRateUseCase` para la 005 | [Mapa de implementación](features/004-consultar-tarifa-base/3-implementation/implementacion.md) |
@@ -19,6 +19,8 @@ Facturación, Consumos y Liquidación. Servicio NestJS con arquitectura hexagona
 | [006 Generar factura final](features/006-generar-factura-final/) | Sin endpoint: caso de uso interno `GenerateFinalInvoiceUseCase` para 010 | [Mapa de implementación](features/006-generar-factura-final/3-implementation/implementacion.md) |
 | [010 Registrar Check-out](features/010-registrar-checkout/) | Sin endpoint: consume la cola RabbitMQ `modulo3.checkout` y orquesta 007 y 006 | [Mapa de implementación](features/010-registrar-checkout/3-implementation/implementacion.md) |
 | [002 Consultar liquidación](features/002-consultar-liquidacion/) | `GET /api/settlements` (Módulo 1 sin token: liquidación final o informativa de una habitación; OTA con token: liquidaciones finales de su reserva) | [Mapa de implementación](features/002-consultar-liquidacion/3-implementation/implementacion.md) |
+
+El frontend del Administrador (React + Vite) está en [frontend/](frontend/), con sus propias instrucciones.
 
 El código de cada feature está repartido por capas (arquitectura hexagonal). Cada feature tiene en su carpeta
 `3-implementation/` un mapa con todos sus archivos, y cada archivo empieza con la marca `Feature NNN`

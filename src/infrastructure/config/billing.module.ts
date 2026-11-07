@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 import { GenerateFinalInvoiceService } from '../../application/services/billing/generate-final-invoice.service';
 import { GetCurrentVatRateService } from '../../application/services/billing/get-current-vat-rate.service';
+import { GetVatRateOverviewService } from '../../application/services/billing/get-vat-rate-overview.service';
 import { UpdateVatRateService } from '../../application/services/billing/update-vat-rate.service';
 import { GENERATE_FINAL_INVOICE_USE_CASE } from '../../domain/ports/in/billing/generate-final-invoice.use-case';
 import {
   GET_CURRENT_VAT_RATE_USE_CASE,
   GetCurrentVatRateUseCase,
 } from '../../domain/ports/in/billing/get-current-vat-rate.use-case';
+import { GET_VAT_RATE_OVERVIEW_USE_CASE } from '../../domain/ports/in/billing/get-vat-rate-overview.use-case';
 import { UPDATE_VAT_RATE_USE_CASE } from '../../domain/ports/in/billing/update-vat-rate.use-case';
 import {
   GENERATE_SETTLEMENT_USE_CASE,
@@ -17,11 +19,16 @@ import {
   InvoiceIssuanceRepositoryPort,
 } from '../../domain/ports/out/billing/invoice-issuance.repository.port';
 import {
+  VAT_RATE_OVERVIEW_QUERY,
+  VatRateOverviewQueryPort,
+} from '../../domain/ports/out/billing/vat-rate-overview.query.port';
+import {
   VAT_RATE_REPOSITORY,
   VatRateRepositoryPort,
 } from '../../domain/ports/out/billing/vat-rate.repository.port';
 import { VatRateAdminController } from '../adapters/in/http/billing/vat-rate-admin.controller';
 import { PrismaInvoiceIssuanceRepository } from '../adapters/out/persistence/repositories/billing/prisma-invoice-issuance.repository';
+import { PrismaVatRateOverviewQuery } from '../adapters/out/persistence/repositories/billing/prisma-vat-rate-overview.query';
 import { PrismaVatRateRepository } from '../adapters/out/persistence/repositories/billing/prisma-vat-rate.repository';
 import { LoggedGenerateFinalInvoiceUseCase } from '../logging/billing/logged-generate-final-invoice.use-case';
 import { AuthModule } from './auth.module';
@@ -46,6 +53,13 @@ import { SettlementModule } from './settlement.module';
       provide: GET_CURRENT_VAT_RATE_USE_CASE,
       inject: [VAT_RATE_REPOSITORY],
       useFactory: (vatRates: VatRateRepositoryPort) => new GetCurrentVatRateService(vatRates),
+    },
+    // Pantalla de IVA del frontend: vigente + historial (GET /admin/vat-rate).
+    { provide: VAT_RATE_OVERVIEW_QUERY, useClass: PrismaVatRateOverviewQuery },
+    {
+      provide: GET_VAT_RATE_OVERVIEW_USE_CASE,
+      inject: [VAT_RATE_OVERVIEW_QUERY],
+      useFactory: (overview: VatRateOverviewQueryPort) => new GetVatRateOverviewService(overview),
     },
 
     // 006 — factura final. Sin controller: solo la invoca 010 (FR-001, BR-001).
