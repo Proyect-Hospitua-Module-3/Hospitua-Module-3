@@ -1,0 +1,39 @@
+/* Tokens del diseño "Hospitua M3" en Figma (pantallas de Módulo 3). */
+:root {
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-text: #111113;
+  --color-text-secondary: #5f6168;
+  --color-text-tertiary: #8e9097;
+  --color-border: #e7e7ea;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f6f6f7;
+  --color-backdrop: rgba(17, 17, 19, 0.32);
+
+  --color-success: #1e8e5a;
+  --color-success-bg: #eaf6ef;
+  --color-info: #2f5bea;
+  --color-info-bg: #eef2fe;
+  --color-danger: #c9372c;
+  --color-danger-bg: #fceeec;
+
+  --radius-nav: 6px;
+  --radius-logo: 7px;
+  --radius-control: 8px;
+  --radius-notice: 10px;
+  --radius-card: 12px;
+  --radius-modal: 14px;
+  --radius-pill: 99px;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 15px;
+  --text-xl: 16px;
+  --text-title: 26px;
+  --text-display: 56px;
+  --leading: 1.45;
+
+  --sidebar-width: 232px;
+}

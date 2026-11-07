@@ -2,7 +2,7 @@
 
 **Spec**: [actualizar_porcentaje_iva.md](../1-functional/actualizar_porcentaje_iva.md)
 **Plan**: [plan.md](../2-technical/plan.md)
-**Contrato**: [PUT-admin-vat-rate.md](../2-technical/contracts/PUT-admin-vat-rate.md)
+**Contratos**: [PUT-admin-vat-rate.md](../2-technical/contracts/PUT-admin-vat-rate.md) · [GET-admin-vat-rate.md](../2-technical/contracts/GET-admin-vat-rate.md) (agregado con el frontend, sección 8)
 **Rama**: `feature/001-actualizar-porcentaje-iva`
 
 Este documento es el mapa de dónde está el código de la 001. El código no vive en esta carpeta: sigue la arquitectura hexagonal del plan base, así que está repartido por capas en `src/` y `test/`, siempre dentro de una subcarpeta `billing/`.
@@ -141,3 +141,45 @@ Pasos completos en el [README](../../../README.md). En resumen: levantar Postgre
 2. `PUT /admin/vat-rate` con `"19.00"` → 200.
 3. Con `"120"` → 400 `INVALID_VAT_RATE`.
 4. Con el usuario `ota-demo` → 403 `FORBIDDEN`.
+
+O desde el frontend (sección 8): `npm run start:dev` en la raíz y `npm run dev` en `frontend/`, luego <http://localhost:5173>.
+
+---
+
+## 8. Frontend: pantalla "Porcentaje de IVA"
+
+Implementa la sección **03 · Porcentaje de IVA** del diseño de Figma (archivo *Hospitua M3*, página *Módulo 3 · Pantallas*). Vive en [frontend/](../../../frontend/) (React + Vite + TypeScript); cómo ejecutarlo está en [frontend/README.md](../../../frontend/README.md).
+
+### Lo que se agregó al backend
+
+El diseño muestra el IVA vigente y el historial, pero la 001 solo tenía el `PUT`. Se agregó una consulta de solo lectura, sin tocar el puerto que usa 006:
+
+| Archivo | Qué hace |
+|---|---|
+| [vat-rate-overview.ts](../../../src/domain/model/billing/vat-rate-overview.ts) | Modelo de lectura: vigente (o `null`) + historial |
+| [get-vat-rate-overview.use-case.ts](../../../src/domain/ports/in/billing/get-vat-rate-overview.use-case.ts) · [vat-rate-overview.query.port.ts](../../../src/domain/ports/out/billing/vat-rate-overview.query.port.ts) | Puertos de entrada y de salida |
+| [get-vat-rate-overview.service.ts](../../../src/application/services/billing/get-vat-rate-overview.service.ts) | Caso de uso; historial de hasta 100 entradas |
+| [prisma-vat-rate-overview.query.ts](../../../src/infrastructure/adapters/out/persistence/repositories/billing/prisma-vat-rate-overview.query.ts) | Las dos consultas en una transacción `REPEATABLE READ`, con el `username` de `app_user` |
+| [vat-rate-admin.controller.ts](../../../src/infrastructure/adapters/in/http/billing/vat-rate-admin.controller.ts) · [vat-rate-overview.dto.ts](../../../src/infrastructure/adapters/in/http/billing/dto/vat-rate-overview.dto.ts) | `GET /admin/vat-rate`, solo Administrador |
+
+Pruebas: [get-vat-rate-overview.service.spec.ts](../../../test/unit/application/billing/get-vat-rate-overview.service.spec.ts) (3), el bloque `GET` de [vat-rate.e2e-spec.ts](../../../test/e2e/billing/vat-rate.e2e-spec.ts) (3) y el bloque `PrismaVatRateOverviewQuery` de [prisma-vat-rate.repository.spec.ts](../../../test/integration/persistence/billing/prisma-vat-rate.repository.spec.ts) (4, PostgreSQL real).
+
+### Estados del diseño
+
+| Estado de Figma | Dónde se cumple |
+|---|---|
+| 1. Porcentaje guardado | Aviso verde con el nuevo valor, quién, cuándo y el anterior; la tarjeta y el historial se recargan |
+| 2. Porcentaje inválido | Validación en el navegador con las mismas reglas del backend ([vatInput.ts](../../../frontend/src/lib/vatInput.ts)); si el backend igual responde `INVALID_VAT_RATE`, el mismo mensaje |
+| 3, 4 y 10. Facturas antes, después y durante el cambio | Los garantiza el backend (006 guarda el IVA en cada factura); se verán en la pantalla de facturas (008), no en esta |
+| 5. Dos administradores a la vez | Antes de guardar se vuelve a leer el vigente; si cambió desde que se cargó la pantalla, modal "El IVA cambió mientras editabas" con **Recargar** |
+| 6. Mismo valor | Aviso gris "19 % ya es el vigente"; no se envía |
+| 7. No se pudo registrar quién | Si el `PUT` falla (422), aviso rojo "No se guardó el cambio" y el vigente no cambia |
+| 8. Sin IVA configurado | `current: null` → aviso rojo "Configura un porcentaje de IVA" y la tarjeta en "—" |
+| 9. Usuario sin permiso | `403` → aviso rojo con el rol del usuario |
+
+### Diferencias con el diseño
+
+- **"Ana Ríos" → nombre de usuario**: `app_user` no guarda nombres completos, solo `username`.
+- **"mayor a 30 %" → "mayor a 100 %"**: el estado 2 del diseño dice 30 %, pero la spec y el backend permiten de 0 a 100. Se siguió la spec; conviene corregir el texto en Figma.
+- **Estado 5 sin bloqueo optimista en el backend**: la comprobación la hace el frontend justo antes del `PUT`. Si dos Administradores guardan en el mismo instante, el backend sigue garantizando un único vigente consistente (FR-007), pero el segundo no verá el modal.
+- **Pantalla de login y "Cerrar sesión"**: no están en Figma; se hicieron con los mismos tokens visuales.

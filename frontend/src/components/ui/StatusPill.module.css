@@ -1,0 +1,17 @@
+.pill {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--color-success-bg);
+  border-radius: var(--radius-pill);
+  color: var(--color-text);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.dot {
+  display: block;
+  flex-shrink: 0;
+}
