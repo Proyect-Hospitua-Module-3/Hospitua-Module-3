@@ -6,24 +6,13 @@ import { Invoice, InvoiceDraft } from '../../../../../../domain/model/billing/in
 import { InvoiceIssuanceRepositoryPort } from '../../../../../../domain/ports/out/billing/invoice-issuance.repository.port';
 import { InvoiceMapper } from '../../mappers/billing/invoice.mapper';
 import { PrismaService } from '../../prisma.service';
+import { isTransientPersistenceError } from '../../transient-persistence-error';
 
 // `invoice_number_counter` es de fila única: siempre id = 1 (lo exige un CHECK en la migración).
 const COUNTER_ROW_ID = 1;
 
 // Violación de una restricción UNIQUE en Prisma.
 const UNIQUE_VIOLATION = 'P2002';
-
-// Fallos de conexión, timeout o conflicto de transacción: la base no respondió y se puede
-// reintentar. Un CHECK, una FK o un dato inválido no está aquí: reintentar no lo arregla.
-const TRANSIENT_ERROR_CODES = new Set([
-  'P1001', // no se alcanza el servidor
-  'P1002', // el servidor no respondió a tiempo
-  'P1008', // timeout de la operación
-  'P1017', // el servidor cerró la conexión
-  'P2024', // timeout esperando una conexión del pool
-  'P2028', // error de la API de transacciones (p. ej. la transacción expiró)
-  'P2034', // conflicto de escritura o deadlock
-]);
 
 interface CounterRow {
   last_number: bigint;
@@ -111,10 +100,5 @@ function isUniqueViolation(error: unknown): boolean {
 // Un fallo transitorio sale como DATABASE_UNAVAILABLE (reintentable); cualquier otro se
 // propaga tal cual y 010 lo trata como inesperado.
 function asPersistenceError(error: unknown): unknown {
-  const transient =
-    error instanceof Prisma.PrismaClientInitializationError ||
-    error instanceof Prisma.PrismaClientRustPanicError ||
-    (error instanceof Prisma.PrismaClientKnownRequestError &&
-      TRANSIENT_ERROR_CODES.has(error.code));
-  return transient ? new InvoicePersistenceUnavailableError(error) : error;
+  return isTransientPersistenceError(error) ? new InvoicePersistenceUnavailableError(error) : error;
 }

@@ -307,3 +307,28 @@ model InvoiceNumberCounter {
 
   @@map("invoice_number_counter")
 }
+
+// ---------------------------------------------------------------------------
+// checkout-ingestion — 010 Registrar Check-out
+// El UNIQUE parcial sobre event_id y los CHECK son SQL manual en la migración.
+// ---------------------------------------------------------------------------
+
+// Auditoría de cada evento de check-out recibido. Guarda solo la lista blanca del
+// evento y el indicador has_billing_customer: nunca datos tributarios ni migratorios.
+model CheckoutEventLog {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId     String?   @map("event_id") @db.Uuid // nulo solo en un sobre no reconocible
+  eventType   String?   @map("event_type")
+  occurredAt  DateTime? @map("occurred_at") @db.Timestamptz(6)
+  payload     Json?     @db.JsonB
+  stayId      String?   @map("stay_id") @db.Uuid
+  status      String
+  errorCode   String?   @map("error_code")
+  reason      String?
+  resultNote  String?   @map("result_note")
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(dbgenerated("clock_timestamp()")) @map("created_at") @db.Timestamptz(6)
+
+  @@index([stayId])
+  @@map("checkout_event_log")
+}

@@ -5,6 +5,7 @@ import { CorrelationIdMiddleware } from './infrastructure/adapters/in/http/corre
 import { DomainExceptionFilter } from './infrastructure/adapters/in/http/domain-exception.filter';
 import { AuthModule } from './infrastructure/config/auth.module';
 import { BillingModule } from './infrastructure/config/billing.module';
+import { CheckoutIngestionModule } from './infrastructure/config/checkout-ingestion.module';
 import { PersistenceModule } from './infrastructure/config/persistence.module';
 import { PricingModule } from './infrastructure/config/pricing.module';
 import { SettlementModule } from './infrastructure/config/settlement.module';
@@ -17,6 +18,7 @@ import { SettlementModule } from './infrastructure/config/settlement.module';
     BillingModule,
     PricingModule,
     SettlementModule,
+    CheckoutIngestionModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: DomainExceptionFilter }],
 })

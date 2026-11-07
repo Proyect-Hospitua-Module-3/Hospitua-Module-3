@@ -17,6 +17,7 @@ Facturación, Consumos y Liquidación. Servicio NestJS con arquitectura hexagona
 | [005 Consultar tarifa dinámica](features/005-consultar-tarifa-dinamica/) | `GET /pricing/dynamic-rate` (Módulo 2 sin token, u OTA con token para sus reservas), `POST /pricing/quotes` (Módulo 2, sin token) | [Mapa de implementación](features/005-consultar-tarifa-dinamica/3-implementation/implementacion.md) |
 | [007 Generar liquidación](features/007-generar-liquidacion/) | Sin endpoint: caso de uso interno `GenerateSettlementUseCase` para 010 y 006 | [Mapa de implementación](features/007-generar-liquidacion/3-implementation/implementacion.md) |
 | [006 Generar factura final](features/006-generar-factura-final/) | Sin endpoint: caso de uso interno `GenerateFinalInvoiceUseCase` para 010 | [Mapa de implementación](features/006-generar-factura-final/3-implementation/implementacion.md) |
+| [010 Registrar Check-out](features/010-registrar-checkout/) | Sin endpoint: consume la cola RabbitMQ `modulo3.checkout` y orquesta 007 y 006 | [Mapa de implementación](features/010-registrar-checkout/3-implementation/implementacion.md) |
 
 El código de cada feature está repartido por capas (arquitectura hexagonal). Cada feature tiene en su carpeta
 `3-implementation/` un mapa con todos sus archivos, y cada archivo empieza con la marca `Feature NNN`
@@ -26,13 +27,14 @@ para encontrarlos con una búsqueda.
 
 - Node.js 20 o superior
 - PostgreSQL 16: con Docker (`docker compose up -d`) o instalado localmente
+- RabbitMQ 3.13 (feature 010): el del `docker-compose.yml` o el de Módulo 1
 
 ## Cómo ejecutarlo
 
 ```bash
 npm install
 cp .env.example .env            # en Windows: copy .env.example .env  (y ajusta los valores)
-docker compose up -d            # levanta PostgreSQL; omítelo si lo tienes instalado
+docker compose up -d            # levanta PostgreSQL y RabbitMQ; omítelo si ya los tienes
 npx prisma migrate deploy       # crea las tablas
 npx prisma db seed              # crea los usuarios admin y ota-demo del .env
 npm run start:dev
@@ -45,6 +47,11 @@ y de Módulo 2 (feature 007). Todas son obligatorias: si falta alguna o un timeo
 - `MODULE1_TIMEOUT_MS`: tiempo máximo de espera por consulta, en milisegundos (`500`).
 - `MODULE2_BASE_URL`: URL base de Módulo 2 para consultar reservas al generar la liquidación (p. ej. `http://localhost:8081`).
 - `MODULE2_TIMEOUT_MS`: tiempo máximo de espera por consulta, en milisegundos (`500`).
+
+`RABBITMQ_URL` (feature 010): con ella, al arrancar se declara la cola `modulo3.checkout` donde Módulo 1 publica
+el evento de check-out y se empieza a consumir (cada evento genera la liquidación y la factura). Sin ella la
+aplicación arranca igual, lo advierte en el log y los eventos esperan en la cola; si el broker no responde o se
+cae, se reintenta la conexión cada 5 s. Las pruebas E2E nunca consumen la cola aunque el `.env` la tenga.
 
 La documentación interactiva queda en <http://localhost:3000/docs> (Swagger). Para probar:
 
@@ -60,4 +67,6 @@ npm run test:e2e     # endpoint de punta a punta (no necesita PostgreSQL)
 ```
 
 Las pruebas de integración del repositorio necesitan una base PostgreSQL ya migrada en `TEST_DATABASE_URL`;
-sin esa variable se omiten.
+sin esa variable se omiten. Prisma lee el `.env` automáticamente, así que basta con que la variable esté ahí
+para que esas pruebas se ejecuten. Las de mensajería (feature 010) necesitan un RabbitMQ en `TEST_RABBITMQ_URL`,
+con la misma regla; la E2E del check-out (`test/e2e/checkout/`) necesita las dos variables.

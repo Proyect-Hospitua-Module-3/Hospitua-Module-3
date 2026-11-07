@@ -91,7 +91,7 @@ Los códigos siguientes son resultados de procesamiento y auditoría, no respues
 | `VAT_RATE_NOT_CONFIGURED` | El Administrador nunca registró un porcentaje de IVA; `DEAD_LETTER` sin reintentos. Tras registrarlo, el evento se reprocesa desde la DLQ. |
 | `VAT_RATE_UNAVAILABLE` | Fallo transitorio al leer la tasa de IVA; retry mediante `x-retry-count` mientras sea menor que 5. |
 | `BILLING_CUSTOMER_DATA_MISSING` | Resultado normal sin emisión de factura; ack y `PROCESSED`. |
-| `DATABASE_UNAVAILABLE` | Falla transitoria de persistencia, incluida la escritura de la auditoría de 010; retry mediante `x-retry-count` mientras sea menor que 5, aunque todavía no exista el registro; si ya es 5, publicación a DLQ con el código del fallo actual. |
+| `DATABASE_UNAVAILABLE` | Falla transitoria de persistencia, incluida la escritura de la auditoría de 010 y las fallas de conexión o timeout de la base de datos que llegan sin tipo desde 007 (liquidación) o desde la lectura de cotizaciones de 005, que 010 traduce a este código; retry mediante `x-retry-count` mientras sea menor que 5, aunque todavía no exista el registro; si ya es 5, publicación a DLQ con el código del fallo actual. |
 | `FINAL_SETTLEMENT_NOT_FOUND` | Guarda de integridad de 006: 007 devolvió una liquidación que no está en `FINAL` o no es de la estancia; no ocurre en operación normal; `DEAD_LETTER`. |
 | `UNEXPECTED_ERROR` | Error no tipado; `DEAD_LETTER`. |
 
