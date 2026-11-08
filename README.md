@@ -19,6 +19,7 @@ Facturación, Consumos y Liquidación. Servicio NestJS con arquitectura hexagona
 | [006 Generar factura final](features/006-generar-factura-final/) | Sin endpoint: caso de uso interno `GenerateFinalInvoiceUseCase` para 010 | [Mapa de implementación](features/006-generar-factura-final/3-implementation/implementacion.md) |
 | [010 Registrar Check-out](features/010-registrar-checkout/) | Sin endpoint: consume la cola RabbitMQ `modulo3.checkout` y orquesta 007 y 006 | [Mapa de implementación](features/010-registrar-checkout/3-implementation/implementacion.md) |
 | [002 Consultar liquidación](features/002-consultar-liquidacion/) | `GET /api/settlements` (Módulo 1 sin token: liquidación final o informativa de una habitación; OTA con token: liquidaciones finales de su reserva) | [Mapa de implementación](features/002-consultar-liquidacion/3-implementation/implementacion.md) |
+| [008 Gestionar facturación](features/008-gestionar-facturacion/) | `GET /invoices` (búsqueda), `GET /invoices/{invoiceId}` (detalle) y `GET /invoices/summary` (resumen por canal), solo Administrador | [Mapa de implementación](features/008-gestionar-facturacion/3-implementation/implementacion.md) |
 
 El código de cada feature está repartido por capas (arquitectura hexagonal). Cada feature tiene en su carpeta
 `3-implementation/` un mapa con todos sus archivos, y cada archivo empieza con la marca `Feature NNN`
@@ -48,6 +49,9 @@ y de Módulo 2 (feature 007). Todas son obligatorias: si falta alguna o un timeo
 - `MODULE1_TIMEOUT_MS`: tiempo máximo de espera por consulta, en milisegundos (`500`).
 - `MODULE2_BASE_URL`: URL base de Módulo 2 para consultar reservas al generar la liquidación (p. ej. `http://localhost:8081`).
 - `MODULE2_TIMEOUT_MS`: tiempo máximo de espera por consulta, en milisegundos (`500`).
+
+`BILLING_REPORTING_TZ` (feature 008) es opcional: zona horaria de los filtros por fecha y del resumen de facturas;
+si falta se usa `America/Bogota`, y si no es una zona IANA válida la aplicación no arranca.
 
 `RABBITMQ_URL` (feature 010): con ella, al arrancar se declara la cola `modulo3.checkout` donde Módulo 1 publica
 el evento de check-out y se empieza a consumir (cada evento genera la liquidación y la factura). Sin ella la
