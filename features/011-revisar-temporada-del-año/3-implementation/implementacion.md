@@ -211,3 +211,75 @@ Pasos completos en el [README](../../../README.md). Con el servidor corriendo, e
 5. `GET /admin/season-calendar?year=2027` → el período de Alta aparece en `carriedInEntries` con `ownerYear: 2026`.
 6. Repetir el `PUT` del paso 4 → **409** `SEASON_CALENDAR_CONFLICT`.
 7. `DELETE /admin/season-rules/{id de Alta}` (009) → **409** `SEASON_IN_USE`.
+
+---
+
+## 10. Frontend: Calendario de temporadas
+
+La pantalla del Administrador está disponible en `/calendario` del [frontend React](../../../frontend/).
+Usa los mismos componentes, tokens visuales y sesión JWT que las pantallas de IVA y catálogo de
+temporadas. La ruta exige sesión y las respuestas `401` cierran la sesión; un `403` muestra la falta
+de permiso sin ofrecer la edición.
+
+### Estructura
+
+| Archivo | Responsabilidad |
+|---|---|
+| [api/seasonCalendar.ts](../../../frontend/src/api/seasonCalendar.ts) | Tipos del contrato, consulta `GET` y publicación `PUT`; envía solo los campos permitidos de las entradas |
+| [lib/seasonCalendar.ts](../../../frontend/src/lib/seasonCalendar.ts) | Fechas civiles, validación de consultas y borradores, resolución diaria y rangos predeterminados de la vista previa |
+| [SeasonCalendarPage.tsx](../../../frontend/src/pages/season-calendar/SeasonCalendarPage.tsx) | Carga, borrador, edición, publicación, auditoría y recuperación ante errores |
+| [CalendarQueryForm.tsx](../../../frontend/src/pages/season-calendar/CalendarQueryForm.tsx) | Año, rango opcional y consulta vigente, por revisión o por instante |
+| [CalendarEntryForm.tsx](../../../frontend/src/pages/season-calendar/CalendarEntryForm.tsx) | Temporada del catálogo de 009, tipo BASE/EXCEPTION y fechas inclusivas |
+| [YearCalendar.tsx](../../../frontend/src/pages/season-calendar/YearCalendar.tsx) | Meses y días con colores, símbolos de clasificación y navegación por teclado |
+| [CalendarLegend.tsx](../../../frontend/src/pages/season-calendar/CalendarLegend.tsx) | Nombres, colores, ajustes y significado de los símbolos |
+| [CalendarEntriesTable.tsx](../../../frontend/src/pages/season-calendar/CalendarEntriesTable.tsx) | Todas las asignaciones propias del año y los períodos heredados de solo lectura |
+| [SeasonCalendarPage.module.css](../../../frontend/src/pages/season-calendar/SeasonCalendarPage.module.css), [CalendarForms.module.css](../../../frontend/src/pages/season-calendar/CalendarForms.module.css), [CalendarView.module.css](../../../frontend/src/pages/season-calendar/CalendarView.module.css) | Distribución adaptable de la página, formularios, calendario y tablas |
+
+### Consulta y edición
+
+La carga inicial consulta el año actual en `America/Bogota`. El rango es opcional, exige ambas fechas
+y debe pertenecer al año seleccionado. Las fechas del calendario se tratan como fechas civiles, sin
+convertirlas a la zona horaria del navegador. La consulta por instante recibe una fecha y hora de
+Colombia y la envía como instante ISO; `revision` y `asOf` son modos exclusivos.
+
+Cada día permite revisar su temporada, ajuste y origen: `EXCEPTION > BASE > DEFAULT`. Los conflictos
+se muestran de forma explícita. Las fechas sin asignación aparecen con la temporada predeterminada;
+la pantalla también permite desplegar los rangos correspondientes. Los períodos heredados indican
+el año y revisión de origen y ofrecen abrir ese calendario para modificarlos allí.
+
+Las consultas históricas muestran los nombres, colores y ajustes entregados por el calendario, sin
+mezclarlos con el catálogo actual. Son de solo lectura y ofrecen volver al calendario vigente.
+
+Las altas, cambios y bajas se hacen primero en un borrador. **Agregar asignación** y **Guardar
+asignación** actualizan la vista previa; **Limpiar asignación** o **Cancelar edición** descartan los
+cambios del formulario. La edición valida fechas reales, inicio dentro del año, fin inclusivo,
+excepciones de un día, límite del año siguiente, temporadas vigentes, solapamientos entre bases y
+excepciones duplicadas. Los errores se asocian a sus campos y los conflictos bloquean la publicación.
+
+### Publicación e historial
+
+**Publicar calendario** abre una confirmación y envía la lista completa de entradas propias del año
+con `expectedRevision`; para la primera publicación envía `null`. Consultar un rango no recorta esa
+lista. Las entradas que se quitan del borrador dejan de formar parte de la nueva revisión. El cliente
+conserva los `entryId` existentes y no envía metadatos de temporadas, auditoría ni entradas heredadas.
+
+La validación definitiva queda en el backend, incluida la comparación contra las publicaciones de
+los años vecinos. Un rechazo conserva el borrador. Ante `SEASON_CALENDAR_CONFLICT` se bloquea el
+reintento con la revisión antigua y se ofrece recargar; ante una temporada retirada se pide actualizar
+el calendario y el catálogo. Recargar o cambiar la consulta con trabajo pendiente pide confirmar el
+descarte. También se advierte al cerrar o recargar la pestaña con cambios sin publicar.
+
+Después de una publicación exitosa se muestran la nueva revisión, vigencia, responsable e instante
+de cambio. Las revisiones anteriores permanecen consultables y las cotizaciones existentes conservan
+sus valores.
+
+### Verificación
+
+| Prueba | Qué verifica |
+|---|---|
+| [lib/seasonCalendar.test.ts](../../../frontend/src/lib/seasonCalendar.test.ts) | Fechas civiles y bisiestas, consultas, límites, precedencia, heredados, rangos predeterminados y conflictos |
+| [api/seasonCalendar.test.ts](../../../frontend/src/api/seasonCalendar.test.ts) | Parámetros del `GET`, autenticación y cuerpo permitido del `PUT` completo |
+| [SeasonCalendarPage.test.tsx](../../../frontend/src/pages/season-calendar/SeasonCalendarPage.test.tsx) | Ruta real, consulta, edición, publicación, historial, errores y conservación del borrador frente a un backend HTTP simulado |
+
+Desde `frontend/`, ejecutar `npm test` y `npm run build`. Las pruebas de pantalla usan Vitest y Testing
+Library; la publicación real contra PostgreSQL se cubre por las pruebas del backend descritas arriba.

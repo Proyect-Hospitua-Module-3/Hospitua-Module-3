@@ -7,7 +7,7 @@ Pantallas del **Administrador** de Módulo 3 (Facturación, Consumos y Liquidaci
 |---|---|---|
 | Porcentaje de IVA (`/iva`) | [001](../features/001-actualizar-porcentaje-iva/3-implementation/implementacion.md#8-frontend-pantalla-porcentaje-de-iva) | Hecha |
 | Temporadas y tarifas (`/temporadas`) | [009](../features/009-modificar-precio-tarifa-segun-temporada/3-implementation/implementacion.md#9-frontend-temporadas-y-tarifas) | Hecha |
-| Calendario de temporadas (`/calendario`) | 011 | Pendiente |
+| Calendario de temporadas (`/calendario`) | [011](../features/011-revisar-temporada-del-año/3-implementation/implementacion.md#10-frontend-calendario-de-temporadas) | Hecha |
 | Facturas emitidas (`/facturas`) | 008 | Pendiente |
 
 ## Cómo ejecutarlo
@@ -68,3 +68,25 @@ backend impide hacerlo mientras estén asignadas en un calendario vigente.
 Las ediciones envían la versión cargada. Si otro Administrador la cambió, se conserva el borrador y se
 ofrece recargar los valores vigentes antes de volver a editar. Los cambios afectan nuevas cotizaciones;
 las cotizaciones, liquidaciones y facturas anteriores conservan sus valores.
+
+## Calendario de temporadas (011)
+
+En `/calendario` puedes consultar el año completo o un rango de fechas, revisar la temporada y el
+ajuste de cada día, y consultar publicaciones anteriores por número de revisión o por fecha y hora
+de Colombia. La leyenda distingue períodos base, excepciones puntuales, fechas con temporada
+predeterminada y conflictos. Las consultas históricas son de solo lectura.
+
+Agrega períodos base y excepciones al borrador, o edita y quita las asignaciones existentes. Una
+excepción cubre un día y prevalece sobre su período base. Los períodos pueden continuar hasta el
+año siguiente; los heredados del año anterior se muestran aparte y se modifican desde su año de origen.
+Las fechas sin asignación explícita aplican la temporada predeterminada del catálogo de la 009.
+
+**Publicar calendario** pide confirmación y guarda todas las asignaciones propias del año como una
+nueva revisión, aunque hayas consultado un rango más pequeño. Las entradas quitadas se eliminan
+de la nueva revisión. Se validan fechas, temporadas, solapamientos y excepciones duplicadas antes
+de publicar; el backend también verifica los años vecinos y la revisión esperada.
+
+Si otro Administrador publicó mientras editabas, se conserva el borrador y se ofrece recargar el
+calendario vigente. Cambiar de consulta o descartar cambios pide confirmación cuando hay trabajo
+sin publicar. Usa **Limpiar asignación** para vaciar un formulario nuevo o **Cancelar edición** para
+dejar una asignación como estaba. Las publicaciones conservan el historial y las cotizaciones anteriores.
