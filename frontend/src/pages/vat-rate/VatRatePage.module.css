@@ -1,0 +1,198 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 1180px;
+}
+
+.title {
+  font-size: var(--text-title);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.loading {
+  color: var(--color-text-secondary);
+  font-size: var(--text-md);
+}
+
+.retry {
+  margin-top: 8px;
+}
+
+.sectionTitle {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+/* Tarjetas "Vigente" y "Actualizar" */
+
+.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.currentCard {
+  gap: 8px;
+  flex: 0 0 340px;
+  max-width: 100%;
+}
+
+.currentHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.currentLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+
+.currentValue {
+  font-size: var(--text-display);
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.currentMeta {
+  color: var(--color-text-secondary);
+  font-size: var(--text-md);
+}
+
+.updateCard {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldLabel {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.inputBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.inputBox:focus-within,
+.inputFilled {
+  border-color: var(--color-text);
+}
+
+.inputInvalid,
+.inputInvalid:focus-within {
+  border-color: var(--color-danger);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: var(--text-base);
+}
+
+.inputSuffix {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-md);
+}
+
+.fieldError {
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Historial */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-notice);
+}
+
+.table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--text-md);
+}
+
+.colDate {
+  width: 216px;
+}
+
+.colUser {
+  width: 196px;
+}
+
+.table th {
+  padding: 9px 0 9px 16px;
+  background: var(--color-surface-subtle);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-align: left;
+}
+
+.table td {
+  padding: 12px 0 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table th:last-child,
+.table td:last-child {
+  padding-right: 16px;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.after {
+  font-weight: 500;
+}
+
+.initial,
+.emptyRow {
+  color: var(--color-text-tertiary);
+}

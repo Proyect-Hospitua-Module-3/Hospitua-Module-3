@@ -1,0 +1,77 @@
+.page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 24px 16px;
+  background: var(--color-surface-subtle);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(380px, 100%);
+  padding: 28px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+.brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.logo {
+  padding: 5px 9px;
+  background: var(--color-text);
+  border-radius: var(--radius-logo);
+  color: var(--color-surface);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.brandName {
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.brandModule {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.input {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  font-size: var(--text-base);
+}
+
+.input:focus {
+  border-color: var(--color-text);
+  outline: none;
+}
+
+.submit {
+  justify-content: center;
+}

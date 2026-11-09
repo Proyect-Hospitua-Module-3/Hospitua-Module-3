@@ -21,7 +21,7 @@ describe('UpdateVatRateService', () => {
     expect(saved.value.toString()).toBe('19.00');
     expect(saved.updatedBy).toBe(ADMIN_ID);
     expect(repository.history).toEqual([
-      { valueBefore: null, valueAfter: '19.00', changedBy: ADMIN_ID },
+      { valueBefore: null, valueAfter: '19.00', changedBy: ADMIN_ID, changedAt: saved.updatedAt },
     ]);
   });
 
@@ -34,6 +34,7 @@ describe('UpdateVatRateService', () => {
       valueBefore: '19.00',
       valueAfter: '5.00',
       changedBy: ADMIN_ID,
+      changedAt: expect.any(Date),
     });
   });
 

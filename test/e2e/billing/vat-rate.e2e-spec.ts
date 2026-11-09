@@ -14,8 +14,10 @@ import {
   GET_CURRENT_VAT_RATE_USE_CASE,
   GetCurrentVatRateUseCase,
 } from '../../../src/domain/ports/in/billing/get-current-vat-rate.use-case';
+import { VAT_RATE_OVERVIEW_QUERY } from '../../../src/domain/ports/out/billing/vat-rate-overview.query.port';
 import { VAT_RATE_REPOSITORY } from '../../../src/domain/ports/out/billing/vat-rate.repository.port';
 import { PrismaService } from '../../../src/infrastructure/adapters/out/persistence/prisma.service';
+import { InMemoryVatRateOverviewQuery } from '../../support/billing/in-memory-vat-rate-overview.query';
 import { InMemoryVatRateRepository } from '../../support/billing/in-memory-vat-rate.repository';
 
 const ADMIN = { id: 'f2d3b4a5-6c7d-4e8f-9012-3456789abcde', username: 'admin', password: 'clave-admin' };
@@ -59,6 +61,8 @@ describe('PUT /admin/vat-rate (e2e)', () => {
       .useValue(fakePrisma)
       .overrideProvider(VAT_RATE_REPOSITORY)
       .useValue(repository)
+      .overrideProvider(VAT_RATE_OVERVIEW_QUERY)
+      .useValue(new InMemoryVatRateOverviewQuery(repository, { [ADMIN.id]: ADMIN.username }))
       .compile();
     app = moduleRef.createNestApplication();
     await app.init();
@@ -140,6 +144,7 @@ describe('PUT /admin/vat-rate (e2e)', () => {
         valueBefore: null,
         valueAfter: '19.00',
         changedBy: ADMIN.id,
+        changedAt: expect.any(Date),
       });
     });
 
@@ -192,6 +197,58 @@ describe('PUT /admin/vat-rate (e2e)', () => {
         .expect(400);
 
       expect(response.body.errorCode).toBe('INVALID_REQUEST');
+    });
+  });
+
+  // GET /admin/vat-rate: lo que muestra la pantalla de IVA del frontend.
+  describe('consulta del vigente y del historial (GET)', () => {
+    function getVatRate(token: string | null) {
+      const req = request(app.getHttpServer()).get('/admin/vat-rate');
+      if (token) req.set('Authorization', `Bearer ${token}`);
+      return req;
+    }
+
+    it('sin token responde 401 y con rol OTA responde 403', async () => {
+      expect((await getVatRate(null).expect(401)).body.errorCode).toBe('UNAUTHENTICATED');
+      expect((await getVatRate(otaToken).expect(403)).body.errorCode).toBe('FORBIDDEN');
+    });
+
+    it('muestra el vigente con su usuario y el historial del más reciente al más antiguo', async () => {
+      await putVatRate(adminToken, { value: '19.00' }).expect(200);
+      await putVatRate(adminToken, { value: '16' }).expect(200);
+
+      const response = await getVatRate(adminToken).expect(200);
+
+      expect(response.body.current).toEqual({
+        value: '16.00',
+        updatedBy: ADMIN.id,
+        updatedByUsername: 'admin',
+        updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      });
+      expect(response.body.history.slice(0, 2)).toEqual([
+        {
+          valueBefore: '19.00',
+          valueAfter: '16.00',
+          changedBy: ADMIN.id,
+          changedByUsername: 'admin',
+          changedAt: response.body.current.updatedAt,
+        },
+        expect.objectContaining({ valueAfter: '19.00' }),
+      ]);
+    });
+
+    it('sin ningún porcentaje registrado responde 200 con current = null (FR-003)', async () => {
+      const saved = { current: repository.current, history: [...repository.history] };
+      repository.current = null;
+      repository.history.length = 0;
+      try {
+        const response = await getVatRate(adminToken).expect(200);
+
+        expect(response.body).toEqual({ current: null, history: [] });
+      } finally {
+        repository.current = saved.current;
+        repository.history.push(...saved.history);
+      }
     });
   });
 

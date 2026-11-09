@@ -21,7 +21,7 @@ El **Administrador** registra o actualiza el porcentaje de IVA vigente que `Gene
 - **No existe un valor inicial**: mientras el Administrador no registre el primer porcentaje, el sistema no emite facturas ni asume uno por defecto. El primer registro y las actualizaciones siguientes usan esta misma operación [SPEC FR-003, casos límite] [PLAN].
 - **Una actualización nunca altera facturas ya emitidas**: 006 guarda el porcentaje aplicado en la propia factura (`vat_rate_applied`) y no mantiene ninguna referencia viva al porcentaje vigente [SPEC FR-004, BR-002] [PLAN].
 
-Esta feature no expone ninguna consulta HTTP del porcentaje vigente. La lectura la hace 006 por un puerto interno, documentado en [`PORT-get-current-vat-rate.md`](../../../006-generar-factura-final/2-technical/contracts/PORT-get-current-vat-rate.md) (de 006), que 001 implementa sin modificarlo [PLAN].
+006 lee el porcentaje vigente por un puerto interno, documentado en [`PORT-get-current-vat-rate.md`](../../../006-generar-factura-final/2-technical/contracts/PORT-get-current-vat-rate.md) (de 006), que 001 implementa sin modificarlo [PLAN]. Para la pantalla del Administrador (frontend, diseño de Figma), el vigente y el historial se consultan con [`GET /admin/vat-rate`](GET-admin-vat-rate.md).
 
 ---
 
