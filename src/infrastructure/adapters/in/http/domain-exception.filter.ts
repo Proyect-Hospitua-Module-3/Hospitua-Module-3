@@ -60,6 +60,9 @@ const HTTP_STATUS_BY_ERROR_CODE: Record<string, number> = {
   MODULE2_UNAVAILABLE: 424,
   // settlement — 002: la OTA no ve liquidaciones Final en la reserva (anti-enumeración).
   SETTLEMENT_NOT_FOUND: 404,
+  // billing — 008 (INVALID_DATE_RANGE e INVALID_QUERY_PARAMS ya están arriba)
+  MISSING_SEARCH_CRITERIA: 400,
+  INVOICE_NOT_FOUND: 404,
 };
 
 // Errores HTTP del framework que no son de negocio (ruta inexistente, JSON mal formado).

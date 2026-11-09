@@ -294,7 +294,13 @@ model Invoice {
   vatAmount           Decimal    @map("vat_amount") @db.Decimal(14, 2)
   totalAmount         Decimal    @map("total_amount") @db.Decimal(14, 2) // hospedaje + IVA
 
-  // Los índices de búsqueda los agrega 008 (Gestionar facturación).
+  // Índices de búsqueda y resumen de 008 (Gestionar facturación). stay_id ya tiene el UNIQUE de
+  // 006. El índice GIN de trigramas sobre customer_name y la extensión pg_trgm son SQL manual
+  // en la migración 20261107000000_invoice_search_indexes (Prisma no los genera).
+  @@index([issuedAt(sort: Desc), invoiceNumber(sort: Desc)], map: "idx_invoice_issued_at")
+  @@index([channel, otaId, issuedAt], map: "idx_invoice_channel_issued_at")
+  @@index([customerTaxId], map: "idx_invoice_customer_tax_id")
+  @@index([reservationRef], map: "idx_invoice_reservation_ref")
   @@map("invoice")
 }
 
