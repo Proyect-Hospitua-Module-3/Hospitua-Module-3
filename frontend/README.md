@@ -6,7 +6,7 @@ Pantallas del **Administrador** de Módulo 3 (Facturación, Consumos y Liquidaci
 | Pantalla | Spec | Estado |
 |---|---|---|
 | Porcentaje de IVA (`/iva`) | [001](../features/001-actualizar-porcentaje-iva/3-implementation/implementacion.md#8-frontend-pantalla-porcentaje-de-iva) | Hecha |
-| Temporadas y tarifas (`/temporadas`) | 009 | Pendiente |
+| Temporadas y tarifas (`/temporadas`) | [009](../features/009-modificar-precio-tarifa-segun-temporada/3-implementation/implementacion.md#9-frontend-temporadas-y-tarifas) | Hecha |
 | Calendario de temporadas (`/calendario`) | 011 | Pendiente |
 | Facturas emitidas (`/facturas`) | 008 | Pendiente |
 
@@ -54,3 +54,17 @@ src/
 ```
 
 Las fechas se muestran en la hora del hotel (`America/Bogota`), sin depender de la zona horaria del navegador.
+
+## Temporadas y tarifas (009)
+
+En `/temporadas` puedes consultar el catálogo, crear temporadas y editar su nombre, color y ajuste
+porcentual. Un ajuste positivo incrementa la tarifa base y uno negativo aplica un descuento; se aceptan
+valores entre −100 y +100 con hasta dos decimales, escritos con coma o punto.
+
+`Regular` aparece identificada como predeterminada. Su color y ajuste se pueden modificar; su nombre
+se conserva y no puede retirarse. Las demás temporadas requieren confirmación para retirarlas y el
+backend impide hacerlo mientras estén asignadas en un calendario vigente.
+
+Las ediciones envían la versión cargada. Si otro Administrador la cambió, se conserva el borrador y se
+ofrece recargar los valores vigentes antes de volver a editar. Los cambios afectan nuevas cotizaciones;
+las cotizaciones, liquidaciones y facturas anteriores conservan sus valores.
