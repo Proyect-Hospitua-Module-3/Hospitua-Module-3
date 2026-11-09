@@ -16,6 +16,10 @@ import {
 } from '../../../../../../domain/ports/out/billing/invoice-query.port';
 import { PrismaService } from '../../prisma.service';
 import { readOnlyTransaction } from '../settlement/read-only-transaction';
+import {
+  INVOICE_PUBLICATION_LOCK_KEY,
+  INVOICE_PUBLICATION_LOCK_NAMESPACE,
+} from './invoice-publication-lock';
 
 const OTA_CHANNEL = 'OTA';
 // Carácter de escape de LIKE: el nombre del cliente se busca como texto literal, así que un
@@ -44,8 +48,20 @@ export class PrismaInvoiceQueryAdapter implements InvoiceQueryPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async currentTime(): Promise<Date> {
-    const [row] = await this.prisma.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
-    return row.now;
+    return readOnlyTransaction(
+      this.prisma,
+      async (tx) => {
+        // READ COMMITTED: la espera no fija una foto anterior al COMMIT del emisor.
+        // El SELECT devuelve un entero, no el tipo void de la función de bloqueo.
+        await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock_shared(${INVOICE_PUBLICATION_LOCK_NAMESPACE}::int, ${INVOICE_PUBLICATION_LOCK_KEY}::int)`;
+        // now() sería el inicio de esta transacción, anterior a la espera. El corte
+        // se toma después y se trunca a la precisión que puede reenviar JavaScript.
+        const [row] = await tx.$queryRaw<{ now: Date }[]>`
+        SELECT date_trunc('milliseconds', clock_timestamp()) AS now`;
+        return row.now;
+      },
+      Prisma.TransactionIsolationLevel.ReadCommitted,
+    );
   }
 
   // SQL parametrizado: el filtro de nombre necesita LIKE con escape, que el cliente de Prisma
@@ -54,17 +70,20 @@ export class PrismaInvoiceQueryAdapter implements InvoiceQueryPort {
   async search(filter: InvoiceSearchFilter, page: InvoicePageRequest): Promise<InvoiceSearchPage> {
     const where = Prisma.join(conditionsOf(filter), ' AND ');
     const offset = (page.page - 1) * page.pageSize;
-    const [rows, [{ total }]] = await readOnlyTransaction(this.prisma, (tx) =>
-      Promise.all([
-        tx.$queryRaw<SearchRow[]>`
+    const [rows, [{ total }]] = await readOnlyTransaction(
+      this.prisma,
+      (tx) =>
+        Promise.all([
+          tx.$queryRaw<SearchRow[]>`
           SELECT id, invoice_number, issued_at, stay_id, reservation_ref, channel, ota_id,
                  customer_name, customer_tax_id, currency, total_amount
           FROM invoice
           WHERE ${where}
           ORDER BY issued_at DESC, invoice_number DESC
           LIMIT ${page.pageSize}::int OFFSET ${offset}::int`,
-        tx.$queryRaw<{ total: bigint }[]>`SELECT count(*) AS total FROM invoice WHERE ${where}`,
-      ]),
+          tx.$queryRaw<{ total: bigint }[]>`SELECT count(*) AS total FROM invoice WHERE ${where}`,
+        ]),
+      Prisma.TransactionIsolationLevel.RepeatableRead,
     );
     return { items: rows.map(toSearchItem), totalItems: Number(total) };
   }

@@ -10,13 +10,14 @@ import {
   DEFAULT_CUSTOMER_MATCH_MODE,
   PARTIAL_MATCH_MIN_LENGTH,
 } from './customer-match-mode';
-import { IssuedDateRange, parseIssuedDateRange } from './issued-date-range';
+import { isIssuedCalendarDate, IssuedDateRange, parseIssuedDateRange } from './issued-date-range';
 
 // Mismo formato de UUID que el resto del proyecto (no exige la versión del RFC).
 const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const POSITIVE_INTEGER = /^[1-9]\d*$/;
 // ISO 8601 con fecha, hora y zona (Z o ±hh:mm), como el asOf que devuelve la búsqueda.
-const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
+const ISO_INSTANT =
+  /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,9})?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
 const CHANNELS: readonly ChannelKind[] = ['DIRECT', 'OTA'];
 
 export const DEFAULT_PAGE_SIZE = 20;
@@ -190,8 +191,14 @@ function positiveInteger(raw: unknown, name: string, fallback: number, max: numb
 function asOfOf(raw: unknown): Date | undefined {
   const text = optionalText(raw, 'asOf');
   if (text === undefined) return undefined;
+  const match = ISO_INSTANT.exec(text);
   const asOf = new Date(text);
-  if (!ISO_INSTANT.test(text) || Number.isNaN(asOf.getTime())) {
+  if (
+    !match ||
+    !isIssuedCalendarDate(match[1]) ||
+    Number.isNaN(asOf.getTime()) ||
+    !/^\d{4}-/.test(asOf.toISOString())
+  ) {
     throw new InvalidInvoiceQueryError(
       'asOf debe ser una fecha y hora ISO 8601 con zona, la misma que devolvió la búsqueda (por ejemplo 2026-12-31T23:20:00.000Z).',
     );

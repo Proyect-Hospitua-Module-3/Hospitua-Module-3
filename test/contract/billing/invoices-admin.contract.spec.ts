@@ -273,6 +273,8 @@ describe('Contrato /invoices (008 → Administrador)', () => {
       ['fecha mal escrita', { issuedFrom: '2026-12-1', issuedTo: '2026-12-31' }],
       ['pageSize fuera de 1–100', { channel: 'OTA', pageSize: '101' }],
       ['asOf futuro', { channel: 'OTA', asOf: '2099-01-01T00:00:00.000Z' }],
+      ['asOf con día inexistente', { channel: 'OTA', asOf: '2026-02-30T12:00:00Z' }],
+      ['asOf con hora 24 normalizable', { channel: 'OTA', asOf: '2026-12-01T24:00:00Z' }],
       ['otaId sin channel=OTA', { otaId: 'booking', reservationRef: 'RES-000123' }],
       ['PARTIAL con menos de 3 caracteres', { customerName: 'An', customerMatch: 'PARTIAL' }],
     ])('400 INVALID_QUERY_PARAMS: %s', async (_case, query) => {

@@ -32,7 +32,8 @@ export interface InvoicePageRequest {
 // escribir, así que 008 no puede modificar facturas (FR-006, BR-001). El adaptador usa
 // transacciones READ ONLY y no reutiliza el repositorio de escritura de 006.
 export interface InvoiceQueryPort {
-  // Hora actual de la base de datos, para fijar asOf con el mismo reloj que issued_at.
+  // Corte con clock_timestamp(), después de esperar las emisiones que aún no confirmaron.
+  // Ninguna factura de 006 anterior al corte puede hacerse visible en una página posterior.
   currentTime(): Promise<Date>;
   // Una página ordenada por issuedAt y número oficial descendentes, y el total de coincidencias.
   search(filter: InvoiceSearchFilter, page: InvoicePageRequest): Promise<InvoiceSearchPage>;

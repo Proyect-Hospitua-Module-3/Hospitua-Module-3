@@ -9,9 +9,13 @@ import { PrismaService } from '../../prisma.service';
 export function readOnlyTransaction<T>(
   prisma: PrismaService,
   read: (tx: Prisma.TransactionClient) => Promise<T>,
+  isolationLevel?: Prisma.TransactionIsolationLevel,
 ): Promise<T> {
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SET TRANSACTION READ ONLY`;
-    return read(tx);
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+      return read(tx);
+    },
+    isolationLevel ? { isolationLevel } : undefined,
+  );
 }

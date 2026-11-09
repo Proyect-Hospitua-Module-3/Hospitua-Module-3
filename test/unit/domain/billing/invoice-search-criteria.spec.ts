@@ -190,12 +190,33 @@ describe('parseInvoiceSearch — búsqueda de facturas (FR-001, FR-002)', () => 
       ).toEqual(new Date('2026-12-31T23:20:00.000Z'));
     });
 
-    it.each(['2026-12-31', '2026-12-31T23:20:00', 'mañana', '2026-12-31T25:00:00Z'])(
-      'asOf sin hora, sin zona o inválido (%s) → INVALID_QUERY_PARAMS',
-      (asOf) => {
-        expectError({ channel: 'OTA', asOf }, InvalidInvoiceQueryError);
-      },
-    );
+    it.each([
+      '2026-12-31',
+      '2026-12-31T23:20:00',
+      'mañana',
+      '2026-12-31T25:00:00Z',
+      '2026-02-30T12:00:00Z',
+      '2026-02-29T12:00:00Z',
+      '2026-04-31T12:00:00-05:00',
+      '2026-12-31T24:00:00Z',
+      '2026-12-31T23:60:00Z',
+      '2026-12-31T23:20:60Z',
+      '2026-12-31T23:20:00+24:00',
+      '2026-12-31T23:20:00-05:60',
+      '0000-01-01T00:00:00Z',
+      '9999-12-31T23:59:59-05:00',
+    ])('asOf sin hora, sin zona o inválido (%s) → INVALID_QUERY_PARAMS', (asOf) => {
+      expectError({ channel: 'OTA', asOf }, InvalidInvoiceQueryError);
+    });
+
+    it('asOf acepta el 29 de febrero bisiesto y conserva años anteriores a 100', () => {
+      expect(parseInvoiceSearch({ channel: 'DIRECT', asOf: '2028-02-29T12:00:00Z' }).asOf).toEqual(
+        new Date('2028-02-29T12:00:00Z'),
+      );
+      expect(parseInvoiceSearch({ channel: 'DIRECT', asOf: '0099-12-31T12:00:00Z' }).asOf).toEqual(
+        new Date('0099-12-31T12:00:00Z'),
+      );
+    });
 
     it('los parámetros mal escritos se rechazan antes que la falta de criterio', () => {
       expectError({ pageSize: '500' }, InvalidInvoiceQueryError);

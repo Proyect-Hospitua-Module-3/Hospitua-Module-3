@@ -16,6 +16,10 @@ import { SettlementMapper } from '../../../../src/infrastructure/adapters/out/pe
 import { PrismaService } from '../../../../src/infrastructure/adapters/out/persistence/prisma.service';
 import { PrismaInvoiceIssuanceRepository } from '../../../../src/infrastructure/adapters/out/persistence/repositories/billing/prisma-invoice-issuance.repository';
 import {
+  INVOICE_PUBLICATION_LOCK_KEY,
+  INVOICE_PUBLICATION_LOCK_NAMESPACE,
+} from '../../../../src/infrastructure/adapters/out/persistence/repositories/billing/invoice-publication-lock';
+import {
   BILLING_TEST_LOCK_TIMEOUT_MS,
   lockBillingTestDatabase,
 } from '../../../support/database/billing-test-database-lock';
@@ -129,6 +133,54 @@ describeWithDatabase('PrismaInvoiceIssuanceRepository (PostgreSQL real)', () => 
     expect(issued).toEqual(expect.objectContaining({ ...toIssue, status: 'ISSUED' }));
     expect(issued.issuedAt).toBeInstanceOf(Date);
   });
+
+  it('espera el corte compartido de 008 antes de asignar número y fecha de emisión', async () => {
+    let releaseCutoff!: () => void;
+    let markLocked!: () => void;
+    const release = new Promise<void>((resolve) => {
+      releaseCutoff = resolve;
+    });
+    const locked = new Promise<void>((resolve) => {
+      markLocked = resolve;
+    });
+    const cutoff = prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+        await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock_shared(${INVOICE_PUBLICATION_LOCK_NAMESPACE}::int, ${INVOICE_PUBLICATION_LOCK_KEY}::int)`;
+        markLocked();
+        await release;
+      },
+      { timeout: 15_000 },
+    );
+    let emission: Promise<Invoice> | undefined;
+    try {
+      await locked;
+      const before = await counter();
+      emission = repository.issueIfAbsent(draft(settlement(STAY_DIRECT)));
+      const deadline = Date.now() + 4_000;
+      let waiting = false;
+      while (Date.now() < deadline) {
+        const [row] = await prisma.$queryRaw<{ waiting: boolean }[]>`
+          SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype = 'advisory'
+            AND classid = ${INVOICE_PUBLICATION_LOCK_NAMESPACE}::oid
+            AND objid = ${INVOICE_PUBLICATION_LOCK_KEY}::oid AND NOT granted) AS waiting`;
+        if (row.waiting) {
+          waiting = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(waiting).toBe(true);
+      expect(await counter()).toBe(before);
+      releaseCutoff();
+      await cutoff;
+      expect((await emission).invoiceNumber).toBe(before + 1);
+    } finally {
+      releaseCutoff();
+      await cutoff;
+      await emission;
+    }
+  }, 20_000);
 
   it('canal OTA: importes, canal y cliente se leen exactamente como se emitieron (T025)', async () => {
     const issued = await repository.issueIfAbsent(draft(settlement(STAY_OTA, true)));

@@ -8,13 +8,16 @@ Pantallas del **Administrador** de Módulo 3 (Facturación, Consumos y Liquidaci
 | Porcentaje de IVA (`/iva`) | [001](../features/001-actualizar-porcentaje-iva/3-implementation/implementacion.md#8-frontend-pantalla-porcentaje-de-iva) | Hecha |
 | Temporadas y tarifas (`/temporadas`) | [009](../features/009-modificar-precio-tarifa-segun-temporada/3-implementation/implementacion.md#9-frontend-temporadas-y-tarifas) | Hecha |
 | Calendario de temporadas (`/calendario`) | [011](../features/011-revisar-temporada-del-año/3-implementation/implementacion.md#10-frontend-calendario-de-temporadas) | Hecha |
-| Facturas emitidas (`/facturas`) | 008 | Pendiente |
+| Facturas emitidas (`/facturas`) | [008](../features/008-gestionar-facturacion/3-implementation/implementacion.md#10-frontend-facturas-emitidas) | Hecha |
 
 ## Cómo ejecutarlo
 
-Primero el backend, desde la raíz del repositorio (ver el [README principal](../README.md)):
+Primero abre Docker Desktop y, desde la raíz del repositorio, levanta PostgreSQL y RabbitMQ.
+`--wait` espera a que estén saludables. Si ya usas servicios instalados por otra vía, basta con
+que el `.env` apunte a ellos (ver el [README principal](../README.md)).
 
 ```bash
+docker compose up -d --wait
 npm run start:dev          # backend en http://localhost:3000
 ```
 
@@ -90,3 +93,27 @@ Si otro Administrador publicó mientras editabas, se conserva el borrador y se o
 calendario vigente. Cambiar de consulta o descartar cambios pide confirmación cuando hay trabajo
 sin publicar. Usa **Limpiar asignación** para vaciar un formulario nuevo o **Cancelar edición** para
 dejar una asignación como estaba. Las publicaciones conservan el historial y las cotizaciones anteriores.
+
+## Facturas emitidas (008)
+
+En `/facturas` puedes buscar por estancia, reserva, nombre del cliente de facturación, documento
+fiscal, canal/OTA o rango de emisión. Se exige al menos un criterio. La coincidencia por nombre
+puede ser exacta o parcial; la parcial exige tres caracteres y se identifica en los resultados.
+
+Las fechas de búsqueda se interpretan en la zona de reporte del backend, `America/Bogota` por
+defecto. La paginación conserva los filtros aplicados y el corte `asOf` devuelto por el servidor.
+Escribir otros filtros no cambia los resultados hasta pulsar **Buscar facturas**. Una búsqueda
+nueva o un cambio del tamaño de página comienza en la primera página con un corte nuevo.
+
+**Ver detalle** abre el documento de solo lectura, con número oficial, cliente fiscal,
+estancia/reserva, liquidación de origen, emisión y desglose completo. Los importes se muestran
+tal como fueron emitidos, incluidos sus centavos. La pantalla no modifica, recalcula, anula ni
+reemite facturas.
+
+El **Resumen por canal** tiene su propio rango de fechas. Muestra cantidades y totales de
+hospedaje, comisión OTA, IVA y facturación por canal, junto a la zona horaria aplicada. El canal
+directo y las OTA que ya han facturado aparecen en cero cuando no tienen facturas en ese período.
+
+Se ofrecen mensajes de validación, ausencia de coincidencias, errores y reintentos. Un `401`
+cierra la sesión; un rol sin permiso no recibe controles administrativos. El procedimiento
+manual y las verificaciones HTTP están en el [TC-008](../features/008-gestionar-facturacion/4-testing/TC-008-gestionar-facturacion.md).

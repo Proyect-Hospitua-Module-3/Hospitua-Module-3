@@ -71,35 +71,42 @@ export function isValidTimeZone(timeZone: string): boolean {
 }
 
 function assertCalendarDate(name: string, value: string): void {
-  const match = CALENDAR_DATE.exec(value);
-  const valid =
-    match !== null &&
-    (() => {
-      const [year, month, day] = match.slice(1).map(Number);
-      const date = new Date(Date.UTC(year, month - 1, day));
-      return (
-        date.getUTCFullYear() === year &&
-        date.getUTCMonth() === month - 1 &&
-        date.getUTCDate() === day
-      );
-    })();
-  if (!valid) {
+  if (!isIssuedCalendarDate(value)) {
     throw new InvalidInvoiceQueryError(
       `${name} debe ser una fecha real con formato YYYY-MM-DD, por ejemplo 2026-12-01.`,
     );
   }
 }
 
+// Compartida por los rangos y el instante asOf: Date normaliza días inexistentes.
+export function isIssuedCalendarDate(value: string): boolean {
+  const match = CALENDAR_DATE.exec(value);
+  return (
+    match !== null &&
+    (() => {
+      const [year, month, day] = match.slice(1).map(Number);
+      const date = utcDate(year, month, day);
+      return (
+        year >= 1 &&
+        date.getUTCFullYear() === year &&
+        date.getUTCMonth() === month - 1 &&
+        date.getUTCDate() === day
+      );
+    })()
+  );
+}
+
 function nextDay(day: string): string {
   const [year, month, date] = day.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, date) + DAY_MS).toISOString().slice(0, 10);
+  const next = new Date(utcDate(year, month, date).getTime() + DAY_MS);
+  return `${String(next.getUTCFullYear()).padStart(4, '0')}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
 }
 
 // Las 00:00 de ese día en la zona. Se corrige dos veces con el desfase de la zona para
 // cubrir los días con cambio de horario.
 function startOfDay(day: string, timeZone: string): Date {
   const [year, month, date] = day.split('-').map(Number);
-  const wallClock = Date.UTC(year, month - 1, date);
+  const wallClock = utcDate(year, month, date).getTime();
   const firstGuess = wallClock - offsetOf(wallClock, timeZone);
   return new Date(wallClock - offsetOf(firstGuess, timeZone));
 }
@@ -118,13 +125,21 @@ function offsetOf(instant: number, timeZone: string): number {
   }).formatToParts(new Date(instant));
   const part = (type: Intl.DateTimeFormatPartTypes): number =>
     Number(parts.find((candidate) => candidate.type === type)?.value);
-  const asUtc = Date.UTC(
+  const asUtc = utcDate(
     part('year'),
-    part('month') - 1,
+    part('month'),
     part('day'),
     part('hour'),
     part('minute'),
     part('second'),
-  );
+  ).getTime();
   return asUtc - Math.floor(instant / 1000) * 1000;
+}
+
+// Date.UTC interpreta 1..99 como 1901..1999. setUTCFullYear conserva el año civil.
+function utcDate(year: number, month: number, day: number, hour = 0, minute = 0, second = 0): Date {
+  const result = new Date(0);
+  result.setUTCFullYear(year, month - 1, day);
+  result.setUTCHours(hour, minute, second, 0);
+  return result;
 }

@@ -54,6 +54,17 @@ describe('issuedIntervalOf — rango de emisión en la zona de referencia (NFR-0
       before: new Date('2026-03-29T22:00:00.000Z'),
     });
   });
+
+  it('conserva los años 1..99 y el límite superior del rango al pasar al día siguiente', () => {
+    expect(issuedIntervalOf({ issuedFrom: '0099-12-31', issuedTo: '0099-12-31' }, 'UTC')).toEqual({
+      from: new Date('0099-12-31T00:00:00Z'),
+      before: new Date('0100-01-01T00:00:00Z'),
+    });
+    expect(issuedIntervalOf({ issuedFrom: '9999-12-31', issuedTo: '9999-12-31' }, 'UTC')).toEqual({
+      from: new Date('9999-12-31T00:00:00Z'),
+      before: new Date('+010000-01-01T00:00:00Z'),
+    });
+  });
 });
 
 describe('isValidTimeZone', () => {
