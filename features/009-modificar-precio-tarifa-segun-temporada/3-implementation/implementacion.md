@@ -179,3 +179,39 @@ Pasos completos en el [README](../../../README.md). Con el servidor corriendo, e
 4. `PUT /admin/season-rules/{id de Alta}` con `{ "adjustmentPercent": "25", "expectedVersion": 1 }` → **200**, versión 2. Repetirlo igual → **409** `SEASON_RULE_CONFLICT`.
 5. `PUT` a Regular con `{ "name": "Normal" }` → **409** `DEFAULT_SEASON_IMMUTABLE`.
 6. `DELETE` de Alta → **204**; ya no aparece en el `GET`.
+
+---
+
+## 9. Frontend: Temporadas y tarifas
+
+La ruta `/temporadas` del [frontend](../../../frontend/) implementa las tres historias de la 009
+siguiendo los componentes, estilos y organización de la pantalla de IVA (001).
+
+| Archivo en `frontend/src/` | Responsabilidad |
+|---|---|
+| `api/seasonRules.ts` | Tipos y llamadas GET, POST, PUT y DELETE del contrato administrativo |
+| `lib/seasonInput.ts` | Validación y normalización de nombre, color y porcentaje firmado |
+| `pages/season-rules/SeasonRulesPage.tsx` | Coordina creación, edición, retiro, permisos y conflictos |
+| `pages/season-rules/useSeasonRules.ts` | Carga y actualización del catálogo |
+| `pages/season-rules/DefaultSeasonCard.tsx` | Identifica Regular y explica cuándo se aplica |
+| `pages/season-rules/SeasonRulesTable.tsx` | Catálogo, último responsable/fecha y acciones |
+| `pages/season-rules/SeasonForm.tsx` | Formulario compartido de creación y edición |
+| `pages/season-rules/RetireSeasonModal.tsx` | Confirmación de retiro y errores del calendario |
+| `pages/season-rules/SeasonRulesPage.module.css` | Estilos consistentes con 001 y adaptación de la pantalla |
+| `lib/seasonInput.test.ts`, `pages/season-rules/SeasonRulesPage.test.tsx` | Validaciones y flujos de usuario con contrato HTTP simulado |
+
+Los ajustes se envían como texto decimal con dos posiciones. El formulario acepta coma o punto y
+ajustes negativos; los colores se normalizan a `#RRGGBB`. Regular permite editar color y ajuste, pero
+no su nombre ni su retiro. La tabla muestra el identificador real del responsable, o el nombre de la
+sesión cuando corresponde al mismo usuario; el contrato no expone un historial administrativo.
+
+Cada PUT incluye `expectedVersion`. Un conflicto conserva el borrador y solicita recargar explícitamente
+la temporada; no reenvía la edición automáticamente. DELETE no envía cuerpo ni versión, conforme al
+contrato, y procesa su respuesta vacía 204. Un retiro bloqueado por el calendario conserva la fila.
+
+La pantalla distingue carga, catálogo vacío, errores recuperables, datos retirados por otro usuario,
+falta de permisos y sesión expirada. Los diálogos permiten navegar con teclado y cancelar con Escape,
+salvo mientras una operación está en curso. Las fechas usan `America/Bogota`.
+
+Validación desde `frontend/`: `npm test` y `npm run build`. Las pruebas de interfaz usan `fetch` simulado;
+no necesitan PostgreSQL ni RabbitMQ y no verifican una instancia real del backend.

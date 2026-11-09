@@ -4,6 +4,7 @@ import { useAuth } from './auth/AuthContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { LoginPage } from './pages/LoginPage';
 import { PendingPage } from './pages/PendingPage';
+import { SeasonRulesPage } from './pages/season-rules/SeasonRulesPage';
 import { VatRatePage } from './pages/vat-rate/VatRatePage';
 
 // Sin sesión, cualquier pantalla lleva al login y vuelve a ella después de entrar.
@@ -26,10 +27,7 @@ export function App() {
         }
       >
         <Route path="/iva" element={<VatRatePage />} />
-        <Route
-          path="/temporadas"
-          element={<PendingPage title="Temporadas y tarifas" spec="009" />}
-        />
+        <Route path="/temporadas" element={<SeasonRulesPage />} />
         <Route
           path="/calendario"
           element={<PendingPage title="Calendario de temporadas" spec="011" />}
