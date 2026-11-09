@@ -5,6 +5,7 @@ import { AppLayout } from './components/layout/AppLayout';
 import { LoginPage } from './pages/LoginPage';
 import { PendingPage } from './pages/PendingPage';
 import { SeasonRulesPage } from './pages/season-rules/SeasonRulesPage';
+import { SeasonCalendarPage } from './pages/season-calendar/SeasonCalendarPage';
 import { VatRatePage } from './pages/vat-rate/VatRatePage';
 
 // Sin sesión, cualquier pantalla lleva al login y vuelve a ella después de entrar.
@@ -28,10 +29,7 @@ export function App() {
       >
         <Route path="/iva" element={<VatRatePage />} />
         <Route path="/temporadas" element={<SeasonRulesPage />} />
-        <Route
-          path="/calendario"
-          element={<PendingPage title="Calendario de temporadas" spec="011" />}
-        />
+        <Route path="/calendario" element={<SeasonCalendarPage />} />
         <Route path="/facturas" element={<PendingPage title="Facturas emitidas" spec="008" />} />
         <Route path="*" element={<Navigate to="/iva" replace />} />
       </Route>
