@@ -1,6 +1,6 @@
 # Implementation Plan: Gestionar facturación
 
-**Date**: 2026-10-01 (alineado al plan técnico base el 2026-10-07; ajustado a la implementación el 2026-11-07)
+**Date**: 2026-10-01 (alineado al plan técnico base el 2026-10-07; actualizado con backend, frontend y validación PostgreSQL el 2026-11-09)
 **Spec**: [gestionar_facturacion.md](../1-functional/gestionar_facturacion.md)
 **Proyecto base**: [plan-tecnico-base.md](../../../docs/plan-tecnico-base.md)
 
@@ -15,12 +15,12 @@ Enfoque técnico: se implementa dentro del *bounded context* `billing` como el c
 **Language/Version**: TypeScript 5.x sobre Node.js 20 LTS (según proyecto base)
 **Primary Dependencies**: NestJS 10.x, Prisma ORM, Passport-JWT + Guards por rol (según proyecto base). Los query params se validan en el dominio y no con `class-validator`, como en 002: pueden faltar, repetirse o llegar vacíos
 **Storage**: PostgreSQL 16 — lectura solo sobre `invoice` (creada por feature 006, con `stay_id`, `reservation_ref`, `channel` y `ota_id` copiados de la liquidación). Esta feature solo agrega índices y la extensión `pg_trgm` para búsqueda parcial por nombre de cliente, mediante una migración de Prisma Migrate
-**Testing**: Jest (unitarias y de arquitectura), Jest contra un PostgreSQL ya migrado en `TEST_DATABASE_URL` (integración y e2e, igual que el resto del proyecto; sin la variable se omiten), Supertest (e2e y contrato HTTP)
+**Testing**: Jest (unitarias y de arquitectura), PostgreSQL 16 en `TEST_DATABASE_URL` (integración y e2e; sin la variable se omiten), Supertest (e2e y contrato HTTP), Vitest + Testing Library (frontend). Evidencia del 2026-11-09: 167 pruebas backend de 008 y 48 frontend; detalle en [implementacion.md](../3-implementation/implementacion.md#4-pruebas)
 **Target Platform**: Backend NestJS y frontend React/Vite; PostgreSQL y RabbitMQ con Docker Compose para desarrollo local
 **Project Type**: Monolito modular hexagonal con frontend del Administrador en `frontend/`, pantalla `/facturas`
-**Performance Goals**: sin objetivo numérico (NFR-001 y NFR-005 solo exigen "tiempo adecuado" y "sin degradación perceptible"); el rendimiento se mide con `EXPLAIN ANALYZE` sobre un volumen sembrado y se confirma el uso de índices (T035)
+**Performance Goals**: sin objetivo numérico (NFR-001 y NFR-005 solo exigen "tiempo adecuado" y "sin degradación perceptible"); T035 verificada con `EXPLAIN (ANALYZE, BUFFERS)` sobre una tabla temporal de 1 000 000 de facturas en PostgreSQL 16.15. Planes, mediciones y límites en [rendimiento.md](../4-testing/rendimiento.md)
 **Constraints**: solo lectura (NFR-004); resultados deterministas con orden total estable (NFR-002); una única zona horaria de referencia `America/Bogota` para filtros y agregados (NFR-006); no exponer datos migratorios ni datos personales no financieros (FR-009, NFR-003); acceso solo para `Administrador` (FR-010)
-**Scale/Scope**: 3 historias de usuario, 3 endpoints `GET`, 1 caso de uso con 3 operaciones, 1 migración de índices
+**Scale/Scope**: 3 historias de usuario, 3 endpoints `GET`, 1 caso de uso con 3 operaciones, 1 migración de índices y pantalla React `/facturas` con búsqueda, detalle y resumen
 
 ## Project Structure
 
@@ -30,12 +30,18 @@ Enfoque técnico: se implementa dentro del *bounded context* `billing` como el c
 features/008-gestionar-facturacion/
 ├── 1-functional/
 │   └── gestionar_facturacion.md   # Spec funcional (fuente de verdad de negocio)
-└── 2-technical/
-    ├── plan.md                    # Este archivo
-    └── contracts/                 # Contratos REST detallados (petición, reglas, respuesta, errores)
-        ├── GET-invoices.md            # HU1 Buscar facturas
-        ├── GET-invoices-id.md         # HU2 Detalle de factura
-        └── GET-invoices-summary.md    # HU3 Resumen por canal
+├── 2-technical/
+│   ├── plan.md                    # Este archivo
+│   └── contracts/                 # Contratos REST detallados
+│       ├── GET-invoices.md         # HU1 Buscar facturas
+│       ├── GET-invoices-id.md      # HU2 Detalle de factura
+│       └── GET-invoices-summary.md # HU3 Resumen por canal
+├── 3-implementation/
+│   └── implementacion.md          # Código, pruebas, decisiones y ejecución local
+└── 4-testing/
+    ├── TC-008-gestionar-facturacion.md # Procedimiento manual
+    ├── benchmark-facturas.sql      # T035: tabla temporal con 1M facturas
+    └── rendimiento.md             # Evidencia de EXPLAIN y límites
 ```
 
 ### Source Code (repository root)
@@ -74,8 +80,12 @@ src/
     │   │   │   ├── invoices-admin.controller.ts   # GET /invoices, /invoices/summary, /invoices/{id}
     │   │   │   └── dto/invoices.dto.ts            # Parámetros y respuestas para Swagger
     │   │   └── domain-exception.filter.ts         # (modificado) MISSING_SEARCH_CRITERIA 400, INVOICE_NOT_FOUND 404
-    │   └── out/persistence/repositories/billing/
-    │       └── prisma-invoice-query.adapter.ts    # Implementa InvoiceQueryPort (READ ONLY)
+    │   └── out/persistence/repositories/
+    │       ├── billing/
+    │       │   ├── prisma-invoice-query.adapter.ts # InvoiceQueryPort (READ ONLY)
+    │       │   ├── invoice-publication-lock.ts     # Advisory (8, 1), compartido por 006/008
+    │       │   └── prisma-invoice-issuance.repository.ts # 006: bloqueo exclusivo antes del contador
+    │       └── settlement/read-only-transaction.ts # Helper compartido: aislamiento opcional
     ├── logging/billing/
     │   └── logged-manage-invoices.use-case.ts     # Log estructurado de cada consulta (T037)
     └── config/
@@ -106,6 +116,22 @@ test/
 │   └── gestionar-facturacion.e2e-spec.ts
 └── support/billing/
     └── in-memory-invoice-query.ts                 # Doble en memoria de InvoiceQueryPort
+
+frontend/src/
+├── api/invoices.ts                                # Tipos y tres consultas GET con JWT
+├── lib/
+│   ├── invoices.ts                                # Validación, importes y etiquetas
+│   └── invoices.test.ts                           # 23 pruebas
+├── pages/invoices/
+│   ├── InvoicesPage.tsx                           # Orquesta las tres consultas y permisos
+│   ├── InvoiceSearchForm.tsx                      # Criterios y errores por campo
+│   ├── InvoiceResults.tsx                         # Resultados y paginación con asOf
+│   ├── InvoiceDetailView.tsx                      # Desglose y trazabilidad inmutables
+│   ├── InvoiceSummaryPanel.tsx                    # Totales por canal y rango independiente
+│   ├── InvoicesPage.module.css                    # Formularios y tablas adaptables
+│   └── InvoicesPage.test.tsx                      # 25 pruebas de pantalla
+├── App.tsx                                        # Ruta /facturas dentro de RequireSession
+└── components/layout/AppLayout.tsx                # Navegación a Facturas emitidas
 ```
 
 **Structure Decision**: se usa la estructura por capas del proyecto base, con `billing` como subcarpeta de cada capa. El puerto de entrada es `ManageInvoicesUseCase` (`domain/ports/in/billing/manage-invoices.use-case.ts`), implementado por `ManageInvoicesService`, tal como lo lista el plan base. La lectura usa un puerto de salida propio `InvoiceQueryPort` en lugar de reutilizar el `InvoiceIssuanceRepositoryPort` de la feature 006: así el lado de consulta no tiene acceso a métodos de escritura, lo que hace estructuralmente imposible violar BR-001/FR-006 desde esta feature. Una prueba de arquitectura lo verifica.
@@ -128,7 +154,7 @@ Todos con `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles('Administrador')` a n
 
 ### Reglas de validación (dominio)
 
-- `parseInvoiceSearch(...)` lanza `MissingSearchCriteriaError` si no llega ninguno de: `stayId`, `reservationRef`, `customerName`, `customerTaxId`, `channel`, rango de fechas (FR-002). `page`/`pageSize`/`asOf` no cuentan como criterio. `asOf` no puede ser futuro.
+- `parseInvoiceSearch(...)` lanza `MissingSearchCriteriaError` si no llega ninguno de: `stayId`, `reservationRef`, `customerName`, `customerTaxId`, `channel`, rango de fechas (FR-002). `page`/`pageSize`/`asOf` no cuentan como criterio. `asOf` exige un instante ISO 8601 con zona y fecha civil posible (por ejemplo, rechaza el 30 de febrero); el servicio comprueba que no sea futuro con el reloj de PostgreSQL.
 - Rango de fechas: si llega solo uno de `issuedFrom`/`issuedTo` o `issuedFrom > issuedTo` → `InvalidIssuedDateRangeError` (`INVALID_DATE_RANGE`, FR-013, SC-007). Se valida en `parseIssuedDateRange` (`issued-date-range.ts`) antes de tocar la base de datos, así nunca hay resultado parcial. No se reutiliza el `InvalidDateRangeError` de 005: su mensaje habla de fechas de entrada y salida.
 - `otaId` solo es válido con `channel=OTA`.
 - No se expone filtro por estado: aunque el título de HU1 menciona "estado", ningún FR lo define como criterio (FR-001) y toda factura emitida por 006 tiene un único estado, `Emitida` (inmutable, BR-003 de `generar_factura_final.md`). El estado sí se muestra en el detalle (`status: "ISSUED"`).
@@ -150,7 +176,7 @@ export const MANAGE_INVOICES_USE_CASE = Symbol('ManageInvoicesUseCase');
 
 // src/domain/ports/out/billing/invoice-query.port.ts
 export interface InvoiceQueryPort {
-  currentTime(): Promise<Date>; // SELECT now(): fija asOf con el reloj de la base de datos
+  currentTime(): Promise<Date>; // clock_timestamp() tras esperar emisiones pendientes de 006
   search(filter: InvoiceSearchFilter, page: InvoicePageRequest): Promise<InvoiceSearchPage>;
   findDetailById(invoiceId: string): Promise<InvoiceDetail | null>;
   summarizeByChannel(interval: IssuedInterval): Promise<ChannelTotals[]>;
@@ -163,7 +189,7 @@ export const INVOICE_QUERY = Symbol('InvoiceQueryPort');
 
 - Cada método se ejecuta en una transacción interactiva de Prisma (`prisma.$transaction(async (tx) => ...)`) cuya primera sentencia es `SET TRANSACTION READ ONLY` (NFR-004): aunque hubiera un error de programación, Postgres rechazaría cualquier escritura.
 - **Búsqueda**: SQL parametrizado (`tx.$queryRaw` con `Prisma.sql`) sobre la tabla `invoice` únicamente, porque el filtro de nombre necesita `ILIKE … ESCAPE` y el cliente de Prisma no escapa `%` ni `_`; sin relación con `settlement`. Para eso la feature 006 copia en `invoice`, al emitirla, `stay_id`, `reservation_ref`, `channel` y `ota_id` de la liquidación de origen; no hay riesgo de inconsistencia porque la liquidación es `Final` y la factura es inmutable (BR-003 de `generar_factura_final.md`). Orden total determinista `ORDER BY issued_at DESC, invoice_number DESC` (NFR-002).
-- **Paginación con foto (`asOf`)**: paginación por `LIMIT/OFFSET` + `count(*)` con el mismo filtro para devolver `totalItems` y `totalPages` (FR-007). El corte se obtiene con `clock_timestamp()` después de esperar las emisiones abiertas de 006 mediante un bloqueo advisory compartido; cada emisor toma el mismo bloqueo exclusivo antes de insertar y lo conserva hasta el commit. El corte se trunca a milisegundos, que es la precisión que puede reenviar el cliente. La búsqueda aplica `issuedAt <= asOf` y página/conteo comparten una transacción `READ ONLY` con aislamiento `RepeatableRead`. El cliente reenvía `asOf` al paginar. Las regresiones verifican también una emisión pendiente al fijar el corte y un commit entre las dos sentencias de una página (NFR-002).
+- **Paginación con foto (`asOf`)**: paginación por `LIMIT/OFFSET` + `count(*)` con el mismo filtro para devolver `totalItems` y `totalPages` (FR-007). `currentTime()` usa `READ ONLY` y `ReadCommitted`: espera con `pg_advisory_xact_lock_shared(8, 1)` las emisiones abiertas de 006 y después lee `clock_timestamp()`. Cada emisor adquiere el advisory exclusivo `(8, 1)` antes de bloquear el contador oficial y lo conserva hasta el commit. El corte se trunca a milisegundos, precisión que puede reenviar el cliente; `now()` sería anterior a la espera y no sirve para ese corte. La búsqueda aplica `issuedAt <= asOf` y página/conteo comparten una transacción `READ ONLY` con aislamiento `RepeatableRead`. El cliente reenvía `asOf` al paginar. Las regresiones verifican una emisión pendiente al fijar el corte y un commit entre las dos sentencias de una página (NFR-002).
 - **Coincidencia de cliente**: `EXACT` → `customer_name ILIKE <nombre>`; `PARTIAL` → `customer_name ILIKE '%<texto>%'`; en los dos casos con `ESCAPE '!'` y el texto escapado, para que `%` y `_` se busquen como texto y no como comodines. Las dos formas usan el índice GIN `pg_trgm`. `customerTaxId` siempre exacto.
 - **Detalle**: `select` explícito de columnas (lista blanca), nunca el modelo completo: número oficial, `issued_at`, `settlement_id`, `stay_id`, `reservation_ref`, canal/OTA, cliente (nombre/razón social y documento fiscal), `lodging_amount`, `ota_commission_amount`, `net_income`, `vat_rate_applied`, `vat_amount`, `total_amount`, `status = ISSUED`. No hay campos migratorios (FR-009); los importes son los persistidos por 006 (BR-004, SC-003).
 - **Resumen**: `tx.invoice.groupBy({ by: ['channel', 'otaId'], _count, _sum })` filtrado por rango. Luego, en `ManageInvoicesService`, se completa con ceros cada canal conocido que no tuvo facturas en el rango (FR-014). Canales conocidos = Directo (siempre) + toda OTA con al menos una factura histórica en `invoice`, leídas con una CTE recursiva que salta de una OTA a la siguiente por `idx_invoice_channel_issued_at` (el `distinct` de Prisma y un `GROUP BY` recorren la tabla completa; medido en T035). No se consulta el catálogo de OTA a Módulo 2 ni se mantiene un catálogo propio; una OTA sin ninguna factura aún no aparece en el resumen hasta su primera factura. Cada canal se agrega por separado, nunca se mezclan importes (FR-012).
@@ -184,6 +210,12 @@ Sobre la tabla `invoice` creada por la feature 006. Los índices B-tree se decla
 - `idx_invoice_customer_name_trgm USING GIN (customer_name gin_trgm_ops)` (SQL manual)
 - `stay_id` no lleva índice nuevo: ya tiene el `UNIQUE` `invoice_stay_id_key` de 006
 - `idx_invoice_reservation_ref (reservation_ref)`
+
+### Frontend del Administrador
+
+La ruta `/facturas` reutiliza la sesión y el diseño del frontend existente. `api/invoices.ts` transmite únicamente los parámetros del contrato y el JWT; las tres operaciones son `GET`. `lib/invoices.ts` valida criterios y rangos antes de consultar y formatea importes decimales sin convertirlos a `Number`, conservando centavos incluso en cantidades grandes. El diálogo compartido contiene Tab/Shift+Tab también al enfocar el título, cierra con Escape y restaura el foco; esta regresión se verifica con Testing Library.
+
+`InvoicesPage` mantiene estados independientes para búsqueda, detalle y resumen. Muestra carga, errores específicos y reintento; `401` cierra la sesión y `403` retira los controles. La tabla conserva los filtros aplicados y el `asOf` al paginar; una búsqueda nueva o un cambio de tamaño vuelve a página 1 con un corte nuevo. El detalle se abre en un diálogo accesible y el resumen usa su propio rango. Las respuestas tardías no reemplazan consultas más recientes ni reabren un detalle cerrado. La QA visual y funcional de T043 se registra aparte de las pruebas con jsdom.
 
 ## Phase 1: Setup (Shared Infrastructure)
 
@@ -222,14 +254,14 @@ Sobre la tabla `invoice` creada por la feature 006. Los índices B-tree se decla
 
 - [x] T010 [P] [US1] Unit test de `parseInvoiceSearch` (sin criterios → error; rango invertido → error; `otaId` sin `channel=OTA` → error; `PARTIAL` con < 3 caracteres → error) en `test/unit/domain/billing/invoice-search-criteria.spec.ts`, y de la zona horaria en `issued-date-range.spec.ts`
 - [x] T011 [P] [US1] Unit test de `ManageInvoicesService.search` con puerto mockeado (`NO_MATCHES`, paginación, `customerMatchMode` en la respuesta) en `test/unit/application/billing/manage-invoices.service.spec.ts`
-- [x] T012 [P] [US1] Integration test de `search()` contra Postgres (`TEST_DATABASE_URL`): cada filtro, combinación rango + canal, coincidencia exacta vs. parcial, orden estable entre ejecuciones, `totalItems` correcto con más resultados que `pageSize`, y una factura insertada entre la página 1 y la 2 con el mismo `asOf` no produce repetidos ni saltos en `test/integration/persistence/billing/prisma-invoice-query.adapter.spec.ts`
+- [x] T012 [P] [US1] Integration test de `search()` contra Postgres (`TEST_DATABASE_URL`): filtros, orden, total y `asOf`; regresiones con una emisión abierta al obtener el corte y con un commit entre página/conteo en `test/integration/persistence/billing/prisma-invoice-query.adapter.spec.ts`
 - [x] T013 [P] [US1] Contract test de `GET /invoices`: forma de la respuesta (incluye `asOf`), `400` sin criterios, con rango inválido o con `asOf` futuro, `401` sin token y `403` con JWT de rol `OTA` en `test/contract/billing/invoices-admin.contract.spec.ts`
 
 ### Implementation for User Story 1
 
 - [x] T014 [P] [US1] Implementar `CustomerMatchMode` y `parseInvoiceSearch` (`InvoiceSearchCriteria`) en `src/domain/model/billing/`
 - [x] T015 [US1] Implementar `PrismaInvoiceQueryAdapter.search()` con filtros parametrizados, condición `issuedAt <= asOf`, orden total y `LIMIT/OFFSET` + `count` (depende de T007, T014)
-- [x] T016 [US1] Implementar `ManageInvoicesService.search` en `src/application/services/billing/manage-invoices.service.ts` (construye criterio, aplica zona horaria, fija `asOf` si no llega usando la hora de la base de datos (`SELECT now()` en Postgres, no `new Date()` en Node, para evitar desfases con `issued_at`), marca `NO_MATCHES`)
+- [x] T016 [US1] Implementar `ManageInvoicesService.search` en `src/application/services/billing/manage-invoices.service.ts` (construye criterio, aplica zona horaria y fija `asOf` con `clock_timestamp()` después de esperar emisiones pendientes; valida el corte recibido y marca `NO_MATCHES`)
 - [x] T017 [US1] Implementar `SearchInvoicesQueryDto` e `InvoiceSearchResponseDto` para Swagger en `src/infrastructure/adapters/in/http/billing/dto/invoices.dto.ts`; las validaciones (`pageSize` máx. 100, `asOf` ISO 8601 no futuro) están en el dominio y el servicio, como en 002
 - [x] T018 [US1] Implementar `GET /invoices` en `InvoicesAdminController`
 
@@ -289,9 +321,22 @@ Sobre la tabla `invoice` creada por la feature 006. Los índices B-tree se decla
 - [x] T032 E2E: una reserva cancelada antes del check-out no aparece en ningún resultado (BR-003)
 - [x] T033 Prueba de auditoría de solo lectura: snapshot de `invoice` y `settlement` antes y después de ejecutar las tres operaciones; deben ser idénticos (NFR-004, SC-004)
 - [x] T034 Prueba de contrato: `POST`/`PUT`/`PATCH`/`DELETE` sobre `/invoices*` no están disponibles (FR-006); además, `test/architecture/manage-invoices-dependencies.spec.ts` verifica que 008 no usa el lado de escritura de 006/007
-- [x] T035 Medir con `EXPLAIN ANALYZE` las consultas de búsqueda y resumen sobre un volumen sembrado (~1M filas) y confirmar uso de índices (NFR-001, NFR-005). Resultado en el mapa de implementación, sección 7
+- [x] T035 Medir con `EXPLAIN (ANALYZE, BUFFERS)` búsqueda y resumen sobre 1M filas temporales, confirmando uso de índices (NFR-001, NFR-005). PostgreSQL 16.15/Docker, 2026-11-09: [evidencia](../4-testing/rendimiento.md) y [script reproducible](../4-testing/benchmark-facturas.sql)
 - [x] T036 Documentar los tres endpoints en OpenAPI (`@nestjs/swagger`) a partir de los contratos de `contracts/`, con los mismos ejemplos y códigos de error
 - [x] T037 Logging estructurado de cada consulta (usuario, criterios usados, número de resultados), sin registrar datos personales del cliente
+
+---
+
+## Phase 7: Frontend y validación de la pantalla
+
+**Purpose**: Completar las tres historias desde `/facturas` con la sesión y los componentes del Administrador existentes.
+
+- [x] T038 Crear `frontend/src/api/invoices.ts` con tipos, parámetros permitidos y clientes autenticados de búsqueda, detalle y resumen; registrar `/facturas` y su navegación
+- [x] T039 Implementar `frontend/src/lib/invoices.ts`: criterios obligatorios, UUID, coincidencia parcial, canal/OTA, fechas civiles y rangos, tamaño de página e importes sin pérdida de centavos
+- [x] T040 [US1] Implementar formulario, estados de búsqueda y resultados paginados; conservar filtros aplicados y `asOf`, reiniciar el corte al buscar o cambiar el tamaño y ofrecer reintento
+- [x] T041 [US2] [US3] Implementar detalle inmutable en diálogo, resumen independiente por canal, estados de carga/error, permisos 401/403 y descarte de respuestas tardías
+- [x] T042 Verificar la pantalla con Vitest + Testing Library: 23 pruebas de validación/formato y 25 de pantalla (48 de 008), incluyendo ruta real, paginación, detalle, resumen, permisos, reintento y foco/Tab/Shift+Tab/Escape. Regresión compartida final: 56/56 entre facturas, temporadas e IVA
+- [x] T043 Ejecutar y registrar QA con Chrome real en `/facturas`: login y API reales sobre PostgreSQL aislado, 25 resultados OTA en páginas de 20+5, detalle con centavos y liquidación, resumen con canal en cero y búsqueda sin coincidencias. Escritorio 1440 px y móvil 390 px, página y diálogo sin desbordamiento ni errores de consola. Evidencia del 2026-11-09 en [implementacion.md, sección 4](../3-implementation/implementacion.md#4-pruebas); procedimiento complementario en [TC-008](../4-testing/TC-008-gestionar-facturacion.md)
 
 ---
 
@@ -303,6 +348,7 @@ Sobre la tabla `invoice` creada por la feature 006. Los índices B-tree se decla
 - **Foundational (Phase 2)**: depende de Setup — BLOQUEA todas las historias
 - **User Stories (Phase 3–5)**: dependen de Foundational; pueden avanzar en paralelo o en orden P1 → P2 → P3
 - **Polish (Phase 6)**: depende de las tres historias
+- **Frontend (Phase 7)**: usa los contratos y la sesión del Administrador; las pruebas de pantalla usan respuestas controladas. T043 requiere ejecutar la interfaz en un navegador
 
 ### User Story Dependencies
 

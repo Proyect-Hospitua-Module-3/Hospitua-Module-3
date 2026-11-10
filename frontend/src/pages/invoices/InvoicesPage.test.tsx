@@ -375,6 +375,28 @@ describe('Pantalla Facturas emitidas (008)', { timeout: 15000 }, () => {
     expect(backend.requests.every((request) => request.method === 'GET')).toBe(true);
   });
 
+  it('mantiene el foco en el detalle al recorrerlo con teclado y lo restaura al cerrar', async () => {
+    renderScreen();
+    await searchReservation();
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole('button', { name: 'Ver factura 1042' });
+    await user.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Detalle de factura' });
+    const heading = await within(dialog).findByRole('heading', { name: 'Factura 1042' });
+    await waitFor(() => expect(heading).toHaveFocus());
+    const close = within(dialog).getByRole('button', { name: 'Cerrar detalle' });
+    await user.tab({ shift: true });
+    expect(close).toHaveFocus();
+    await user.tab();
+    expect(close).toHaveFocus();
+    heading.focus();
+    await user.tab();
+    expect(close).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it('muestra centavos exactos incluso en importes superiores al entero seguro de JavaScript', async () => {
     backend.items[0].totalAmount = '9007199254740993.01';
     renderScreen();

@@ -40,6 +40,13 @@ export function Modal({ title, description, actions, children, onClose }: ModalP
         dialog.focus();
         return;
       }
+      // Un detalle largo puede enfocar inicialmente su título (tabIndex=-1).
+      // Desde ese punto, Tab y Shift+Tab también deben quedarse en el diálogo.
+      if (!controls.some((control) => control === document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
       if (
         event.shiftKey &&
         (document.activeElement === first || !dialog.contains(document.activeElement))
