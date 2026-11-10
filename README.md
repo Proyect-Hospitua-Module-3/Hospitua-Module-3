@@ -19,7 +19,7 @@ Facturación, Consumos y Liquidación. Servicio NestJS con arquitectura hexagona
 | [006 Generar factura final](features/006-generar-factura-final/) | Sin endpoint: caso de uso interno `GenerateFinalInvoiceUseCase` para 010 | [Mapa de implementación](features/006-generar-factura-final/3-implementation/implementacion.md) |
 | [010 Registrar Check-out](features/010-registrar-checkout/) | Sin endpoint: consume la cola RabbitMQ `modulo3.checkout` y orquesta 007 y 006 | [Mapa de implementación](features/010-registrar-checkout/3-implementation/implementacion.md) |
 | [002 Consultar liquidación](features/002-consultar-liquidacion/) | `GET /api/settlements` (Módulo 1 sin token: liquidación final o informativa de una habitación; OTA con token: liquidaciones finales de su reserva) | [Mapa de implementación](features/002-consultar-liquidacion/3-implementation/implementacion.md) |
-| [008 Gestionar facturación](features/008-gestionar-facturacion/) | `GET /invoices` (búsqueda), `GET /invoices/{invoiceId}` (detalle) y `GET /invoices/summary` (resumen por canal), solo Administrador | [Mapa de implementación](features/008-gestionar-facturacion/3-implementation/implementacion.md) |
+| [008 Gestionar facturación](features/008-gestionar-facturacion/) | `GET /invoices` (búsqueda), `GET /invoices/{invoiceId}` (detalle) y `GET /invoices/summary` (resumen por canal), solo Administrador · pantalla `/facturas` del [frontend](frontend/) | [Mapa de implementación](features/008-gestionar-facturacion/3-implementation/implementacion.md) |
 
 El frontend del Administrador (React + Vite) está en [frontend/](frontend/), con sus propias instrucciones.
 
@@ -38,7 +38,7 @@ para encontrarlos con una búsqueda.
 ```bash
 npm install
 cp .env.example .env            # en Windows: copy .env.example .env  (y ajusta los valores)
-docker compose up -d            # levanta PostgreSQL y RabbitMQ; omítelo si ya los tienes
+docker compose up -d --wait     # con Docker Desktop iniciado: espera PostgreSQL y RabbitMQ saludables
 npx prisma migrate deploy       # crea las tablas
 npx prisma db seed              # crea los usuarios admin y ota-demo del .env
 npm run start:dev

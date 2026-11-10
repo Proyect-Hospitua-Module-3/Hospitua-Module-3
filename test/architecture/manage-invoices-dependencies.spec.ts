@@ -114,7 +114,7 @@ describe('Reglas de dependencia de Gestionar facturación (008)', () => {
       /\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(/,
     );
     expect(text).not.toMatch(/\$executeRaw|\b(INSERT|UPDATE|DELETE|TRUNCATE)\b/);
-    expect(text.match(/readOnlyTransaction\(/g)?.length).toBe(4);
+    expect(text.match(/readOnlyTransaction\(/g)?.length).toBe(5);
   });
 
   it('el controller solo declara GET (FR-006)', () => {

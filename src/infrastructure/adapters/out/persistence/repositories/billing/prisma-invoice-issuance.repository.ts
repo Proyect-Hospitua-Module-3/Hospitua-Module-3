@@ -7,6 +7,10 @@ import { InvoiceIssuanceRepositoryPort } from '../../../../../../domain/ports/ou
 import { InvoiceMapper } from '../../mappers/billing/invoice.mapper';
 import { PrismaService } from '../../prisma.service';
 import { isTransientPersistenceError } from '../../transient-persistence-error';
+import {
+  INVOICE_PUBLICATION_LOCK_KEY,
+  INVOICE_PUBLICATION_LOCK_NAMESPACE,
+} from './invoice-publication-lock';
 
 // `invoice_number_counter` es de fila única: siempre id = 1 (lo exige un CHECK en la migración).
 const COUNTER_ROW_ID = 1;
@@ -55,6 +59,9 @@ export class PrismaInvoiceIssuanceRepository implements InvoiceIssuanceRepositor
   private issueInTransaction(draft: InvoiceDraft): Promise<Invoice> {
     return this.prisma.$transaction(
       async (tx) => {
+        // 008 espera a que esta transacción confirme antes de fijar su asOf. Mantener
+        // el bloqueo hasta COMMIT impide que una factura anterior al corte aparezca tarde.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${INVOICE_PUBLICATION_LOCK_NAMESPACE}::int, ${INVOICE_PUBLICATION_LOCK_KEY}::int)`;
         const [counter] = await tx.$queryRaw<CounterRow[]>`
           SELECT last_number FROM invoice_number_counter WHERE id = ${COUNTER_ROW_ID} FOR UPDATE`;
         if (!counter) {

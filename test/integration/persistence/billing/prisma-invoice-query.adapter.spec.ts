@@ -6,6 +6,7 @@
 // y facturas (reservas RES-IT-008-*, emitidas en 2001 y con números 9008000001 en adelante,
 // lejos del consecutivo real), así que no se cruza con los datos de otras suites.
 import { ManageInvoicesService } from '../../../../src/application/services/billing/manage-invoices.service';
+import { Prisma } from '@prisma/client';
 import { CustomerMatchMode } from '../../../../src/domain/model/billing/customer-match-mode';
 import { issuedIntervalOf } from '../../../../src/domain/model/billing/issued-date-range';
 import { NewSettlement } from '../../../../src/domain/model/settlement/settlement';
@@ -13,6 +14,10 @@ import { InvoiceSearchFilter } from '../../../../src/domain/ports/out/billing/in
 import { SettlementMapper } from '../../../../src/infrastructure/adapters/out/persistence/mappers/settlement/settlement.mapper';
 import { PrismaService } from '../../../../src/infrastructure/adapters/out/persistence/prisma.service';
 import { PrismaInvoiceQueryAdapter } from '../../../../src/infrastructure/adapters/out/persistence/repositories/billing/prisma-invoice-query.adapter';
+import {
+  INVOICE_PUBLICATION_LOCK_KEY,
+  INVOICE_PUBLICATION_LOCK_NAMESPACE,
+} from '../../../../src/infrastructure/adapters/out/persistence/repositories/billing/invoice-publication-lock';
 import {
   BILLING_TEST_LOCK_TIMEOUT_MS,
   lockBillingTestDatabase,
@@ -75,7 +80,10 @@ describeWithDatabase('PrismaInvoiceQueryAdapter (PostgreSQL real)', () => {
   let unlockDatabase: () => Promise<void>;
   let invoiceNumber = 9_008_000_000;
 
-  async function seed(spec: SeedInvoice): Promise<Seeded> {
+  async function seed(
+    spec: SeedInvoice,
+    client: Prisma.TransactionClient = prisma,
+  ): Promise<Seeded> {
     const channel = spec.channel ?? 'OTA';
     const otaId = channel === 'DIRECT' ? null : (spec.otaId ?? OTA_A);
     const commission = channel === 'DIRECT' ? '0.00' : (spec.commission ?? '112500.00');
@@ -102,10 +110,10 @@ describeWithDatabase('PrismaInvoiceQueryAdapter (PostgreSQL real)', () => {
       netIncome: amounts.netIncome,
       sourceEventId: '9b1f6d3e-2c4a-4f7b-8e5d-3a1c0b9d8e72',
     };
-    await prisma.settlement.create({ data: SettlementMapper.toCreateInput(settlement) });
+    await client.settlement.create({ data: SettlementMapper.toCreateInput(settlement) });
     invoiceNumber += 1;
     const invoiceId = uuid('e7000000');
-    await prisma.invoice.create({
+    await client.invoice.create({
       data: {
         id: invoiceId,
         invoiceNumber: BigInt(invoiceNumber),
@@ -364,6 +372,152 @@ describeWithDatabase('PrismaInvoiceQueryAdapter (PostgreSQL real)', () => {
       const before = Date.now();
       const now = await adapter.currentTime();
       expect(Math.abs(now.getTime() - before)).toBeLessThan(60_000);
+    });
+
+    it('espera una emisión abierta antes del corte y mantiene las páginas después de su commit', async () => {
+      const taxId = '800-IT-008-COMMIT';
+      for (let day = 1; day <= 4; day++) {
+        await seed({
+          reservationRef: `${PREFIX}COMMIT-${day}`,
+          issuedAt: `2001-03-0${day}T15:00:00Z`,
+          customerTaxId: taxId,
+        });
+      }
+      let releaseWriter!: () => void;
+      let markInserted!: () => void;
+      const release = new Promise<void>((resolve) => {
+        releaseWriter = resolve;
+      });
+      const inserted = new Promise<void>((resolve) => {
+        markInserted = resolve;
+      });
+      const writer = prisma.$transaction(
+        async (tx) => {
+          // Mismo protocolo que emisión006: el instante ya existe, pero COMMIT aún no.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(${INVOICE_PUBLICATION_LOCK_NAMESPACE}::int, ${INVOICE_PUBLICATION_LOCK_KEY}::int)`;
+          await seed(
+            {
+              reservationRef: `${PREFIX}COMMIT-TARDIO`,
+              issuedAt: '2001-03-05T15:00:00Z',
+              customerTaxId: taxId,
+            },
+            tx,
+          );
+          markInserted();
+          await release;
+        },
+        { timeout: 15_000 },
+      );
+      let firstPage: Promise<Awaited<ReturnType<ManageInvoicesService['search']>>> | undefined;
+      try {
+        await inserted;
+        const service = new ManageInvoicesService(adapter, TIME_ZONE);
+        firstPage = service.search({ customerTaxId: taxId, pageSize: '2' });
+        const deadline = Date.now() + 4_000;
+        let blocked = false;
+        while (Date.now() < deadline) {
+          const [row] = await prisma.$queryRaw<{ waiting: boolean }[]>`
+            SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype = 'advisory'
+              AND classid = ${INVOICE_PUBLICATION_LOCK_NAMESPACE}::oid
+              AND objid = ${INVOICE_PUBLICATION_LOCK_KEY}::oid AND NOT granted) AS waiting`;
+          if (row.waiting) {
+            blocked = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(blocked).toBe(true);
+        releaseWriter();
+        await writer;
+        const page1 = await firstPage;
+        const page2 = await service.search({
+          customerTaxId: taxId,
+          pageSize: '2',
+          page: '2',
+          asOf: page1.asOf.toISOString(),
+        });
+        const page3 = await service.search({
+          customerTaxId: taxId,
+          pageSize: '2',
+          page: '3',
+          asOf: page1.asOf.toISOString(),
+        });
+        expect([page1.totalItems, page2.totalItems, page3.totalItems]).toEqual([5, 5, 5]);
+        expect(
+          [...page1.items, ...page2.items, ...page3.items].map((item) => item.reservationRef),
+        ).toEqual([
+          `${PREFIX}COMMIT-TARDIO`,
+          ...[4, 3, 2, 1].map((day) => `${PREFIX}COMMIT-${day}`),
+        ]);
+      } finally {
+        releaseWriter();
+        await writer;
+        await firstPage;
+      }
+    }, 20_000);
+
+    it('la página y su count comparten snapshot aunque una factura confirme entre ambas sentencias', async () => {
+      const taxId = '800-IT-008-SNAPSHOT';
+      await seed({
+        reservationRef: `${PREFIX}SNAPSHOT-ORIGINAL`,
+        issuedAt: '2001-03-01T15:00:00Z',
+        customerTaxId: taxId,
+      });
+      let markPageRead!: () => void;
+      const pageRead = new Promise<void>((resolve) => {
+        markPageRead = resolve;
+      });
+      // Instrumenta solo el instante entre las dos sentencias, manteniendo una
+      // transacción PostgreSQL real y el aislamiento elegido por el adaptador.
+      const instrumented = new Proxy(prisma, {
+        get(target, property, receiver) {
+          if (property !== '$transaction') return Reflect.get(target, property, receiver);
+          return (
+            read: (tx: Prisma.TransactionClient) => Promise<unknown>,
+            options?: { isolationLevel?: Prisma.TransactionIsolationLevel },
+          ) =>
+            target.$transaction(
+              async (tx) =>
+                read(
+                  new Proxy(tx, {
+                    get(transaction, member, transactionReceiver) {
+                      if (member !== '$queryRaw')
+                        return Reflect.get(transaction, member, transactionReceiver);
+                      return async (strings: TemplateStringsArray, ...values: unknown[]) => {
+                        const sql = strings.join('');
+                        if (sql.includes('count(*)')) {
+                          await pageRead;
+                          // Fecha anterior al corte para demostrar que READ ONLY por sí solo
+                          // no es suficiente. La inserción usa otra conexión y confirma aquí.
+                          await seed({
+                            reservationRef: `${PREFIX}SNAPSHOT-NUEVA`,
+                            issuedAt: '2001-03-02T15:00:00Z',
+                            customerTaxId: taxId,
+                          });
+                        }
+                        const result = await transaction.$queryRaw(strings, ...values);
+                        if (sql.includes('ORDER BY issued_at DESC')) markPageRead();
+                        return result;
+                      };
+                    },
+                  }),
+                ),
+              options,
+            );
+        },
+      });
+      const observed = await new PrismaInvoiceQueryAdapter(instrumented).search(
+        filter({ customerTaxId: taxId }),
+        { page: 1, pageSize: 20 },
+      );
+      expect(observed.items.map((item) => item.reservationRef)).toEqual([
+        `${PREFIX}SNAPSHOT-ORIGINAL`,
+      ]);
+      expect(observed.totalItems).toBe(1);
+      expect(
+        (await adapter.search(filter({ customerTaxId: taxId }), { page: 1, pageSize: 20 }))
+          .totalItems,
+      ).toBe(2);
     });
   });
 

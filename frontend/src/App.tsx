@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { LoginPage } from './pages/LoginPage';
-import { PendingPage } from './pages/PendingPage';
+import { InvoicesPage } from './pages/invoices/InvoicesPage';
 import { SeasonRulesPage } from './pages/season-rules/SeasonRulesPage';
 import { SeasonCalendarPage } from './pages/season-calendar/SeasonCalendarPage';
 import { VatRatePage } from './pages/vat-rate/VatRatePage';
@@ -30,7 +30,7 @@ export function App() {
         <Route path="/iva" element={<VatRatePage />} />
         <Route path="/temporadas" element={<SeasonRulesPage />} />
         <Route path="/calendario" element={<SeasonCalendarPage />} />
-        <Route path="/facturas" element={<PendingPage title="Facturas emitidas" spec="008" />} />
+        <Route path="/facturas" element={<InvoicesPage />} />
         <Route path="*" element={<Navigate to="/iva" replace />} />
       </Route>
     </Routes>
