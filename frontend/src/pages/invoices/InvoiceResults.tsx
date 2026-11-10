@@ -21,7 +21,8 @@ export function InvoiceResults({ result, query, busy, onPage, onDetail }: Props)
     query.customerName &&
       `Cliente: ${query.customerName} (${query.customerMatch === 'PARTIAL' ? 'parcial' : 'exacta'})`,
     query.customerTaxId && `Documento: ${query.customerTaxId}`,
-    query.channel && `Canal: ${invoiceChannelLabel(query.channel, query.otaId ?? null)}`,
+    query.channel &&
+      `Canal: ${query.channel === 'OTA' && !query.otaId ? 'Todas las OTA' : invoiceChannelLabel(query.channel, query.otaId ?? null)}`,
     query.issuedFrom && query.issuedTo && `Emisión: ${query.issuedFrom} al ${query.issuedTo}`,
   ]
     .filter(Boolean)
