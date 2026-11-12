@@ -101,7 +101,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero reconocer reenvío
 ### Casos límite
 
 - Falla temporal del procesamiento: el sistema no genera resultados parciales. Tras el primer intento, el evento se reintenta hasta cinco veces más, con 30 segundos entre reintentos; agotado ese límite, pasa a revisión manual y conserva cualquier liquidación existente.
-- IVA vigente no configurado o no disponible al emitir la factura: la liquidación se conserva, no se emite factura ni se asigna numeración, y se aplica la política de reintentos de NFR-005, de acuerdo con la regla de IVA vigente definida en `Actualizar porcentaje de IVA`.
+- IVA vigente no configurado o no disponible al emitir la factura: la liquidación se conserva, no se emite factura ni se asigna numeración. Si nunca se configuró el IVA, el evento se enruta a revisión manual sin reintentos; si la lectura del IVA falla temporalmente, se aplica la política de reintentos de NFR-005, de acuerdo con la regla de IVA vigente definida en `Actualizar porcentaje de IVA`.
 - Reserva con varias habitaciones: se recibe un evento por habitación y se genera una liquidación por cada habitación con check-out, según lo definido en `Generar liquidación`.
 - Error de `Generar liquidación` o de `Generar factura final` que no se resuelve reintentando: no se completa el procesamiento, se registra el motivo y el evento se enruta a revisión manual conservando cualquier liquidación existente.
 - Procesamiento asíncrono del check-out: recibir el evento no implica que la liquidación `Final` esté disponible de inmediato; una consulta puede mostrar la informativa hasta que exista la `Final`, nunca un estado intermedio.

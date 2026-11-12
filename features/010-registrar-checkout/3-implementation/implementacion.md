@@ -104,23 +104,23 @@ Migración [20261106000000_create_checkout_event_log](../../../prisma/migrations
 
 ## 4. Pruebas
 
-| Archivo | Qué comprueba | Pruebas |
-|---|---|:-:|
-| [checkout-event.spec.ts](../../../test/unit/domain/checkout-ingestion/checkout-event.spec.ts) | Reconocimiento del sobre, `occurredAt` con `Z`, `-05:00` y fracción de segundo, rechazos por campo, una noche, salida el mismo día, salida anterior, datos tributarios ausentes o incompletos, lista blanca sin datos migratorios y determinismo (T012) | 46 |
-| [register-checkout.service.spec.ts](../../../test/unit/application/checkout-ingestion/register-checkout.service.spec.ts) | Sobre no reconocible, evento inválido, errores no recuperables, fallas transitorias, límite de 5 reintentos, fallas de la auditoría, deduplicación, reanudación de PENDING, `x-retry-count` y orden "publicar, confirmar y después escribir el estado" (T015, T019) | 44 |
-| [checkout-event-processor.service.spec.ts](../../../test/unit/application/checkout-ingestion/checkout-event-processor.service.spec.ts) | 007 antes que 006; `billingCustomer` solo a 006; `NOT_ISSUED` → nota; si 007 falla, 006 no se invoca (T010) | 6 |
-| [rabbitmq-checkout.runner.spec.ts](../../../test/unit/infrastructure/checkout-ingestion/rabbitmq-checkout.runner.spec.ts) | Con un broker simulado: sin `RABBITMQ_URL` no se conecta; topología, confirms y `prefetch(1)`; apagado; reconexión si el broker no responde o cae (T011) | 7 |
-| [checkout-log-writer.spec.ts](../../../test/unit/infrastructure/checkout-ingestion/checkout-log-writer.spec.ts) | Log JSON y nivel según el resultado | 6 |
-| [transient-persistence.checkout-processor.spec.ts](../../../test/unit/infrastructure/checkout-ingestion/transient-persistence.checkout-processor.spec.ts) | Fallas transitorias de Prisma → `DATABASE_UNAVAILABLE`; un error no transitorio (FK) y los errores de dominio pasan sin cambios; con `RegisterCheckoutService`: retry, DLQ tras 5 reintentos y `UNEXPECTED_ERROR` para el no transitorio | 10 |
-| [checkout-event.contract.spec.ts](../../../test/contract/messaging/checkout-event.contract.spec.ts) | Ejemplos del contrato, sobre de Módulo 1, lista blanca, topología y códigos transitorios (T013) | 6 |
-| [checkout-to-invoice.flow.spec.ts](../../../test/integration/checkout-ingestion/checkout-to-invoice.flow.spec.ts) | **Flujo completo sin infraestructura**: servicios reales de 010, 007, 006 y 001 con puertos en memoria. Directo y OTA, sin datos tributarios, privacidad, reentrega, otro evento de la misma estancia, datos contradictorios, Módulo 2 caído y reintento, 5 reintentos, IVA sin configurar, IVA no disponible, evento inválido (T009, T015, T017, T019) | 12 |
-| [checkout-ingestion-dependencies.spec.ts](../../../test/architecture/checkout-ingestion-dependencies.spec.ts) | Consumer sin lógica; solo el procesador llama a 007/006; 010 no toca pricing ni Módulo 1 (FR-007); dominio y aplicación sin NestJS/amqplib/Prisma; sin controller | 6 |
-| [prisma-checkout-event-log.repository.spec.ts](../../../test/integration/persistence/checkout-ingestion/prisma-checkout-event-log.repository.spec.ts) | Repositorio contra PostgreSQL: deduplicación, entregas simultáneas, transiciones, sobre no reconocible, privacidad y restricciones. Requiere `TEST_DATABASE_URL` | 10 |
-| [checkout-messaging.spec.ts](../../../test/integration/messaging/checkout-messaging.spec.ts) | Topología, publicador (confirm, `basic.return`, canal cerrado) y consumer (ack y nack con reencolado) contra RabbitMQ (T005–T007, T018). Requiere `TEST_RABBITMQ_URL` | 10 |
-| [checkout-flow.e2e-spec.ts](../../../test/e2e/checkout/checkout-flow.e2e-spec.ts) | **De punta a punta real**: `AppModule` + RabbitMQ + PostgreSQL. El evento publicado en `hospitua.events` termina en liquidación y factura; sin datos tributarios; Módulo 2 caído → cola de reintento con `x-retry-count = 1` (T009, T018). Requiere las dos variables | 3 |
-| `test/support/checkout-ingestion/` | Ejemplo de evento y dobles de la auditoría y del publicador | — |
+| Archivo | Qué comprueba |
+|---|---|
+| [checkout-event.spec.ts](../../../test/unit/domain/checkout-ingestion/checkout-event.spec.ts) | Reconocimiento del sobre, `occurredAt` con `Z`, `-05:00` y fracción de segundo, rechazos por campo, una noche, salida el mismo día, salida anterior, datos tributarios ausentes o incompletos, lista blanca sin datos migratorios y determinismo (T012) |
+| [register-checkout.service.spec.ts](../../../test/unit/application/checkout-ingestion/register-checkout.service.spec.ts) | Sobre no reconocible, evento inválido, errores no recuperables, fallas transitorias, límite de 5 reintentos, fallas de la auditoría, deduplicación, reanudación de PENDING, `x-retry-count` y orden "publicar, confirmar y después escribir el estado" (T015, T019) |
+| [checkout-event-processor.service.spec.ts](../../../test/unit/application/checkout-ingestion/checkout-event-processor.service.spec.ts) | 007 antes que 006; `billingCustomer` solo a 006; `NOT_ISSUED` → nota; si 007 falla, 006 no se invoca (T010) |
+| [rabbitmq-checkout.runner.spec.ts](../../../test/unit/infrastructure/checkout-ingestion/rabbitmq-checkout.runner.spec.ts) | Con un broker simulado: sin `RABBITMQ_URL` no se conecta; topología, confirms y `prefetch(1)`; apagado; reconexión si el broker no responde o cae (T011) |
+| [checkout-log-writer.spec.ts](../../../test/unit/infrastructure/checkout-ingestion/checkout-log-writer.spec.ts) | Log JSON y nivel según el resultado |
+| [transient-persistence.checkout-processor.spec.ts](../../../test/unit/infrastructure/checkout-ingestion/transient-persistence.checkout-processor.spec.ts) | Fallas transitorias de Prisma → `DATABASE_UNAVAILABLE`; un error no transitorio (FK) y los errores de dominio pasan sin cambios; con `RegisterCheckoutService`: retry, DLQ tras 5 reintentos y `UNEXPECTED_ERROR` para el no transitorio |
+| [checkout-event.contract.spec.ts](../../../test/contract/messaging/checkout-event.contract.spec.ts) | Ejemplos del contrato, sobre de Módulo 1, lista blanca, topología y códigos transitorios (T013) |
+| [checkout-to-invoice.flow.spec.ts](../../../test/integration/checkout-ingestion/checkout-to-invoice.flow.spec.ts) | **Flujo completo sin infraestructura**: servicios reales de 010, 007, 006 y 001 con puertos en memoria. Directo y OTA, sin datos tributarios, privacidad, reentrega, otro evento de la misma estancia, datos contradictorios, Módulo 2 caído y reintento, 5 reintentos, IVA sin configurar, IVA no disponible, evento inválido (T009, T015, T017, T019) |
+| [checkout-ingestion-dependencies.spec.ts](../../../test/architecture/checkout-ingestion-dependencies.spec.ts) | Consumer sin lógica; solo el procesador llama a 007/006; 010 no toca pricing ni Módulo 1 (FR-007); dominio y aplicación sin NestJS/amqplib/Prisma; sin controller |
+| [prisma-checkout-event-log.repository.spec.ts](../../../test/integration/persistence/checkout-ingestion/prisma-checkout-event-log.repository.spec.ts) | Repositorio contra PostgreSQL: deduplicación, entregas simultáneas, transiciones, sobre no reconocible, privacidad y restricciones. Requiere `TEST_DATABASE_URL` |
+| [checkout-messaging.spec.ts](../../../test/integration/messaging/checkout-messaging.spec.ts) | Topología, publicador (confirm, `basic.return`, canal cerrado) y consumer (ack y nack con reencolado) contra RabbitMQ (T005–T007, T018). Requiere `TEST_RABBITMQ_URL` |
+| [checkout-flow.e2e-spec.ts](../../../test/e2e/checkout/checkout-flow.e2e-spec.ts) | **De punta a punta real**: `AppModule` + RabbitMQ + PostgreSQL. El evento publicado en `hospitua.events` termina en liquidación y factura; sin datos tributarios; Módulo 2 caído → cola de reintento con `x-retry-count = 1` (T009, T018). Requiere las dos variables |
+| `test/support/checkout-ingestion/` | Ejemplo de evento y dobles de la auditoría y del publicador |
 
-Resultado actual: **las 166 pruebas de la 010 pasan**, incluidas las 23 que necesitan PostgreSQL o RabbitMQ reales (10 + 10 + 3), también con Jest corriendo todos los archivos en paralelo. La prueba manual de punta a punta del [TC-010](../4-testing/TC-010-registrar-checkout.md) (sección 6, 13 pasos) también pasó completa, incluido el viaje real por la cola de reintento: 6 intentos separados exactamente por 30 s y después la DLQ.
+Resultado actual: **las pruebas de la 010 pasan**, incluidas las que necesitan PostgreSQL o RabbitMQ reales, también con Jest corriendo todos los archivos en paralelo. La prueba manual de punta a punta del [TC-010](../4-testing/TC-010-registrar-checkout.md) (sección 6) también pasó completa, incluido el viaje real por la cola de reintento: 6 intentos separados exactamente por 30 s y después la DLQ.
 
 ```bash
 docker compose up -d   # PostgreSQL y RabbitMQ
@@ -157,13 +157,13 @@ Es seguro reprocesar: 007 y 006 son idempotentes por `stayId`, así que una liqu
 | Requisito de la spec | Dónde se cumple | Dónde se prueba |
 |---|---|---|
 | FR-001 / BR-001 Recibir el evento de Módulo 1 | Cola `modulo3.checkout` enlazada solo a `facturacion.checkout`; `RabbitMqCheckoutRunner`; sin controller | contrato (topología); runner; arquitectura; mensajería; e2e |
-| FR-002 / FR-003 / FR-005 / BR-003 Validación, sin incluir 007 si el evento es inválido | `CheckoutEvent`; `RegisterCheckoutService` paso 3 | checkout-event.spec; servicio; flujo ("evento inválido") |
-| FR-004 / FR-009 / BR-002 Incluye 007 y da lugar a 006 | `CheckoutEventProcessorService` | procesador; flujo; e2e |
-| FR-006 / NFR-003 Sin datos migratorios en los registros de Módulo 3 | Lista blanca del payload de auditoría | checkout-event.spec; contrato; repositorio |
+| FR-002 / FR-003 / FR-005 / BR-003 / SC-002 Validación, sin incluir 007 si el evento es inválido | `CheckoutEvent`; `RegisterCheckoutService` paso 3 | checkout-event.spec; servicio; flujo ("evento inválido") |
+| FR-004 / FR-009 / BR-002 / SC-001 / SC-003 Incluye 007 y da lugar a 006; sin datos tributarios genera la liquidación y no emite factura | `CheckoutEventProcessorService` | procesador; flujo; e2e |
+| FR-006 / NFR-003 / SC-004 Sin datos migratorios en los registros de Módulo 3 | Lista blanca del payload de auditoría | checkout-event.spec; contrato; repositorio |
 | FR-007 No toca ocupación ni disponibilidad | 010 no importa pricing ni el cliente de Módulo 1 | arquitectura |
-| FR-008 / NFR-004 Auditoría y revisión manual | `checkout_event_log` + DLQ; log JSON por mensaje | servicio; flujo; repositorio; log writer |
-| FR-010 / NFR-005 Reintentos (5 × 30 s) y luego revisión manual | `x-retry-count`, `modulo3.checkout.retry.30s`, DLQ | servicio (T019); flujo; mensajería; e2e (retry) |
-| BR-004 Idempotencia por estancia; el mismo `eventId` no se reprocesa | Auditoría por `eventId` + 007/006 por `stayId` | servicio; flujo (reentrega, misma estancia, contradictorio); repositorio |
+| FR-008 / NFR-004 / SC-006 Auditoría y revisión manual (todo rechazo registra su motivo) | `checkout_event_log` + DLQ; log JSON por mensaje | servicio; flujo; repositorio; log writer |
+| FR-010 / NFR-005 / SC-008 Reintentos (5 × 30 s) y luego revisión manual conservando la liquidación | `x-retry-count`, `modulo3.checkout.retry.30s`, DLQ | servicio (T019); flujo; mensajería; e2e (retry) |
+| BR-004 / SC-005 / SC-007 Idempotencia por estancia; el mismo `eventId` no se reprocesa | Auditoría por `eventId` + 007/006 por `stayId` | servicio; flujo (reentrega, misma estancia, contradictorio); repositorio |
 | BR-005 Canal, hospedaje y comisión no vienen en el evento | 007 los toma de Módulo 2 y de la cotización | flujo (OTA) |
 | NFR-001 Determinismo de la validación | `CheckoutEvent` puro | checkout-event.spec |
 | NFR-002 Validación sin consultar otros módulos | Pasos 1–3 antes de 007/006 | flujo ("evento inválido": Módulo 2 no se consulta) |
@@ -177,7 +177,7 @@ Es seguro reprocesar: 007 y 006 son idempotentes por `stayId`, así que una liqu
 |---|---|
 | T001–T004 (módulo, auditoría, deduplicación, transiciones) | Hecho |
 | T005–T007 (topología, publicador, ack manual) | Hecho: sus pruebas pasan contra RabbitMQ real |
-| T008 (integración con PostgreSQL y RabbitMQ) | Hecho: pasa contra el PostgreSQL y el RabbitMQ de `docker compose`, no con Testcontainers como dice el plan (decisión 7) |
+| T008 (integración con PostgreSQL y RabbitMQ) | Hecho: pasa contra el PostgreSQL y el RabbitMQ de `docker compose` (decisión 7) |
 | T009 (e2e del flujo completo) | Hecho: flujo en memoria y e2e real pasan; TC-010 sección 6 pasó a mano |
 | T010 (007 + 006) | Hecho |
 | T011 (consumer activo) | Hecho: `RabbitMqCheckoutRunner` |

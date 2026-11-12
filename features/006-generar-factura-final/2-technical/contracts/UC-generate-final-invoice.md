@@ -15,7 +15,7 @@ Emitir un documento fiscal definitivo para una liquidación `FINAL`, con número
 ## 2. Invocación
 
 ```ts
-// src/domain/ports/in/generate-final-invoice.use-case.ts
+// src/domain/ports/in/billing/generate-final-invoice.use-case.ts
 generate(command: GenerateFinalInvoiceCommand): Promise<GenerateFinalInvoiceResult>
 
 export type GenerateFinalInvoiceResult =
@@ -39,7 +39,7 @@ El comando incluye los campos de check-out del evento más el `billingCustomer` 
 | `roomId` | UUID | Sí | Habitación que se factura | [BASE] |
 | `categoryRoom` | string | Sí | Categoría de habitación del evento; informativa, 007 la guarda pero no interviene en la elección de la cotización | [BASE] [007] |
 | `checkInDate` | date `YYYY-MM-DD` | Sí | Fecha real de entrada | [BASE] [007] |
-| `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha real de salida, posterior a `checkInDate` | [BASE] [007] |
+| `checkOutDate` | date `YYYY-MM-DD` | Sí | Fecha real de salida, igual o posterior a `checkInDate` | [BASE] [007] |
 | `billingCustomer.name` | string | Opcional en el evento; obligatorio para emitir | Nombre o razón social, no vacío | [SPEC FR-008] |
 | `billingCustomer.taxId` | string | Opcional en el evento; obligatorio para emitir | Identificación tributaria/documento fiscal, no vacío | [SPEC FR-008] |
 

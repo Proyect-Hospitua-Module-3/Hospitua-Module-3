@@ -14,7 +14,7 @@ El contexto `checkout-ingestion` consume `facturacion.checkout`, valida el sobre
 **Language/Version**: TypeScript 5.x sobre Node.js 20 LTS, según el Plan Base.
 **Primary Dependencies**: NestJS 10.x, `amqplib` (cliente AMQP 0-9-1, solo en `infrastructure/`), Prisma ORM y RabbitMQ. No se usa `@nestjs/microservices` (`Transport.RMQ`), que propone el Plan Base, porque no permite cumplir este contrato: no publica con `mandatory` ni expone el publisher confirm ni el `basic.return`, no entrega el cuerpo crudo cuando el JSON es inválido y no declara la cola de reintento con sus argumentos.
 **Storage**: PostgreSQL 16; `checkout_event_log` audita el evento con una lista blanca y sin valores tributarios.
-**Testing**: Jest (validación y orquestación), contract test del evento y pruebas de integración contra PostgreSQL y RabbitMQ reales. Siguen el patrón del proyecto: se ejecutan con `TEST_DATABASE_URL` y `TEST_RABBITMQ_URL` y se omiten sin ellas. Las pruebas e2e del flujo completo llegan con 006 y 007.
+**Testing**: Jest (validación y orquestación), contract test del evento y pruebas de integración contra PostgreSQL y RabbitMQ reales. Siguen el patrón del proyecto: se ejecutan con `TEST_DATABASE_URL` y `TEST_RABBITMQ_URL` y se omiten sin ellas. Las pruebas e2e del flujo completo están en `test/e2e/checkout/checkout-flow.e2e-spec.ts`.
 **Target Platform**: Servicio backend Linux en contenedor Docker, dentro del monolito modular del Módulo 3.
 **Project Type**: Consumer asíncrono de RabbitMQ con auditoría y orquestación de servicios internos.
 **Performance Goals**: Validación local sin llamadas externas; la generación de la liquidación se mantiene dentro de 800 ms, conforme al objetivo de 007.
@@ -55,22 +55,27 @@ src/
 │           ├── checkout-message-publisher.port.ts
 │           └── checkout-event-processor.port.ts
 ├── application/
-│   └── services/checkout-ingestion/register-checkout.service.ts
+│   └── services/checkout-ingestion/
+│       ├── register-checkout.service.ts
+│       └── checkout-event-processor.service.ts
 └── infrastructure/
     ├── adapters/
     │   ├── in/messaging/checkout-registered.consumer.ts
     │   ├── out/messaging/rabbitmq-checkout-message-publisher.adapter.ts
     │   └── out/persistence/
+    │       ├── checkout-ingestion/transient-persistence.checkout-processor.ts
     │       ├── mappers/checkout-ingestion/checkout-event-log.mapper.ts
     │       └── repositories/checkout-ingestion/prisma-checkout-event-log.repository.ts
+    ├── logging/checkout-ingestion/
+    │   └── checkout-log-writer.ts
     └── config/
         ├── rabbitmq.config.ts
-        ├── rabbitmq-topology.initializer.ts
+        ├── rabbitmq-checkout.runner.ts
         └── checkout-ingestion.module.ts
 
 prisma/
 ├── schema.prisma
-└── migrations/20261104000000_create_checkout_event_log/migration.sql
+└── migrations/20261106000000_create_checkout_event_log/migration.sql
 
 test/
 ├── unit/
@@ -80,7 +85,7 @@ test/
 │   ├── messaging/checkout-messaging.spec.ts
 │   └── persistence/checkout-ingestion/prisma-checkout-event-log.repository.spec.ts
 ├── contract/messaging/checkout-event.contract.spec.ts
-├── e2e/checkout-flow.e2e-spec.ts   (con T009, cuando existan 006 y 007)
+├── e2e/checkout/checkout-flow.e2e-spec.ts   (T009)
 └── support/checkout-ingestion/
 ```
 
@@ -137,7 +142,7 @@ export interface CheckoutEventProcessorPort {
 }
 ```
 
-`CheckoutEventProcessorPort` separa la orquestación con 007 y 006 del resto del servicio. Así, la auditoría, la validación, los reintentos y la DLQ se implementan y prueban antes de que existan 006 y 007. T010 lo implementa llamando a `GenerateSettlementUseCase` y `GenerateFinalInvoiceUseCase` y traduciendo `NOT_ISSUED` a la nota del contrato. Sus errores llegan como `DomainError`, y el servicio decide con su `errorCode` si el evento va a retry o a la DLQ. Mientras T010 no exista, el consumer no se activa: `CheckoutIngestionModule` solo declara la topología al arrancar (si hay `RABBITMQ_URL`) y los eventos de Módulo 1 esperan en `modulo3.checkout`.
+`CheckoutEventProcessorPort` separa la orquestación con 007 y 006 del resto del servicio. Así, la auditoría, la validación, los reintentos y la DLQ se prueban con un procesador simulado. T010 lo implementa llamando a `GenerateSettlementUseCase` y `GenerateFinalInvoiceUseCase` y traduciendo `NOT_ISSUED` a la nota del contrato. Sus errores llegan como `DomainError`, y el servicio decide con su `errorCode` si el evento va a retry o a la DLQ. `CheckoutIngestionModule` configura `RabbitMqCheckoutRunner`, que declara la topología y activa el consumer al conectar con RabbitMQ (si hay `RABBITMQ_URL`).
 
 Las operaciones del repositorio registran inicialmente `PENDING` por `eventId` o devuelven el registro existente; ese registro permite reanudar un procesamiento en `PENDING`. Las transiciones finales fijan `processed_at`; este campo permanece nulo en `PENDING`. `result_note` se informa únicamente para un resultado `PROCESSED` sin factura. El rechazo de un sobre no reconocible registra `INVALID_CHECKOUT_EVENT` con `event_id` y `payload` nulos.
 
@@ -211,7 +216,7 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 **Purpose**: Definir la auditoría, la publicación de mensajes y la topología compartida por las historias.
 
-- [x] T002 Definir `CheckoutEventLog`, sus estados y `CheckoutEventLogRepositoryPort`. Agregar el modelo `CheckoutEventLog` a `prisma/schema.prisma` con la migración correspondiente y `UNIQUE` parcial sobre `event_id`. Definir en `domain/ports/out/checkout-message-publisher.port.ts` las operaciones de publicación a retry y DLQ.
+- [x] T002 Definir `CheckoutEventLog`, sus estados y `CheckoutEventLogRepositoryPort`. Agregar el modelo `CheckoutEventLog` a `prisma/schema.prisma` con la migración correspondiente y `UNIQUE` parcial sobre `event_id`. Definir en `domain/ports/out/checkout-ingestion/checkout-message-publisher.port.ts` las operaciones de publicación a retry y DLQ.
 - [x] T003 Implementar `registerIfAbsent(...)` con deduplicación atómica por `eventId`.
 - [x] T004 Implementar las transiciones de auditoría (`markProcessed`, `markRejected`, `markDeadLetter` y `registerUnrecognizedEnvelopeRejection`) mediante las operaciones de `CheckoutEventLogRepositoryPort`.
 - [x] T005 Configurar la topología RabbitMQ conforme al Plan Base. Declarar `modulo3.checkout.retry.30s` durable, sin binding a `hospitua.events`, con `x-message-ttl: 30000`, `x-dead-letter-exchange: ""` y `x-dead-letter-routing-key: modulo3.checkout`; declarar `modulo3.checkout.dlq` durable y sin binding a `hospitua.events`; no declarar `hospitua.events.dlx`; mantener la cola principal sin argumentos nuevos; declarar el binding de `modulo3.checkout` a `facturacion.checkout` en el exchange `hospitua.events`.
@@ -230,7 +235,7 @@ El procesamiento del evento es asíncrono. Módulo 1 consulta normalmente antes 
 
 ### Tests for User Story 1
 
-- [x] T008 [US1] Pruebas de integración con Testcontainers para PostgreSQL y RabbitMQ: auditoría atómica, deduplicación, ack, publicación a DLQ con ack, `DATABASE_UNAVAILABLE`, `FINAL_SETTLEMENT_NOT_FOUND` y `UNEXPECTED_ERROR`. Verificar publicaciones persistentes a retry y DLQ con `mandatory`, publisher confirm y `basic.return`; una publicación devuelta, fallida o no confirmada debe causar nack con reencolado del original. Verificar que el servicio confirma la publicación antes de escribir el estado terminal y que una publicación fallida deja el registro reconocible en `PENDING` y resulta en `NACK_REQUEUE`. Verificar que un `eventId` presente sin formato UUID se trata como sobre no reconocible, y que, si falla la escritura del estado tras confirmar la publicación a la DLQ, la reentrega repite la publicación. Verificar que una falla de escritura de la auditoría anterior a cualquier publicación a la DLQ, incluida la de `registerIfAbsent(...)`, sigue la ruta de retry y que el registro se crea cuando una reentrega logra escribirlo.
+- [x] T008 [US1] Pruebas de integración con PostgreSQL y RabbitMQ mediante `TEST_DATABASE_URL` y `TEST_RABBITMQ_URL`: auditoría atómica, deduplicación, ack, publicación a DLQ con ack, `DATABASE_UNAVAILABLE`, `FINAL_SETTLEMENT_NOT_FOUND` y `UNEXPECTED_ERROR`. Verificar publicaciones persistentes a retry y DLQ con `mandatory`, publisher confirm y `basic.return`; una publicación devuelta, fallida o no confirmada debe causar nack con reencolado del original. Verificar que el servicio confirma la publicación antes de escribir el estado terminal y que una publicación fallida deja el registro reconocible en `PENDING` y resulta en `NACK_REQUEUE`. Verificar que un `eventId` presente sin formato UUID se trata como sobre no reconocible, y que, si falla la escritura del estado tras confirmar la publicación a la DLQ, la reentrega repite la publicación. Verificar que una falla de escritura de la auditoría anterior a cualquier publicación a la DLQ, incluida la de `registerIfAbsent(...)`, sigue la ruta de retry y que el registro se crea cuando una reentrega logra escribirlo.
 - [x] T009 [US1] Pruebas e2e del flujo de check-out completo y del flujo sin factura por datos tributarios incompletos; verificar que el procesamiento no modifica la ocupación, disponibilidad ni bloqueo físico de la habitación.
 
 ### Implementation for User Story 1

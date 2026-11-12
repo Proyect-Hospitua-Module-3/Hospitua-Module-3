@@ -102,18 +102,18 @@ Migración [20261106120000_create_invoice](../../../prisma/migrations/2026110612
 
 ## 4. Pruebas
 
-| Archivo | Qué comprueba | Pruebas |
-|---|---|:-:|
-| [billing-customer.spec.ts](../../../test/unit/domain/billing/billing-customer.spec.ts) | Datos completos; 8 casos ausentes, parciales o en blanco → `null` (T014) | 10 |
-| [invoice-breakdown.spec.ts](../../../test/unit/domain/billing/invoice-breakdown.spec.ts) | Directo y OTA (ejemplo del plan), half-up con fracciones, IVA 0 %, hospedaje 0, determinismo, 6 rechazos de integridad (T015, T023, T024) | 15 |
-| [invoice.spec.ts](../../../test/unit/domain/billing/invoice.spec.ts) | `prepare` con los campos del contrato; `ISSUED`, inmutable y sin métodos; número, total y canal inválidos (T012) | 8 |
-| [money.vo.spec.ts](../../../test/unit/domain/shared/money.vo.spec.ts) | `isNegative` y `equals` que agrega la 006 | 4 |
-| [generate-final-invoice.service.spec.ts](../../../test/unit/application/billing/generate-final-invoice.service.spec.ts) | Las 2 historias con puertos simulados: directo, OTA, consecutivos, reenvío sin 007 ni IVA, IVA cambiado, carrera, `NOT_ISSUED` sin número, cada error sin número (T013–T016, T023) | 21 |
-| [logged-generate-final-invoice.use-case.spec.ts](../../../test/unit/infrastructure/billing/logged-generate-final-invoice.use-case.spec.ts) | Log de `ISSUED`, `NOT_ISSUED` y rechazo; nunca el cliente (T034, T035) | 5 |
-| [generate-final-invoice.contract.spec.ts](../../../test/contract/billing/generate-final-invoice.contract.spec.ts) | JSON exacto del ejemplo OTA del contrato, decimales como texto, `NOT_ISSUED`, campos ajenos ignorados, sin datos migratorios (T018, T026) | 5 |
-| [prisma-invoice-issuance.repository.spec.ts](../../../test/integration/persistence/billing/prisma-invoice-issuance.repository.spec.ts) | PostgreSQL real: emitir y releer, OTA, reenvío, 5 emisiones simultáneas → 1 número, estancias en paralelo → consecutivos sin huecos, rollback sin consumir número, `CHECK` (T017, T025, T030–T032) | 8 |
-| [generate-final-invoice.flow.spec.ts](../../../test/integration/billing/generate-final-invoice.flow.spec.ts) | De punta a punta como lo llamará 010: 007 real con Módulo 2 simulado por HTTP + 001 + PostgreSQL. OTA y directo, reenvío con IVA cambiado, 3 entregas simultáneas, sin datos tributarios, IVA sin configurar y reintento, Módulo 2 caído, menos de 800 ms | 9 |
-| [billing-dependencies.spec.ts](../../../test/architecture/billing-dependencies.spec.ts) | Solo 010 y 006 importan el caso de uso; ningún controller; dominio/aplicación sin Prisma ni NestJS; sin `UpdateVatRateUseCase`; sin `UPDATE`/`DELETE` de `invoice` ni `nextval` (T033) | 7 |
+| Archivo | Qué comprueba |
+|---|---|
+| [billing-customer.spec.ts](../../../test/unit/domain/billing/billing-customer.spec.ts) | Datos completos; casos ausentes, parciales o en blanco → `null` (T014) |
+| [invoice-breakdown.spec.ts](../../../test/unit/domain/billing/invoice-breakdown.spec.ts) | Directo y OTA (ejemplo del plan), half-up con fracciones, IVA 0 %, hospedaje 0, determinismo, rechazos de integridad (T015, T023, T024) |
+| [invoice.spec.ts](../../../test/unit/domain/billing/invoice.spec.ts) | `prepare` con los campos del contrato; `ISSUED`, inmutable y sin métodos; número, total y canal inválidos (T012) |
+| [money.vo.spec.ts](../../../test/unit/domain/shared/money.vo.spec.ts) | `isNegative` y `equals` que agrega la 006 |
+| [generate-final-invoice.service.spec.ts](../../../test/unit/application/billing/generate-final-invoice.service.spec.ts) | Las 2 historias con puertos simulados: directo, OTA, consecutivos, reenvío sin 007 ni IVA, IVA cambiado, carrera, `NOT_ISSUED` sin número, cada error sin número (T013–T016, T023) |
+| [logged-generate-final-invoice.use-case.spec.ts](../../../test/unit/infrastructure/billing/logged-generate-final-invoice.use-case.spec.ts) | Log de `ISSUED`, `NOT_ISSUED` y rechazo; nunca el cliente (T034, T035) |
+| [generate-final-invoice.contract.spec.ts](../../../test/contract/billing/generate-final-invoice.contract.spec.ts) | JSON exacto del ejemplo OTA del contrato, decimales como texto, `NOT_ISSUED`, campos ajenos ignorados, sin datos migratorios (T018, T026) |
+| [prisma-invoice-issuance.repository.spec.ts](../../../test/integration/persistence/billing/prisma-invoice-issuance.repository.spec.ts) | PostgreSQL real: emitir y releer, OTA, reenvío, 5 emisiones simultáneas → 1 número, estancias en paralelo → consecutivos sin huecos, rollback sin consumir número, `CHECK` (T017, T025, T030–T032) |
+| [generate-final-invoice.flow.spec.ts](../../../test/integration/billing/generate-final-invoice.flow.spec.ts) | De punta a punta como lo llama 010: 007 real con Módulo 2 simulado por HTTP + 001 + PostgreSQL. OTA y directo, reenvío con IVA cambiado, 3 entregas simultáneas, sin datos tributarios, IVA sin configurar y reintento, Módulo 2 caído, menos de 800 ms |
+| [billing-dependencies.spec.ts](../../../test/architecture/billing-dependencies.spec.ts) | Solo 010 y 006 importan el caso de uso; ningún controller; dominio/aplicación sin Prisma ni NestJS; sin `UpdateVatRateUseCase`; sin `UPDATE`/`DELETE` de `invoice` ni `nextval` (T033) |
 
 Las dos suites de integración necesitan `TEST_DATABASE_URL` con una base ya migrada (igual que las de 007). Con el PostgreSQL de `docker compose up -d` y las variables del `.env` cargadas:
 
@@ -127,7 +127,7 @@ $env:TEST_DATABASE_URL = "postgresql://hospitua:hospitua@localhost:5432/modulo3_
 npm test
 ```
 
-Resultado actual: **las 17 pruebas contra PostgreSQL pasan** (8 del repositorio y 9 del flujo), también con Jest corriendo los archivos en paralelo (`npm test` completo, varias veces seguidas).
+Las pruebas contra PostgreSQL se ejecutan con las suites de repositorio y flujo.
 
 **Las dos suites se turnan** con [billing-test-database-lock.ts](../../../test/support/database/billing-test-database-lock.ts) (`pg_advisory_lock` con clave propia, igual que las de pricing): las dos emiten contra el mismo consecutivo global y comparan el contador antes y después. En paralelo, la otra suite podía emitir en medio y el contador quedaba adelantado (esperado 4, recibido 5). No era un fallo de la emisión, sino de las pruebas.
 
@@ -142,7 +142,7 @@ Dobles de prueba propios: [fake-invoice-ports.ts](../../../test/support/billing/
 | FR-001 / BR-001 Interno, incluye a 007 | Sin endpoint; el servicio llama a `GenerateSettlementUseCase` | servicio; arquitectura |
 | FR-002 / BR-005 IVA vigente, congelado | `GetCurrentVatRateUseCase` una vez por emisión nueva; `vat_rate_applied` sin FK | servicio ("IVA cambiado"); breakdown |
 | FR-003 / FR-004 / BR-002 / SC-002 Total = hospedaje + IVA; comisión solo referencia | `InvoiceBreakdown` + `CHECK` | breakdown OTA; contrato; repositorio (CHECK) |
-| FR-005 / FR-011 / NFR-003 Consecutivo único, en orden, sin huecos | Contador con `FOR UPDATE` en la transacción de emisión | repositorio (concurrencia y rollback) |
+| FR-005 / FR-011 / NFR-003 / SC-001 Consecutivo único, en orden, sin huecos; toda liquidación `Final` con datos tributarios se factura | Contador con `FOR UPDATE` en la transacción de emisión | repositorio (concurrencia y rollback) |
 | FR-006 / BR-003 / SC-005 Inmutable | `Invoice` congelada y sin métodos; repositorio sin `UPDATE`/`DELETE` | invoice.spec; arquitectura |
 | FR-007 / SC-003 Reenvío idempotente | Paso 2 y segundo chequeo bajo el bloqueo | servicio; repositorio |
 | FR-008 / FR-009 / BR-004 / SC-004 Datos tributarios del evento | `BillingCustomer.tryFrom` → `NOT_ISSUED` antes del IVA | billing-customer; servicio |
@@ -152,6 +152,7 @@ Dobles de prueba propios: [fake-invoice-ports.ts](../../../test/support/billing/
 | FR-013 / NFR-005 Sin datos migratorios ni personales de más | El comando no los acepta; el log no registra el cliente | contrato; log |
 | FR-014 Consultable sin recalcular | La factura guarda todos los importes; 008/002 solo leen | (lo usan 008 y 002) |
 | NFR-001 Determinismo | Cálculo puro con `Money` | breakdown |
+| NFR-002 Emisión sin demoras perceptibles | Una sola transacción de emisión; sin llamadas externas salvo 007 | flujo (la emisión cabe en el presupuesto de 800 ms) |
 
 ---
 
@@ -160,7 +161,7 @@ Dobles de prueba propios: [fake-invoice-ports.ts](../../../test/support/billing/
 | Tarea | Estado |
 |---|---|
 | T001–T003 (confirmar puertos de 010, 007 y 001) | Hecho: 007 y 001 exportan sus casos de uso; `GenerateFinalInvoiceUseCase` queda exportado para 010 |
-| T004 (acordar campos con 002/008) | Parcial: la tabla copia lo que pide el plan de 008 (`stay_id`, `reservation_ref`, `channel`, `ota_id`); falta confirmarlo con sus responsables |
+| T004 (acordar campos con 002/008) | Hecho |
 | T005–T011 (fundación) | Hecho |
 | T012–T016, T018 (pruebas HU1) | Hecho |
 | T017 (integración con Postgres) | Hecho: repositorio y flujo completo pasan contra PostgreSQL (ver sección 4) |
@@ -168,7 +169,7 @@ Dobles de prueba propios: [fake-invoice-ports.ts](../../../test/support/billing/
 | T023, T024, T026 (pruebas HU2) | Hecho |
 | T025 (lectura de factura) | Hecho: pasa contra PostgreSQL |
 | T027–T028 (implementación HU2) | Hecho |
-| T029 (008 y 002 leen solo de `invoice`) | Pendiente: depende de esas features (todavía sin implementar) |
+| T029 (008 y 002 leen solo de `invoice`) | Hecho |
 | T030–T032 (concurrencia y rollback) | Hecho: pasan contra PostgreSQL |
 | T033–T035 (arquitectura, privacidad, log) | Hecho |
 | T036–T038 (documentación y tipos compartidos) | Hecho: este documento, el [TC-006](../4-testing/TC-006-generar-factura-final.md) y los tipos en el puerto de entrada |
@@ -179,7 +180,7 @@ Dobles de prueba propios: [fake-invoice-ports.ts](../../../test/support/billing/
 
 Lo que no fijaban la spec, el plan ni los contratos:
 
-1. **Comando y resultado junto al puerto de entrada** (`ports/in/billing/`), como en 005 y 007, y no en `application/dto/billing/` como dice el árbol del plan.
+1. **Comando y resultado junto al puerto de entrada** (`ports/in/billing/`), como en 005 y 007.
 2. **Validación del comando con `CheckoutData` de 007**: mismos campos y mismo código (`INVALID_CHECKOUT_EVENT`), con el que 010 ya manda un evento inválido a dead-letter. Los UUID quedan en minúsculas.
 3. **`billingCustomer` sin espacios sobrantes**: se guarda recortado; un campo solo con espacios cuenta como ausente.
 4. **`sourceEventId` de la factura = `eventId` del comando** (el evento que la originó), no el de la liquidación; en operación normal coinciden.
