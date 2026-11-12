@@ -1,6 +1,6 @@
 # Implementation Plan: Consultar porcentaje de comisión OTA
 
-**Date**: 2026-10-09
+**Date**: 2026-10-09 (ajustado a la implementación el 2026-11-12)
 **Spec**: [consultar_porcentaje_comision_ota.md](../1-functional/consultar_porcentaje_comision_ota.md)
 **Proyecto base**: [plan-tecnico-base.md](../../../docs/plan-tecnico-base.md)
 **Bounded context**: `ota-commission`
@@ -18,7 +18,7 @@ Se hereda el stack y las convenciones de `docs/plan-tecnico-base.md` (NestJS 10 
 **Language/Version**: TypeScript 5.x sobre Node.js 20 LTS
 **Primary Dependencies**: NestJS 10.x, Prisma ORM (solo lecturas sobre `settlement`), `decimal.js` a través de `CommissionPercentage` (el porcentaje no se maneja como `number`)
 **Storage**: no posee tablas propias; lee `settlement` (propiedad del contexto `settlement`, feature 007) en modo exclusivamente de lectura, usando las columnas `ota_id`, `ota_commission_percentage` y `generated_at`
-**Testing**: Jest (unitarias de dominio y de aplicación con puertos mockeados), Supertest + Testcontainers (integración de la consulta contra `settlement` real y e2e por rol), `dependency-cruiser` (regla estática de arquitectura)
+**Testing**: Jest (unitarias de dominio y de aplicación con puertos mockeados, y de arquitectura leyendo los imports de `src/`), Supertest (contrato HTTP), Jest contra un PostgreSQL ya migrado en `TEST_DATABASE_URL` (integración y e2e, igual que el resto del proyecto; sin la variable se omiten)
 **Target Platform**: servicio backend Linux en contenedor Docker (bounded context `ota-commission` del monolito modular de Módulo 3)
 **Project Type**: servicio backend único (monolito modular hexagonal), sin frontend en este repositorio
 **Performance Goals**: no bloquear a Módulo 2 al preparar una reserva (NFR-002); la consulta usa el índice `(ota_id, generated_at DESC)` que define el plan de 007 para esta feature
@@ -33,49 +33,66 @@ Se hereda el stack y las convenciones de `docs/plan-tecnico-base.md` (NestJS 10 
 features/003-consultar-porcentaje-comision-ota/
 ├── 1-functional/
 │   └── consultar_porcentaje_comision_ota.md   # Spec funcional (fuente de verdad de negocio)
-└── 2-technical/
-    ├── plan.md                                 # Este archivo
-    └── contracts/
-        └── GET-ota-commission-otaid.md         # Contrato REST de GET /ota-commission/{otaId}
+├── 2-technical/
+│   ├── plan.md                                 # Este archivo
+│   └── contracts/
+│       └── GET-ota-commission-otaid.md         # Contrato REST de GET /ota-commission/{otaId}
+├── 3-implementation/
+│   └── implementacion.md                       # Mapa de la implementación: archivos, pruebas y trazabilidad
+└── 4-testing/
+    ├── TC-003-consultar-porcentaje-comision-ota.md   # Caso de prueba manual (Postman/Swagger) de los 6 escenarios
+    ├── datos-tc-003.sql                        # Historial de liquidaciones y cotización del TC-003
+    └── modulo2-simulado.js                     # Reserva de Módulo 2 para el check-out real de la HU2
 ```
 
 ### Source Code (repository root)
 
-Solo se listan los archivos propiedad de 003, dentro de la estructura por capas del plan base (`ota-commission` como subcarpeta de cada capa).
+Solo se listan los archivos propiedad de 003, dentro de la estructura por capas del plan base (`ota-commission` como subcarpeta de cada capa). El mapa completo, con qué hace cada archivo, está en [3-implementation/implementacion.md](../3-implementation/implementacion.md).
 
 ```text
 src/
 ├── domain/
 │   ├── model/ota-commission/
-│   │   └── ota-commission-reference.ts        # { otaId, percentage, settlementId, settlementDate }, inmutable
-│   ├── errors/
-│   │   ├── commission-not-applicable.error.ts # El identificador consultado es el canal directo, no una OTA (FR-006)
+│   │   ├── ota-commission-reference.ts        # { otaId, percentage, settlementId, settlementDate }, inmutable; OtaCommissionResult
+│   │   └── ota-commission-query.ts            # parseOtaId (vacío / DIRECT) y OtaCommissionCaller (INTERNAL | OTA)
+│   ├── errors/ota-commission/
+│   │   ├── commission-not-applicable.error.ts # El identificador consultado es el canal directo (FR-006) → 400 INVALID_QUERY_PARAMS
+│   │   ├── invalid-ota-commission-query.error.ts # otaId vacío → 400 INVALID_QUERY_PARAMS
 │   │   └── ota-access-denied.error.ts         # Una OTA consulta a otra OTA (BR-003) → 403 FORBIDDEN
 │   └── ports/
-│       ├── in/
-│       │   └── get-latest-ota-commission.use-case.ts   # (otaId, requestingActor) → referencia o "sin historial"
-│       └── out/
+│       ├── in/ota-commission/
+│       │   └── get-latest-ota-commission.use-case.ts   # (otaId, caller) → HISTORICAL o NO_HISTORY
+│       └── out/ota-commission/
 │           └── ota-commission-query.port.ts    # Solo lectura sobre settlement: findLatestByOtaId(otaId)
 │
-├── application/
-│   └── services/ota-commission/
-│       └── get-latest-ota-commission.service.ts   # Regla de acceso por actor (antes de leer) + traducción de "sin historial"
+├── application/services/ota-commission/
+│   └── get-latest-ota-commission.service.ts   # Valida otaId y el alcance de la OTA (antes de leer) + "sin historial"
 │
-└── infrastructure/
-    └── adapters/
-        ├── in/http/
-        │   └── ota-commission.controller.ts   # GET /ota-commission/{otaId}; @Roles("OTA") opcional según haya token (ver Autorización)
-        └── out/persistence/
-            └── repositories/prisma-ota-commission-query.adapter.ts   # SELECT puro sobre settlement; ninguna escritura
+├── infrastructure/
+│   ├── adapters/
+│   │   ├── in/http/ota-commission/
+│   │   │   ├── ota-commission.controller.ts   # GET /ota-commission/{otaId}
+│   │   │   ├── ota-commission-access.guard.ts # Sin token → interna; con token: solo rol OTA con claim otaId
+│   │   │   └── dto/ota-commission.dto.ts      # Respuesta 200 para Swagger
+│   │   └── out/persistence/repositories/ota-commission/
+│   │       └── prisma-ota-commission-query.adapter.ts   # SELECT puro sobre settlement en READ ONLY
+│   └── config/
+│       └── ota-commission.module.ts           # Binding puerto → adaptador y caso de uso
+└── app.module.ts                              # (modificado) importa OtaCommissionModule
 
 test/
-├── unit/application/get-latest-ota-commission.service.spec.ts
-├── integration/persistence/prisma-ota-commission-query.adapter.spec.ts   # Testcontainers, datos reales de settlement
-├── contract/ota-commission.contract.spec.ts                               # GET /ota-commission/{otaId}
-└── e2e/ota-commission.e2e-spec.ts                                         # 200 con y sin historial / 400 / 401 / 403
+├── unit/
+│   ├── domain/ota-commission/ota-commission-query.spec.ts
+│   ├── application/ota-commission/get-latest-ota-commission.service.spec.ts
+│   └── infrastructure/ota-commission/ota-commission-access.guard.spec.ts
+├── architecture/ota-commission-dependencies.spec.ts                       # Regla asimétrica settlement ↛ ota-commission
+├── contract/ota-commission/ota-commission.contract.spec.ts                # GET /ota-commission/{otaId}
+├── integration/persistence/ota-commission/prisma-ota-commission-query.adapter.spec.ts   # PostgreSQL real (TEST_DATABASE_URL)
+├── e2e/ota-commission/consultar-comision-ota.e2e-spec.ts                  # 007 + PostgreSQL + HTTP, incluida HU2
+└── support/ota-commission/in-memory-ota-commission-query.ts              # Doble en memoria del puerto
 ```
 
-**Structure Decision**: `ota-commission` es un contexto propio cuyo único adaptador saliente lee, sin escribir, la tabla `settlement` del contexto `settlement`, aceptando el acoplamiento de lectura típico de un monolito modular con una única base de datos. La dependencia es **asimétrica**: `ota-commission` puede leer de `settlement`, pero `settlement` nunca puede importar nada de `ota-commission` (BR-004). Se protege con una regla de `dependency-cruiser` ejecutada en CI (Phase 2).
+**Structure Decision**: `ota-commission` es un contexto propio cuyo único adaptador saliente lee, sin escribir, la tabla `settlement` del contexto `settlement`, aceptando el acoplamiento de lectura típico de un monolito modular con una única base de datos. La dependencia es **asimétrica**: `ota-commission` puede leer de `settlement`, pero `settlement` nunca puede importar nada de `ota-commission` (BR-004). La protege la prueba de arquitectura `test/architecture/ota-commission-dependencies.spec.ts`, que corre en `npm test` (Phase 2), igual que la regla equivalente de 007.
 
 **Nota de coordinación con 007**: el plan base define para esta feature un puerto y un adaptador propios (`ota-commission-query.port.ts`, `prisma-ota-commission-query.adapter.ts`), y este plan los sigue: `ota-commission` lee `settlement` con su propio puerto de lectura y no depende del repositorio de `settlement`. 007 ya no expone `findLatestByOtaId`; solo crea las columnas y el índice `(ota_id, generated_at DESC)` que 003 lee (T002).
 
@@ -116,8 +133,8 @@ Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se tra
 
 **Purpose**: Dejar listo el adaptador de lectura y el wiring del contexto, sin tocar el esquema de `settlement`
 
-- [ ] T001 Registrar en `src/infrastructure/config/ota-commission.module.ts` el token `OtaCommissionQueryPort` → `PrismaOtaCommissionQueryAdapter` y `GetLatestOtaCommissionUseCase` → `GetLatestOtaCommissionService`
-- [ ] T002 Confirmar (no migrar) que `settlement` tiene el índice `(ota_id, generated_at DESC)` y las columnas `ota_id`, `ota_commission_percentage`, `generated_at`, tal como las define el plan de 007; si algo falta, se acuerda con 007 como cambio sobre una tabla de su propiedad
+- [x] T001 Registrar en `src/infrastructure/config/ota-commission.module.ts` el token `OtaCommissionQueryPort` → `PrismaOtaCommissionQueryAdapter` y `GetLatestOtaCommissionUseCase` → `GetLatestOtaCommissionService`
+- [x] T002 Confirmar (no migrar) que `settlement` tiene el índice `(ota_id, generated_at DESC)` y las columnas `ota_id`, `ota_commission_percentage`, `generated_at`, tal como las define el plan de 007; si algo falta, se acuerda con 007 como cambio sobre una tabla de su propiedad — confirmado en `prisma/schema.prisma` (`@@index([otaId, generatedAt(sort: Desc)])`) y en la migración `20261105000000_create_settlement`; no hizo falta ningún cambio
 
 **Checkpoint**: el contexto puede leer `settlement` sin que `settlement` conozca la existencia de `ota-commission`.
 
@@ -129,11 +146,11 @@ Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se tra
 
 **⚠️ CRITICAL**: Ninguna historia de usuario de esta feature puede comenzar hasta completar esta fase.
 
-- [ ] T003 [US2] Regla de `dependency-cruiser` (en la configuración de la T004 del plan base): ningún archivo del contexto `settlement` (`domain/model/settlement`, `application/services/settlement`, y los puertos y adaptadores de `settlement`) puede importar nada de los archivos de `ota-commission` en ninguna capa
-- [ ] T004 [US2] Hacer que ese chequeo corra en el CI base (T005 del plan base) y falle el build si `GenerateSettlementService` o cualquier caso de uso de `settlement` referencia `GetLatestOtaCommissionUseCase`
-- [ ] T005 [US2] Comentario de arquitectura en `get-latest-ota-commission.use-case.ts`: esta consulta es consumidora de `settlement`, nunca al revés (BR-001, BR-004)
+- [x] T003 [US2] Regla de `dependency-cruiser` (en la configuración de la T004 del plan base): ningún archivo del contexto `settlement` (`domain/model/settlement`, `application/services/settlement`, y los puertos y adaptadores de `settlement`) puede importar nada de los archivos de `ota-commission` en ninguna capa — implementada como prueba Jest de arquitectura (`test/architecture/ota-commission-dependencies.spec.ts`), igual que en 007: el proyecto no tiene `dependency-cruiser` instalado
+- [x] T004 [US2] Hacer que ese chequeo corra en el CI base (T005 del plan base) y falle el build si `GenerateSettlementService` o cualquier caso de uso de `settlement` referencia `GetLatestOtaCommissionUseCase` — el proyecto no tiene CI configurado: la prueba corre en `npm test` y falla si cualquier archivo de `settlement` importa algo de `ota-commission` o si alguien fuera del contexto importa `GetLatestOtaCommissionUseCase`
+- [x] T005 [US2] Comentario de arquitectura en `get-latest-ota-commission.use-case.ts`: esta consulta es consumidora de `settlement`, nunca al revés (BR-001, BR-004)
 
-**Checkpoint**: Foundation ready — la independencia entre `Generar liquidación` y esta consulta queda verificada por CI y las historias de usuario pueden comenzar.
+**Checkpoint**: Foundation ready — la independencia entre `Generar liquidación` y esta consulta queda verificada por la prueba de arquitectura de `npm test` y las historias de usuario pueden comenzar.
 
 ---
 
@@ -145,20 +162,20 @@ Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se tra
 
 ### Tests for User Story 1
 
-- [ ] T006 [P] [US1] Unit test de `GetLatestOtaCommissionService` con `OtaCommissionQueryPort` mockeado: con un registro devuelve porcentaje y fecha con `historical: true`
-- [ ] T007 [P] [US1] Unit test: con el puerto devolviendo `null` retorna (no lanza) `{ otaId, historical: false }`, nunca 0% ni `undefined`
-- [ ] T008 [P] [US1] Unit test: un `otaId` del canal directo (`DIRECT`) lanza `CommissionNotApplicableError` sin llamar al puerto (FR-006, NFR-004)
-- [ ] T009 [US1] Integration test con Testcontainers: sembrar varias filas de `settlement` de una misma OTA con distintos `generated_at` y verificar que el adaptador devuelve la más reciente; sembrar filas de canal directo y verificar que nunca se devuelven
-- [ ] T010 [US1] Contract test `GET /ota-commission/{otaId}`: 200 con `historical: true` y los campos acordados; 200 con `historical: false` y sin `percentage`; 400 `INVALID_QUERY_PARAMS` para el canal directo
+- [x] T006 [P] [US1] Unit test de `GetLatestOtaCommissionService` con `OtaCommissionQueryPort` mockeado: con un registro devuelve porcentaje y fecha con `historical: true`
+- [x] T007 [P] [US1] Unit test: con el puerto devolviendo `null` retorna (no lanza) `{ otaId, historical: false }`, nunca 0% ni `undefined`
+- [x] T008 [P] [US1] Unit test: un `otaId` del canal directo (`DIRECT`) lanza `CommissionNotApplicableError` sin llamar al puerto (FR-006, NFR-004)
+- [x] T009 [US1] Integration test con Testcontainers: sembrar varias filas de `settlement` de una misma OTA con distintos `generated_at` y verificar que el adaptador devuelve la más reciente; sembrar filas de canal directo y verificar que nunca se devuelven — contra un PostgreSQL ya migrado en `TEST_DATABASE_URL` (convención del proyecto, sin Testcontainers); sin la variable se omite
+- [x] T010 [US1] Contract test `GET /ota-commission/{otaId}`: 200 con `historical: true` y los campos acordados; 200 con `historical: false` y sin `percentage`; 400 `INVALID_QUERY_PARAMS` para el canal directo
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Implementar `OtaCommissionReference` (objeto de valor inmutable: `otaId`, `percentage` como decimal exacto, `settlementId`, `settlementDate`)
-- [ ] T012 [US1] Definir `OtaCommissionQueryPort.findLatestByOtaId(otaId): Promise<OtaCommissionReference | null>` en `domain/ports/out`
-- [ ] T013 [US1] Implementar `GetLatestOtaCommissionService(otaId, requestingActor)`: valida el `otaId` (canal directo → error), aplica la regla de acceso (Phase 4), invoca el puerto y traduce `null` a un resultado explícito "sin historial"
-- [ ] T014 [US1] Implementar `PrismaOtaCommissionQueryAdapter`: `SELECT` puro sobre `settlement` filtrando `ota_id` y `channel = 'OTA'`, `ORDER BY generated_at DESC LIMIT 1`; ninguna escritura, ni siquiera transaccional
-- [ ] T015 [US1] Implementar `OtaCommissionController` (`GET /ota-commission/{otaId}`) marcando siempre la respuesta como histórica y referencial, no contractual (FR-002)
-- [ ] T016 [US1] Registrar `CommissionNotApplicableError` → 400 `INVALID_QUERY_PARAMS` en el `ExceptionFilter` global
+- [x] T011 [US1] Implementar `OtaCommissionReference` (objeto de valor inmutable: `otaId`, `percentage` como decimal exacto, `settlementId`, `settlementDate`)
+- [x] T012 [US1] Definir `OtaCommissionQueryPort.findLatestByOtaId(otaId): Promise<OtaCommissionReference | null>` en `domain/ports/out`
+- [x] T013 [US1] Implementar `GetLatestOtaCommissionService(otaId, requestingActor)`: valida el `otaId` (canal directo → error), aplica la regla de acceso (Phase 4), invoca el puerto y traduce `null` a un resultado explícito "sin historial"
+- [x] T014 [US1] Implementar `PrismaOtaCommissionQueryAdapter`: `SELECT` puro sobre `settlement` filtrando `ota_id` y `channel = 'OTA'`, `ORDER BY generated_at DESC LIMIT 1`; ninguna escritura, ni siquiera transaccional
+- [x] T015 [US1] Implementar `OtaCommissionController` (`GET /ota-commission/{otaId}`) marcando siempre la respuesta como histórica y referencial, no contractual (FR-002)
+- [x] T016 [US1] Registrar `CommissionNotApplicableError` → 400 `INVALID_QUERY_PARAMS` en el `ExceptionFilter` global — no requirió cambios: `INVALID_QUERY_PARAMS` → 400 ya estaba registrado
 
 **Checkpoint**: Módulo 2 puede consultar el historial de comisión de cualquier OTA, con o sin liquidaciones previas, sin ambigüedad.
 
@@ -172,15 +189,15 @@ Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se tra
 
 ### Tests for User Story 3
 
-- [ ] T017 [P] [US3] Unit test de autorización: actor OTA con `otaId` distinto al del parámetro → `OtaAccessDeniedError`, sin llegar a invocar el puerto de lectura (evita fuga por tiempo de respuesta o por existencia)
-- [ ] T018 [P] [US3] Unit test: actor interno (Módulo 2) puede consultar cualquier `otaId`
-- [ ] T019 [US3] Test e2e: OTA consultando su propio `otaId` → 200; OTA consultando un `otaId` ajeno → 403 con el mismo cuerpo exista o no historial de la otra OTA; token inválido o expirado → 401; sin token → llamada interna permitida; token con rol `Administrador` → 403
+- [x] T017 [P] [US3] Unit test de autorización: actor OTA con `otaId` distinto al del parámetro → `OtaAccessDeniedError`, sin llegar a invocar el puerto de lectura (evita fuga por tiempo de respuesta o por existencia)
+- [x] T018 [P] [US3] Unit test: actor interno (Módulo 2) puede consultar cualquier `otaId`
+- [x] T019 [US3] Test e2e: OTA consultando su propio `otaId` → 200; OTA consultando un `otaId` ajeno → 403 con el mismo cuerpo exista o no historial de la otra OTA; token inválido o expirado → 401; sin token → llamada interna permitida; token con rol `Administrador` → 403
 
 ### Implementation for User Story 3
 
-- [ ] T020 [US3] En `OtaCommissionController`, aplicar la lectura del token cuando existe: con token, validar con `RolesGuard` que `role = OTA` y extraer el claim `otaId`; sin token, tratar la llamada como interna (plan base, sección Autorización)
-- [ ] T021 [US3] En `GetLatestOtaCommissionService`, aplicar la regla de alcance (BR-003, FR-009): si el actor es OTA, exigir `actor.otaId === otaId` y lanzar `OtaAccessDeniedError` en caso contrario, **antes** de tocar el puerto de lectura
-- [ ] T022 [US3] Registrar `OtaAccessDeniedError` → 403 `FORBIDDEN` en el `ExceptionFilter` global, con mensaje genérico que no confirme ni niegue la existencia de historial de la OTA ajena
+- [x] T020 [US3] En `OtaCommissionController`, aplicar la lectura del token cuando existe: con token, validar con `RolesGuard` que `role = OTA` y extraer el claim `otaId`; sin token, tratar la llamada como interna (plan base, sección Autorización)
+- [x] T021 [US3] En `GetLatestOtaCommissionService`, aplicar la regla de alcance (BR-003, FR-009): si el actor es OTA, exigir `actor.otaId === otaId` y lanzar `OtaAccessDeniedError` en caso contrario, **antes** de tocar el puerto de lectura
+- [x] T022 [US3] Registrar `OtaAccessDeniedError` → 403 `FORBIDDEN` en el `ExceptionFilter` global, con mensaje genérico que no confirme ni niegue la existencia de historial de la OTA ajena — no requirió cambios: `FORBIDDEN` → 403 ya estaba registrado
 
 **Checkpoint**: una OTA nunca puede ver el porcentaje de comisión de otra OTA, ni siquiera por un mensaje de error distinto.
 
@@ -190,10 +207,10 @@ Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se tra
 
 **Purpose**: Cubrir los casos límite de la spec que no son el camino feliz de US1 y US3.
 
-- [ ] T023 [P] Unit test de determinismo: dos invocaciones consecutivas sobre el mismo `otaId`, sin liquidaciones nuevas, devuelven exactamente el mismo resultado (NFR-001, FR-008)
-- [ ] T024 [P] Test: la misma OTA con liquidaciones de porcentajes distintos en el tiempo devuelve el de la más reciente, sin promediar ni elegir uno arbitrario
-- [ ] T025 Confirmar que el adaptador de lectura no aplica ningún TTL de caché que pueda "expirar" una liquidación antigua: una OTA cuya única liquidación es muy antigua sigue devolviendo ese dato como la referencia más reciente
-- [ ] T026 Test de intento de escritura: verificar que ningún método del puerto ni del adaptador puede crear, actualizar o corregir porcentajes (FR-005, SC-004)
+- [x] T023 [P] Unit test de determinismo: dos invocaciones consecutivas sobre el mismo `otaId`, sin liquidaciones nuevas, devuelven exactamente el mismo resultado (NFR-001, FR-008)
+- [x] T024 [P] Test: la misma OTA con liquidaciones de porcentajes distintos en el tiempo devuelve el de la más reciente, sin promediar ni elegir uno arbitrario
+- [x] T025 Confirmar que el adaptador de lectura no aplica ningún TTL de caché que pueda "expirar" una liquidación antigua: una OTA cuya única liquidación es muy antigua sigue devolviendo ese dato como la referencia más reciente
+- [x] T026 Test de intento de escritura: verificar que ningún método del puerto ni del adaptador puede crear, actualizar o corregir porcentajes (FR-005, SC-004)
 
 **Checkpoint**: todos los casos límite de la spec están representados en código y pruebas.
 
@@ -201,9 +218,9 @@ Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se tra
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T027 Documentación OpenAPI de `GET /ota-commission/{otaId}` (actores autorizados, forma del 200 con `historical: true|false`, y los 400, 401 y 403)
-- [ ] T028 Verificar la privacidad (NFR-003): el payload de respuesta contiene solo `{ otaId, percentage, settlementId, settlementDate, historical }`, sin datos del huésped ni de liquidaciones de otras OTA
-- [ ] T029 Revisar con el responsable de 007 el índice `(ota_id, generated_at DESC)` y el volumen real de liquidaciones, una vez que existan datos
+- [x] T027 Documentación OpenAPI de `GET /ota-commission/{otaId}` (actores autorizados, forma del 200 con `historical: true|false`, y los 400, 401 y 403)
+- [x] T028 Verificar la privacidad (NFR-003): el payload de respuesta contiene solo `{ otaId, percentage, settlementId, settlementDate, historical }`, sin datos del huésped ni de liquidaciones de otras OTA
+- [ ] T029 Revisar con el responsable de 007 el índice `(ota_id, generated_at DESC)` y el volumen real de liquidaciones, una vez que existan datos — pendiente: necesita datos reales de liquidaciones
 
 ---
 
@@ -238,7 +255,7 @@ El plan base ubica `ota-commission` en la Phase 6 (T023), después de `settlemen
 ## Notes
 
 - [Story] mapea cada tarea a su historia de usuario para trazabilidad con la spec funcional.
-- La asimetría de dependencia (`ota-commission` lee de `settlement`, nunca al revés) es la decisión de diseño más importante y está protegida por una regla de CI (T003 y T004), no solo por documentación.
+- La asimetría de dependencia (`ota-commission` lee de `settlement`, nunca al revés) es la decisión de diseño más importante y está protegida por una prueba de arquitectura (T003 y T004), no solo por documentación.
 - Decisión de diseño que no viene de la spec (queda documentada aquí y en el contrato `GET-ota-commission-otaid.md`; cambiarla no altera la spec funcional): **cómo se reconoce el canal directo** en `{otaId}`. Este plan usa el valor reservado `DIRECT` (el mismo del campo `channel` de `settlement`), porque sin él FR-006 no se puede implementar.
 - El **puerto propio** de lectura (`ota-commission-query.port.ts`) lo define el plan base y no es una decisión de esta feature; 007 ya no expone una consulta equivalente y solo crea las columnas y el índice que este puerto lee (ver la nota de coordinación en Structure Decision).
 - Cualquier conflicto entre este plan y la spec funcional (`1-functional/consultar_porcentaje_comision_ota.md`) se resuelve a favor de la spec, conforme a la nota final de `docs/plan-tecnico-base.md`.
