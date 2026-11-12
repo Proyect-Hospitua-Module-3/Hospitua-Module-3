@@ -21,16 +21,16 @@ El stack descrito (arquitectura hexagonal + NestJS + PostgreSQL + RabbitMQ) es e
 ## Technical Context
 
 - **Language/Version**: TypeScript 5.x sobre Node.js 20 LTS
-- **Primary Dependencies**: NestJS 10.x, Prisma ORM, `@nestjs/microservices` (`Transport.RMQ`), `@nestjs/axios`, `opossum`, Passport-JWT, `@nestjs/jwt`, bcrypt, `@nestjs/terminus`
+- **Primary Dependencies**: NestJS 10.x, Prisma ORM, `amqplib`, `@nestjs/axios`, `opossum`, Passport-JWT, `@nestjs/jwt`, bcrypt, `decimal.js`, `@nestjs/swagger`, `@nestjs/terminus`
 - **Architecture**: Hexagonal (Puertos y Adaptadores), una sola capa `domain/`, `application/` e `infrastructure/`, con los *bounded contexts* internos como subcarpetas
 - **Storage**: PostgreSQL 16
 - **Build Tool**: Nest CLI (`nest new` para el scaffolding)
-- **Messaging**: RabbitMQ, vía `@nestjs/microservices` (`Transport.RMQ`)
-- **Testing**: Jest (unitarias + integración), Supertest (e2e), Testcontainers (Postgres + RabbitMQ reales en pruebas de integración)
-- **Target Platform**: Contenedores Docker; Docker Compose para entorno local (API + Postgres + RabbitMQ)
+- **Messaging**: RabbitMQ, con `amqplib` usado solo en `infrastructure/` (no `@nestjs/microservices`; ver la fila de Mensajería de la tabla de herramientas)
+- **Testing**: Jest (unitarias, de contrato, de arquitectura e integración) y Supertest (e2e). Las pruebas con infraestructura real usan el PostgreSQL y el RabbitMQ de `docker compose` mediante `TEST_DATABASE_URL` y `TEST_RABBITMQ_URL`, y se omiten si faltan. Frontend: Vitest + Testing Library
+- **Target Platform**: Contenedores Docker; Docker Compose para el entorno local (Postgres + RabbitMQ; la API se ejecuta con `npm run start:dev`)
 - **Project Type**: Servicio backend único (microservicio de dominio)
 - **API**: REST/HTTP JSON, con contratos versionados (OpenAPI)
-- **Frontend**: Sin frontend en este repositorio
+- **Frontend**: pantallas del Administrador en `frontend/` (React 18 + Vite), con su propio `package.json`. El servicio backend no depende de él
 - **Authentication/Authorization**: JWT de usuario con rol (`Administrador`, `OTA`), validado con Guards de NestJS (Passport-JWT). Las llamadas entre módulos (M1, M2) no usan token: viajan por la red interna (ver [Autenticación](#autenticación))
 - **Version Control**: Git + GitHub (ramas `feature/*` hacia `develop`)
 - **Performance Goals**:
@@ -49,13 +49,13 @@ El stack descrito (arquitectura hexagonal + NestJS + PostgreSQL + RabbitMQ) es e
 | Framework | NestJS 10.x | Inyección de dependencias por token, que permite conectar cada puerto con su adaptador en el `*.module.ts` de cada contexto (`infrastructure/config/`) |
 | ORM / acceso a datos | Prisma ORM | Cliente generado y tipado para TypeScript a partir de `schema.prisma`. Se envuelve en un `PrismaService` de NestJS y se usa únicamente dentro de adaptadores de infraestructura, nunca en el dominio |
 | Migraciones de Base de Datos | Prisma Migrate | Versionamiento del esquema (`prisma/migrations/`) dentro del mismo stack del ORM |
-| Mensajería | `@nestjs/microservices` (`Transport.RMQ`) | Consumer del evento `Registrar Check-out` con ack manual |
+| Mensajería | `amqplib` (solo en `infrastructure/`) | Consumer del evento `Registrar Check-out` con ack manual y publicación a retry y DLQ con `mandatory` y publisher confirm. `@nestjs/microservices` (`Transport.RMQ`) no se usa porque no permite cumplir ese contrato (ver `features/010-registrar-checkout/2-technical/plan.md`) |
 | Autenticación y Autorización | Login propio (`@nestjs/jwt` + bcrypt), Passport-JWT + Guards de NestJS | Emisión y validación del JWT de usuario y control de acceso por rol (`Administrador`, `OTA`) |
 | Resiliencia de llamadas salientes | Timeout + circuit breaker (`opossum`) | Una caída de Módulo 1 o Módulo 2 detiene el proceso en vez de bloquear indefinidamente (NFR-003 de `consultar_tarifa_dinamica.md`) |
 | Health checks | `@nestjs/terminus` | Estado de la API, Postgres y RabbitMQ |
-| Lint de arquitectura | `dependency-cruiser` (cuando sea posible) | Validar automáticamente las reglas de dependencia entre capas |
+| Lint de arquitectura | `dependency-cruiser` (cuando sea posible) y pruebas Jest en `test/architecture/` | Validar automáticamente las reglas de dependencia entre capas; las pruebas Jest ya lo hacen en cada `npm test` |
 | Calidad de código | ESLint + Prettier, husky/lint-staged | Formato y lint uniformes antes de cada commit |
-| Pruebas con infraestructura real | Testcontainers | Postgres y RabbitMQ reales en pruebas de integración |
+| Pruebas con infraestructura real | `docker compose` + `TEST_DATABASE_URL` y `TEST_RABBITMQ_URL` (no Testcontainers) | Postgres y RabbitMQ reales en pruebas de integración y E2E, sin una dependencia adicional; se omiten si faltan las variables. Como vacían las colas `modulo3.checkout*`, conviene un vhost de RabbitMQ aparte |
 
 ---
 
@@ -146,7 +146,7 @@ Regla arquitectónica de Módulo 3:
 | `GET /invoices` | Administrador | 008 | Búsqueda de facturas por criterios |
 | `GET /invoices/{id}` | Administrador | 008 | Detalle de solo lectura de una factura |
 | `GET /invoices/summary` | Administrador | 008 | Consolidado por canal en un rango de fechas |
-| `PUT /admin/vat-rate` | Administrador | 001 | Actualización del porcentaje de IVA vigente |
+| `GET /admin/vat-rate`, `PUT /admin/vat-rate` | Administrador | 001 | Consulta del IVA vigente con su historial (para la pantalla `/iva`) y actualización del porcentaje |
 | `GET/POST /admin/season-rules`, `PUT/DELETE /admin/season-rules/{seasonId}` | Administrador | 009 | Catálogo de temporadas y modificación de sus reglas de precio |
 | `GET /admin/season-calendar`, `PUT /admin/season-calendar/{year}` | Administrador | 011 | Revisión y publicación (reemplazo atómico) del calendario anual de temporadas |
 
@@ -377,7 +377,7 @@ src/
     │   │   │   ├── ota-commission.controller.ts          # GET /ota-commission/{otaId}
     │   │   │   ├── settlements.controller.ts             # GET /api/settlements (definitiva o informativa)
     │   │   │   ├── invoices-admin.controller.ts          # GET /invoices, /invoices/{id}, /invoices/summary
-    │   │   │   ├── vat-rate-admin.controller.ts          # PUT /admin/vat-rate
+    │   │   │   ├── vat-rate-admin.controller.ts          # GET/PUT /admin/vat-rate
     │   │   │   ├── health.controller.ts                  # @nestjs/terminus
     │   │   │   ├── domain-exception.filter.ts            # ExceptionFilter global: error de dominio → código HTTP
     │   │   │   └── auth/                                 # Aspecto técnico transversal, no es un bounded context
@@ -422,14 +422,16 @@ test/
 ├── unit/                                         # Jest, puertos mockeados
 │   ├── domain/                                   # Modelo y reglas de negocio
 │   └── application/                              # Servicios de aplicación
-├── integration/                                  # Adaptadores reales con Testcontainers
+├── integration/                                  # Adaptadores reales contra Postgres y RabbitMQ de docker compose
 │   ├── persistence/                              # Repositorios Prisma contra PostgreSQL real
 │   ├── messaging/                                # Consumer contra RabbitMQ real
 │   └── http/                                     # Clientes de Módulo 1 y Módulo 2 (éxito, 404, timeout/5xx)
 ├── contract/                                     # Payload de Registrar Check-out y endpoints REST expuestos
+├── architecture/                                 # Reglas de dependencia entre capas
+├── support/                                      # Dobles de prueba y utilidades compartidas
 └── e2e/                                          # Flujo completo: evento de check-out → liquidación → factura
 
-docker-compose.yml                                # Postgres + RabbitMQ + API para desarrollo local
+docker-compose.yml                                # Postgres + RabbitMQ para desarrollo local
 ```
 
 **Structure Decision**: un servicio NestJS único (monolito modular) con una sola capa `domain/`, una sola `application/` y una sola `infrastructure/`, y los 5 *bounded contexts* internos como subcarpetas dentro de cada capa. No se opta por microservicios separados por contexto en esta fase: el volumen de features (11) y su fuerte acoplamiento transaccional (`checkout-ingestion` → `settlement` → `billing` en una misma unidad de trabajo) no lo justifica todavía. Si en el futuro un contexto necesita escalar o desplegarse de forma independiente, los límites de puertos/adaptadores ya definidos facilitan extraerlo. Los archivos listados son la forma esperada; el detalle definitivo lo fija el plan técnico de cada feature.
@@ -492,6 +494,7 @@ erDiagram
     SEASON ||--o{ SEASON_RULE_HISTORY : "audita"
     SEASON ||--o{ SEASON_CALENDAR_ENTRY : "clasifica"
     SEASON_CALENDAR_REVISION ||--|{ SEASON_CALENDAR_ENTRY : "contiene"
+    SEASON_CALENDAR_ENTRY ||--o| SEASON_CALENDAR_ACTIVE_BASE : "indexa si es base activa"
 
     SEASON {
         uuid id PK
@@ -500,8 +503,11 @@ erDiagram
         bool is_default "Solo una verdadera"
         int version "Control optimista"
         datetime archived_at "Retiro logico, nulo si activa"
+        uuid archived_by "Nulo si activa"
+        datetime created_at
         uuid created_by
         datetime updated_at
+        uuid updated_by
     }
     SEASON_RULE {
         uuid id PK
@@ -509,15 +515,21 @@ erDiagram
         decimal adjustment_percent
         datetime valid_from
         datetime valid_to "Nulo en la vigente"
+        datetime created_at
         uuid created_by
     }
     SEASON_RULE_HISTORY {
         uuid id PK
         uuid season_id FK
+        text change_type "CREATE, UPDATE o RETIRE"
         uuid previous_rule_id
         uuid new_rule_id
         decimal previous_adjustment "Nulo al crear"
         decimal new_adjustment
+        text previous_name
+        text new_name
+        text previous_color
+        text new_color
         uuid changed_by
         datetime changed_at
     }
@@ -528,14 +540,22 @@ erDiagram
         datetime effective_at
         bool is_active "Una por año"
         uuid changed_by
+        datetime changed_at
     }
     SEASON_CALENDAR_ENTRY {
         uuid id PK
         uuid revision_id FK
+        int year "Año de la revisión"
+        uuid entry_id "Identidad estable entre revisiones, UNIQUE con revision_id"
         uuid season_id FK
         text kind "BASE o EXCEPTION"
         date start_date
         date end_date
+    }
+    SEASON_CALENDAR_ACTIVE_BASE {
+        uuid calendar_entry_id PK
+        int year
+        daterange period "EXCLUDE: sin solapes entre bases activas"
     }
 ```
 
@@ -567,10 +587,14 @@ erDiagram
     }
     CHECKOUT_EVENT_LOG {
         uuid id PK
-        uuid event_id UK "Deduplica entregas"
+        uuid event_id UK "Deduplica entregas, nulo solo en un sobre no reconocible"
+        text event_type
+        datetime occurred_at
         uuid stay_id
         text status "PENDING PROCESSED REJECTED DEAD_LETTER"
         text error_code
+        text reason "Motivo del rechazo o de la revisión manual"
+        text result_note "Nota del resultado, p. ej. factura no emitida"
         json payload "Sin datos tributarios"
         datetime processed_at
         datetime created_at
@@ -619,6 +643,10 @@ erDiagram
         decimal total_amount "lodging_amount + vat_amount"
         datetime issued_at
     }
+    INVOICE_NUMBER_COUNTER {
+        int id PK "Fila unica, se bloquea con FOR UPDATE al emitir"
+        bigint last_number "Ultimo numero emitido"
+    }
 ```
 
 #### 3. Porcentaje de IVA (`billing`)
@@ -660,7 +688,7 @@ erDiagram
 
 ### Reglas Transversales de Arquitectura
 
-Las reglas de dependencia (1 a 4) se validan en code review y, cuando sea posible, con lint de arquitectura tipo `dependency-cruiser`.
+Las reglas de dependencia (1 a 4) se validan en code review, con las pruebas Jest de `test/architecture/` (que fallan si `domain/` o `application/` importan NestJS, Prisma, `amqplib` o adaptadores) y, cuando sea posible, con lint de arquitectura tipo `dependency-cruiser`.
 
 1. **Aislamiento de Dominio**: `domain/` no importa nada de `application/` ni de `infrastructure/`, ni del framework NestJS, ni del ORM.
 2. **Aplicación solo contra puertos**: `application/` solo depende de `domain/` (entidades y **puertos**, nunca de adaptadores concretos).
@@ -679,8 +707,10 @@ Las reglas de dependencia (1 a 4) se validan en code review y, cuando sea posibl
 
 - **Tests Unitarios** (`test/unit`, Jest):
   - Dominio y casos de uso, con los puertos mockeados — sin NestJS, sin base de datos, sin cola.
-- **Tests de Integración** (`test/integration`, Jest + Testcontainers):
-  - Adaptadores reales (repositorios Prisma, consumer de RabbitMQ) contra Postgres y RabbitMQ levantados con Testcontainers.
+- **Tests de Integración** (`test/integration`, Jest):
+  - Adaptadores reales (repositorios Prisma, consumer de RabbitMQ) contra el Postgres y el RabbitMQ de `docker compose`, con `TEST_DATABASE_URL` y `TEST_RABBITMQ_URL`. Sin esas variables las suites se omiten.
+- **Tests de Arquitectura** (`test/architecture`, Jest):
+  - Verifican las reglas de dependencia entre capas y los límites entre contextos (p. ej. que `checkout-ingestion` no toque `pricing`).
 - **Tests E2E** (`test/e2e`, Supertest):
   - Flujo completo `Registrar Check-out` → `Generar liquidación` → `Generar factura final`.
   - Flujos de consulta cruzados por rol (OTA solo ve lo suyo, Administrador en `/admin/*`, etc.).
@@ -693,10 +723,10 @@ Cada plan técnico de feature (`features/NNN-.../2-technical/plan.md`) debe indi
 
 ## Phase 1: Setup (Infraestructura Compartida)
 
-- [ ] T001 Scaffolding NestJS (`nest new`) con la estructura de carpetas descrita en [Project Structure](#project-structure)
-- [ ] T002 [P] Crear `docker-compose.yml` con PostgreSQL + RabbitMQ + API para desarrollo local
+- [x] T001 Scaffolding NestJS (`nest new`) con la estructura de carpetas descrita en [Project Structure](#project-structure)
+- [x] T002 [P] Crear `docker-compose.yml` con PostgreSQL + RabbitMQ para desarrollo local (la API se ejecuta con `npm run start:dev`)
 - [ ] T003 [P] Configurar linting/formatting (ESLint + Prettier) y husky/lint-staged
-- [ ] T004 [P] Configurar reglas de `dependency-cruiser` para validar las reglas de dependencia entre capas (cuando sea posible)
+- [ ] T004 [P] Configurar reglas de `dependency-cruiser` para validar las reglas de dependencia entre capas (cuando sea posible). Las pruebas Jest de `test/architecture/` ya validan estas reglas
 - [ ] T005 Configurar CI base (build + lint + test unitario) — pipeline compartido con Módulo 1/Módulo 2 si aplica
 
 ---
@@ -705,13 +735,13 @@ Cada plan técnico de feature (`features/NNN-.../2-technical/plan.md`) debe indi
 
 **CRÍTICO**: Ningún plan de feature puede comenzar su implementación hasta completar satisfactoriamente esta fase base.
 
-- [ ] T006 [P] Implementar Value Objects compartidos (`Money`, `DateRange`, `Channel`) en `src/domain/model/shared/`; `DateRange` admite fechas iguales (un solo día) y cada feature agrega su propio mínimo (005 exige al menos una noche)
-- [ ] T007 [P] Implementar el error base de dominio y el filtro de excepciones global en `src/domain/errors/` y `src/infrastructure/adapters/in/http/`
-- [ ] T008 Configurar la conexión a PostgreSQL con Prisma (`prisma/schema.prisma`, `PrismaService`) y Prisma Migrate
-- [ ] T009 Configurar la conexión a RabbitMQ (módulo de mensajería NestJS, exchange `hospitua.events`, colas y dead-letter)
-- [ ] T010 [P] Implementar el login propio (`POST /auth/login`, tabla `app_user` con seed, bcrypt, `@nestjs/jwt`), la validación del JWT de usuario (`Administrador`, `OTA`) y los Guards/decoradores de autorización por rol en `src/infrastructure/adapters/in/http/auth/`
+- [x] T006 [P] Implementar Value Objects compartidos (`Money`, `Channel`) en `src/domain/model/shared/`. Los rangos de fechas no se compartieron: cada feature modela el suyo (p. ej. `IssuedDateRange` en `billing`) con su propio mínimo (005 exige al menos una noche)
+- [x] T007 [P] Implementar el error base de dominio y el filtro de excepciones global en `src/domain/errors/` y `src/infrastructure/adapters/in/http/`
+- [x] T008 Configurar la conexión a PostgreSQL con Prisma (`prisma/schema.prisma`, `PrismaService`) y Prisma Migrate
+- [x] T009 Configurar la conexión a RabbitMQ (cliente `amqplib` en `infrastructure/`, exchange `hospitua.events`, colas, reintento y dead-letter)
+- [x] T010 [P] Implementar el login propio (`POST /auth/login`, tabla `app_user` con seed, bcrypt, `@nestjs/jwt`), la validación del JWT de usuario (`Administrador`, `OTA`) y los Guards/decoradores de autorización por rol en `src/infrastructure/adapters/in/http/auth/`
 - [ ] T011 [P] Implementar health checks (`@nestjs/terminus`)
-- [ ] T012 Configurar la infraestructura de pruebas con Testcontainers (PostgreSQL y RabbitMQ)
+- [x] T012 Configurar la infraestructura de pruebas con el PostgreSQL y el RabbitMQ de `docker compose` (`TEST_DATABASE_URL` y `TEST_RABBITMQ_URL`), en lugar de Testcontainers
 
 **Checkpoint Base**: con esto listo, cada *bounded context* puede implementarse en paralelo.
 
@@ -721,10 +751,10 @@ Cada plan técnico de feature (`features/NNN-.../2-technical/plan.md`) debe indi
 
 Orden interno recomendado:
 
-- [ ] T013 011 Revisar temporada del año — ver `features/011-revisar-temporada-del-año/2-technical/plan.md`
-- [ ] T014 009 Modificar regla de temporada — ver `features/009-modificar-precio-tarifa-segun-temporada/2-technical/plan.md`
-- [ ] T015 004 Consultar tarifa base (adaptador HTTP hacia Módulo 1) — ver `features/004-consultar-tarifa-base/2-technical/plan.md`
-- [ ] T016 005 Consultar tarifa dinámica (compone las tres anteriores) y cotización del hospedaje (`POST /pricing/quotes`) — ver `features/005-consultar-tarifa-dinamica/2-technical/plan.md`
+- [x] T013 011 Revisar temporada del año — ver `features/011-revisar-temporada-del-año/2-technical/plan.md`
+- [x] T014 009 Modificar regla de temporada — ver `features/009-modificar-precio-tarifa-segun-temporada/2-technical/plan.md`
+- [x] T015 004 Consultar tarifa base (adaptador HTTP hacia Módulo 1) — ver `features/004-consultar-tarifa-base/2-technical/plan.md`
+- [x] T016 005 Consultar tarifa dinámica (compone las tres anteriores) y cotización del hospedaje (`POST /pricing/quotes`) — ver `features/005-consultar-tarifa-dinamica/2-technical/plan.md`
 
 ---
 
@@ -732,9 +762,9 @@ Orden interno recomendado:
 
 Orden interno (depende de la cotización de T016):
 
-- [ ] T017 007 Generar liquidación (caso de uso núcleo) — ver `features/007-generar-liquidacion/2-technical/plan.md`
-- [ ] T018 010 Registrar Check-out (adaptador RabbitMQ que lo invoca) — ver `features/010-registrar-checkout/2-technical/plan.md`. Invoca también a 006 (Phase 5), por lo que su prueba de punta a punta requiere 006
-- [ ] T019 002 Consultar liquidación (lectura) — ver `features/002-consultar-liquidacion/2-technical/plan.md`
+- [x] T017 007 Generar liquidación (caso de uso núcleo) — ver `features/007-generar-liquidacion/2-technical/plan.md`
+- [x] T018 010 Registrar Check-out (adaptador RabbitMQ que lo invoca) — ver `features/010-registrar-checkout/2-technical/plan.md`. Invoca también a 006 (Phase 5), por lo que su prueba de punta a punta requiere 006
+- [x] T019 002 Consultar liquidación (lectura) — ver `features/002-consultar-liquidacion/2-technical/plan.md`
 
 ---
 
@@ -742,9 +772,9 @@ Orden interno (depende de la cotización de T016):
 
 Orden interno:
 
-- [ ] T020 001 Actualizar porcentaje de IVA — ver `features/001-actualizar-porcentaje-iva/2-technical/plan.md`
-- [ ] T021 006 Generar factura final (incluye `settlement`) — ver `features/006-generar-factura-final/2-technical/plan.md`
-- [ ] T022 008 Gestionar facturación (lectura/búsqueda) — ver `features/008-gestionar-facturacion/2-technical/plan.md`
+- [x] T020 001 Actualizar porcentaje de IVA — ver `features/001-actualizar-porcentaje-iva/2-technical/plan.md`
+- [x] T021 006 Generar factura final (incluye `settlement`) — ver `features/006-generar-factura-final/2-technical/plan.md`
+- [x] T022 008 Gestionar facturación (lectura/búsqueda) — ver `features/008-gestionar-facturacion/2-technical/plan.md`
 
 ---
 
