@@ -25,7 +25,7 @@ This test case verifies that **el Administrador puede mantener el catálogo de t
 - permite la operación solo al rol Administrador (FR-005, SC-005);
 - acepta un cambio idéntico al vigente sin crear versión ni historial (casos límite de la spec).
 
-Cubre las Historias de usuario 1 y 3 de la spec. La Historia de usuario 2 (las cotizaciones, liquidaciones y facturas ya emitidas no cambian) depende de las features 005, 007 y 006, que aún no están implementadas: ver *Test Case Limitations*.
+Cubre las Historias de usuario 1 y 3 de la spec. La Historia de usuario 2 (las cotizaciones, liquidaciones y facturas ya emitidas no cambian) se prueba a mano en el TC-005: ver *Test Case Limitations*.
 
 ##### Document References
 | Reference Name | Type of Reference | Document Location / Link |
@@ -43,8 +43,8 @@ Cubre las Historias de usuario 1 y 3 de la spec. La Historia de usuario 2 (las c
 
 ##### Test Case Limitations
 * Módulo 3 no tiene interfaz gráfica: las pruebas se hacen sobre la API REST con Swagger UI (<http://localhost:3000/docs>).
-* La Historia de usuario 2 (SC-003, SC-004: las consultas nuevas usan la regla nueva y lo ya emitido no cambia) no se puede probar a mano todavía: requiere la tarifa dinámica (005), la liquidación (007) y la factura (006). El snapshot por instante que usará la 005 se verifica con las pruebas automáticas de la Sección 3.
-* El calendario anual (011) aún no existe, así que ninguna temporada está "en uso" y no se puede provocar `SEASON_IN_USE` a mano. Se verifica con las pruebas automáticas de punta a punta.
+* La Historia de usuario 2 (SC-003, SC-004: las consultas nuevas usan la regla nueva y lo ya emitido no cambia) no se prueba en este caso: la cubre el [TC-005](../../005-consultar-tarifa-dinamica/4-testing/TC-005-consultar-tarifa-dinamica.md) (Sección 1, pasos 14 a 17: la consulta nueva usa la regla vigente y la cotización guardada no cambia). Liquidaciones (007) y facturas (006) copian los importes de la cotización y nunca leen las reglas vigentes. El snapshot por instante que usa la 005 se verifica con las pruebas automáticas de la Sección 3.
+* Este caso parte de un calendario vacío, así que ninguna temporada está "en uso". `SEASON_IN_USE` se prueba a mano en el [TC-011](../../011-revisar-temporada-del-año/4-testing/TC-011-revisar-temporada-del-año.md) (Sección 1, paso 12) y con las pruebas automáticas de punta a punta.
 * La concurrencia entre administradores no se puede provocar a mano de forma confiable; se verifica con las pruebas automáticas de integración.
 
 ##### Dependencies & Assumptions
@@ -54,7 +54,8 @@ Cubre las Historias de usuario 1 y 3 de la spec. La Historia de usuario 2 (las c
 * Los pasos usan los `seasonId` que devuelve el sistema: anótalos en la columna *Comments* cuando aparezcan.
 
 ##### Preconditions & Default Setup
-* **Initial State** : catálogo recién migrado, con solo la temporada `Regular` (ajuste `0.00`, versión 1). Para dejarlo así, en una terminal en la carpeta `Hospitua-Module-3`:
+* **Initial State** : calendario vacío y catálogo recién migrado, con solo la temporada `Regular` (ajuste `0.00`, versión 1). Para dejarlo así, en una terminal en la carpeta `Hospitua-Module-3`, primero el calendario (de la 011; si el calendario usa temporadas, el reinicio del catálogo falla) y luego el catálogo:
+  `Get-Content features/011-revisar-temporada-del-año/4-testing/reset-calendario-temporadas.sql | docker compose exec -T postgres psql -U hospitua -d modulo3`
   `Get-Content features/009-modificar-precio-tarifa-segun-temporada/4-testing/reset-catalogo-temporadas.sql | docker compose exec -T postgres psql -U hospitua -d modulo3`
 * **Environment** : local. Docker Desktop corriendo, `docker compose up -d`, `npx prisma migrate deploy`, `npx prisma db seed` y `npm run start:dev` (ver [README](../../../README.md)).
 * **Test Accounts** :
@@ -137,10 +138,10 @@ Tomados de los casos límite de la spec.
 * **EC-001** : Ajuste negativo o fuera de rango. Los negativos son válidos (descuento); fuera de -100..100 se rechaza sin cambiar la regla. → Sección 1, paso 5; Sección 2, pasos 1 a 4.
 * **EC-002** : Dos Administradores modifican casi al mismo tiempo (NFR-002). Queda una sola versión vigente, sin solapes; con la misma `expectedVersion`, solo uno gana. → Sección 2, paso 10; Sección 3, paso 1 (integración: 8 cambios simultáneos y 3 con la misma versión).
 * **EC-003** : Cambio a un valor idéntico al vigente. Se acepta sin versión ni historial nuevos. → Sección 1, pasos 8 y 15.
-* **EC-004** : Fechas sin temporada explícita. Se aplica `Regular`, la única temporada por defecto. → Sección 1, paso 3; Sección 3, paso 1 (contrato: `defaultSeasonId`). El uso en el cálculo de tarifas se probará con la 005.
+* **EC-004** : Fechas sin temporada explícita. Se aplica `Regular`, la única temporada por defecto. → Sección 1, paso 3; Sección 3, paso 1 (contrato: `defaultSeasonId`). El uso en el cálculo de tarifas lo prueba el TC-005.
 * **EC-005** : Actor distinto al Administrador. → Sección 2, pasos 17 a 20.
 * **EC-006** : Cambio de regla durante una consulta en curso. La consulta usa la versión vigente en su instante, sin mezclas. → Sección 3, paso 1 (integración y unitarias de `findEffectiveAt`).
-* **EC-007** : Retirar una temporada asignada en el calendario vigente → `409 SEASON_IN_USE`. → Sección 3, paso 2 (e2e). A mano solo será posible cuando exista la 011.
+* **EC-007** : Retirar una temporada asignada en el calendario vigente → `409 SEASON_IN_USE`. → Sección 3, paso 2 (e2e). A mano: TC-011, Sección 1, paso 12.
 * **EC-008** : Límites exactos del rango (-100 y 100). → Sección 3, paso 1 (unitarias del value object).
 
 --------------------------------------------------------------------------------

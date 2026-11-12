@@ -25,7 +25,7 @@ This test case verifies that **el Administrador puede revisar y publicar el cale
 - permite la operación solo al rol Administrador (FR-005, SC-005);
 - impide que 009 retire una temporada usada por el calendario vigente.
 
-Cubre las Historias de usuario 1 y 3 de la spec. La Historia de usuario 2 (la tarifa dinámica usa esta clasificación) depende de la feature 005, que aún no está implementada: ver *Test Case Limitations*.
+Cubre las Historias de usuario 1 y 3 de la spec. La Historia de usuario 2 (la tarifa dinámica usa esta clasificación) se prueba a mano en el TC-005: ver *Test Case Limitations*.
 
 ##### Document References
 | Reference Name | Type of Reference | Document Location / Link |
@@ -44,7 +44,7 @@ Cubre las Historias de usuario 1 y 3 de la spec. La Historia de usuario 2 (la ta
 
 ##### Test Case Limitations
 * Módulo 3 no tiene interfaz gráfica: las pruebas se hacen sobre la API REST con Swagger UI (<http://localhost:3000/docs>).
-* La Historia de usuario 2 (SC-003: la tarifa dinámica usa la clasificación revisada) no se puede probar a mano todavía: requiere la tarifa dinámica (005). El puerto interno que usará la 005 se verifica con las pruebas automáticas de la Sección 3.
+* La Historia de usuario 2 (SC-003: la tarifa dinámica usa la clasificación revisada) no se prueba en este caso: la cubre el [TC-005](../../005-consultar-tarifa-dinamica/4-testing/TC-005-consultar-tarifa-dinamica.md) (Sección 1, pasos 5 a 11: clasifica diciembre con `PUT /admin/season-calendar` y cada noche de la tarifa dinámica refleja su temporada). El puerto interno que usa la 005 se verifica además con las pruebas automáticas de la Sección 3.
 * La concurrencia entre administradores y los datos heredados corruptos no se pueden provocar a mano de forma confiable; se verifican con las pruebas automáticas de integración.
 
 ##### Dependencies & Assumptions

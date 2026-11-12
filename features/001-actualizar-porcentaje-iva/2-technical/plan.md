@@ -122,9 +122,9 @@ El valor viaja y se almacena como decimal exacto (`"19.00"`), no como `number` d
 
 **Purpose**: Preparar persistencia y wiring del contexto `billing` para el IVA
 
-- [ ] T001 Definir los modelos `VatRate` y `VatRateHistory` en `prisma/schema.prisma` y crear la migración Prisma de `vat_rate` (fila única: `id` fijo, `value numeric(5,2)`, `updated_by`, `updated_at` (hora de la base de datos, `now()`), con `CHECK (value >= 0 AND value <= 100)` escrito como SQL manual dentro de la migración, porque Prisma no genera constraints CHECK), **sin valor inicial**: la tabla queda vacía hasta el primer registro del Administrador
-- [ ] T002 Crear la migración Prisma de `vat_rate_history` (insert-only: `id`, `value_before numeric(5,2)` nulo en el primer registro, `value_after numeric(5,2)`, `changed_by`, `changed_at` con la hora de la base de datos `now()`, no la del servidor de aplicación: marca de tiempo verificable, NFR-001)
-- [ ] T003 Registrar en `src/infrastructure/config/billing.module.ts` los tokens `VatRateRepositoryPort` → `PrismaVatRateRepository`, `UpdateVatRateUseCase` → `UpdateVatRateService` y `GetCurrentVatRateUseCase` → `GetCurrentVatRateService`
+- [x] T001 Definir los modelos `VatRate` y `VatRateHistory` en `prisma/schema.prisma` y crear la migración Prisma de `vat_rate` (fila única: `id` fijo, `value numeric(5,2)`, `updated_by`, `updated_at` (hora de la base de datos, `now()`), con `CHECK (value >= 0 AND value <= 100)` escrito como SQL manual dentro de la migración, porque Prisma no genera constraints CHECK), **sin valor inicial**: la tabla queda vacía hasta el primer registro del Administrador
+- [x] T002 Crear la migración Prisma de `vat_rate_history` (insert-only: `id`, `value_before numeric(5,2)` nulo en el primer registro, `value_after numeric(5,2)`, `changed_by`, `changed_at` con la hora de la base de datos `now()`, no la del servidor de aplicación: marca de tiempo verificable, NFR-001)
+- [x] T003 Registrar en `src/infrastructure/config/billing.module.ts` los tokens `VatRateRepositoryPort` → `PrismaVatRateRepository`, `UpdateVatRateUseCase` → `UpdateVatRateService` y `GetCurrentVatRateUseCase` → `GetCurrentVatRateService`
 
 **Checkpoint**: el esquema existe sin ningún porcentaje; el dominio puede operar sobre el puerto.
 
@@ -138,18 +138,18 @@ El valor viaja y se almacena como decimal exacto (`"19.00"`), no como `number` d
 
 ### Tests for User Story 1
 
-- [ ] T004 [P] [US1] Unit test del VO `VatRateValue` (`vat-rate-value.vo.spec.ts`): acepta `0` y `100` (ambos inclusive) y valores con hasta 2 decimales; rechaza negativos, mayores a 100, no numéricos y más de 2 decimales (FR-002, NFR-004)
-- [ ] T005 [P] [US1] Unit test de `UpdateVatRateService`: delega la validación al VO, invoca el puerto solo si el valor es válido y no lo invoca si es inválido (FR-002)
-- [ ] T006 [US1] Test e2e de `PUT /admin/vat-rate`: 200 con valor válido, 400 `INVALID_VAT_RATE` con valor inválido, 401 sin token, 403 con rol `OTA` (SC-003, SC-005)
+- [x] T004 [P] [US1] Unit test del VO `VatRateValue` (`vat-rate-value.vo.spec.ts`): acepta `0` y `100` (ambos inclusive) y valores con hasta 2 decimales; rechaza negativos, mayores a 100, no numéricos y más de 2 decimales (FR-002, NFR-004)
+- [x] T005 [P] [US1] Unit test de `UpdateVatRateService`: delega la validación al VO, invoca el puerto solo si el valor es válido y no lo invoca si es inválido (FR-002)
+- [x] T006 [US1] Test e2e de `PUT /admin/vat-rate`: 200 con valor válido, 400 `INVALID_VAT_RATE` con valor inválido, 401 sin token, 403 con rol `OTA` (SC-003, SC-005)
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Implementar `VatRateValue` (decimal exacto con `decimal.js`, constantes `VAT_RATE_MIN = 0` y `VAT_RATE_MAX = 100`) y `InvalidVatRateError`
-- [ ] T008 [US1] Definir `VatRateRepositoryPort` (`getCurrent(): Promise<VatRate | null>`, `saveNew(value, actorId): Promise<VatRate>`) en `domain/ports/out`
-- [ ] T009 [US1] Implementar `UpdateVatRateService(actorId, value)`: construye `VatRateValue` (la validación de dominio falla aquí) y llama al repositorio
-- [ ] T010 [US1] Implementar `PrismaVatRateRepository.saveNew` en **una sola transacción**: (a) `pg_advisory_xact_lock` para serializar todas las actualizaciones, incluido el primer registro cuando la tabla aún está vacía; (b) leer el valor actual (puede no existir); (c) `upsert` de la fila única de `vat_rate`; (d) `INSERT` en `vat_rate_history` con `value_before` (nulo en el primer registro). Si el insert del historial falla, se revierte toda la transacción (FR-005)
-- [ ] T011 [US1] Implementar `VatRateAdminController` (`PUT /admin/vat-rate`) con `@Roles("Administrador")` (`RolesGuard`) y `UpdateVatRateDto` validado con `class-validator` como primer filtro rápido
-- [ ] T012 [US1] Registrar `InvalidVatRateError` → 400 `INVALID_VAT_RATE`, y los casos de autenticación → 401 `UNAUTHENTICATED` y rol insuficiente → 403 `FORBIDDEN`, en el `ExceptionFilter` global
+- [x] T007 [US1] Implementar `VatRateValue` (decimal exacto con `decimal.js`, constantes `VAT_RATE_MIN = 0` y `VAT_RATE_MAX = 100`) y `InvalidVatRateError`
+- [x] T008 [US1] Definir `VatRateRepositoryPort` (`getCurrent(): Promise<VatRate | null>`, `saveNew(value, actorId): Promise<VatRate>`) en `domain/ports/out`
+- [x] T009 [US1] Implementar `UpdateVatRateService(actorId, value)`: construye `VatRateValue` (la validación de dominio falla aquí) y llama al repositorio
+- [x] T010 [US1] Implementar `PrismaVatRateRepository.saveNew` en **una sola transacción**: (a) `pg_advisory_xact_lock` para serializar todas las actualizaciones, incluido el primer registro cuando la tabla aún está vacía; (b) leer el valor actual (puede no existir); (c) `upsert` de la fila única de `vat_rate`; (d) `INSERT` en `vat_rate_history` con `value_before` (nulo en el primer registro). Si el insert del historial falla, se revierte toda la transacción (FR-005)
+- [x] T011 [US1] Implementar `VatRateAdminController` (`PUT /admin/vat-rate`) con `@Roles("Administrador")` (`RolesGuard`) y `UpdateVatRateDto` validado con `class-validator` como primer filtro rápido
+- [x] T012 [US1] Registrar `InvalidVatRateError` → 400 `INVALID_VAT_RATE`, y los casos de autenticación → 401 `UNAUTHENTICATED` y rol insuficiente → 403 `FORBIDDEN`, en el `ExceptionFilter` global
 
 **Checkpoint**: el Administrador puede registrar y actualizar el porcentaje; los valores inválidos se rechazan sin alterar el estado.
 
@@ -164,17 +164,17 @@ El valor viaja y se almacena como decimal exacto (`"19.00"`), no como `number` d
 ### Tests for User Story 2
 
 - [ ] T013 [P] [US2] Test de arquitectura (`dependency-cruiser`): `UpdateVatRateService` y su repositorio no importan nada del agregado `Invoice` ni de `settlement`; solo operan sobre `vat_rate` y `vat_rate_history`
-- [ ] T014 [US2] Integration test: con una fila de `invoice` simulada con `vat_rate_applied` ya persistido, actualizar `vat_rate` y verificar que el `vat_rate_applied` de esa factura no cambia (SC-002)
-- [ ] T015 [US2] Integration test de concurrencia real con Testcontainers: dos actualizaciones casi simultáneas, **incluido el caso en que la tabla está vacía**; el resultado final es exactamente uno de los dos valores, el historial refleja una secuencia coherente (`value_before` de la segunda = `value_after` de la primera) y nunca queda un estado mixto (FR-007, NFR-002)
-- [ ] T016 [US2] Unit test de `GetCurrentVatRateService`: devuelve el porcentaje vigente; sin porcentaje configurado lanza `VatRateNotConfiguredError`, y ante un fallo de lectura del repositorio lanza `VatRateUnavailableError`; nunca devuelve 0 ni un valor por defecto (FR-003, BR-003)
+- [x] T014 [US2] Integration test: con una fila de `invoice` simulada con `vat_rate_applied` ya persistido, actualizar `vat_rate` y verificar que el `vat_rate_applied` de esa factura no cambia (SC-002)
+- [x] T015 [US2] Integration test de concurrencia real con Testcontainers: dos actualizaciones casi simultáneas, **incluido el caso en que la tabla está vacía**; el resultado final es exactamente uno de los dos valores, el historial refleja una secuencia coherente (`value_before` de la segunda = `value_after` de la primera) y nunca queda un estado mixto (FR-007, NFR-002)
+- [x] T016 [US2] Unit test de `GetCurrentVatRateService`: devuelve el porcentaje vigente; sin porcentaje configurado lanza `VatRateNotConfiguredError`, y ante un fallo de lectura del repositorio lanza `VatRateUnavailableError`; nunca devuelve 0 ni un valor por defecto (FR-003, BR-003)
 - [ ] T016a [US2] Integration test del caso límite "una factura se está generando en el instante de una actualización": 006 lee el porcentaje una sola vez (antes de su transacción) y la factura queda con exactamente uno de los dos porcentajes, anterior o nuevo, nunca una mezcla ni un valor indeterminado (BR-003)
-- [ ] T017 [US2] Contract test del puerto `GetCurrentVatRateUseCase` contra `PORT-get-current-vat-rate.md` de 006: `getCurrent()` sin argumentos, `value` como decimal exacto (`"19.00"`), y los errores del contrato
+- [x] T017 [US2] Contract test del puerto `GetCurrentVatRateUseCase` contra `PORT-get-current-vat-rate.md` de 006: `getCurrent()` sin argumentos, `value` como decimal exacto (`"19.00"`), y los errores del contrato
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] Implementar `GetCurrentVatRateService` como el **único** punto por el que `billing` (incluida 006) obtiene el porcentaje vigente; `vat_rate` nunca se expone como tabla de lectura fuera de este puerto. Si el repositorio no tiene ninguna fila, lanza `VatRateNotConfiguredError`; si la lectura falla, `VatRateUnavailableError`
-- [ ] T019 [US2] Documentar en `vat-rate.repository.port.ts` que `Invoice` guarda el porcentaje aplicado como campo propio (`vat_rate_applied`) en el momento de la emisión, nunca como referencia viva a `vat_rate`: esa es la garantía estructural de BR-002 y FR-004, no una validación en tiempo de ejecución
-- [ ] T020 [US2] Regla de `dependency-cruiser`: el código de emisión de facturas (006) solo puede consumir `GetCurrentVatRateUseCase`, nunca `UpdateVatRateUseCase` ni `VatRateRepositoryPort`
+- [x] T018 [US2] Implementar `GetCurrentVatRateService` como el **único** punto por el que `billing` (incluida 006) obtiene el porcentaje vigente; `vat_rate` nunca se expone como tabla de lectura fuera de este puerto. Si el repositorio no tiene ninguna fila, lanza `VatRateNotConfiguredError`; si la lectura falla, `VatRateUnavailableError`
+- [x] T019 [US2] Documentar en `vat-rate.repository.port.ts` que `Invoice` guarda el porcentaje aplicado como campo propio (`vat_rate_applied`) en el momento de la emisión, nunca como referencia viva a `vat_rate`: esa es la garantía estructural de BR-002 y FR-004, no una validación en tiempo de ejecución
+- [x] T020 [US2] Regla de `dependency-cruiser`: el código de emisión de facturas (006) solo puede consumir `GetCurrentVatRateUseCase`, nunca `UpdateVatRateUseCase` ni `VatRateRepositoryPort`
 
 **Checkpoint**: una actualización de IVA es indiferente para toda factura ya persistida; el mecanismo es estructural.
 
@@ -184,10 +184,10 @@ El valor viaja y se almacena como decimal exacto (`"19.00"`), no como `number` d
 
 **Purpose**: Cubrir los casos límite de la spec que no quedan cubiertos por las historias principales.
 
-- [ ] T021 Decisión de diseño: una actualización a un valor **idéntico** al vigente se acepta y **sí** genera una entrada de historial (consistente con FR-005: toda actualización exitosa queda trazada, sin excepción)
-- [ ] T022 Si la inserción en `vat_rate_history` falla por cualquier motivo, la transacción completa se revierte y la actualización se reporta como fallida: no se permite un cambio del vigente sin su traza correspondiente
-- [ ] T023 [P] Unit/integration test del caso "valor idéntico al vigente" y del caso "fallo al escribir historial → rollback completo"
-- [ ] T024 [P] Test del caso "sin ningún porcentaje configurado": `GetCurrentVatRateUseCase` falla con `VatRateNotConfiguredError`, y el primer `PUT /admin/vat-rate` registra el porcentaje con `value_before` nulo en el historial (spec: estado inicial sin porcentaje)
+- [x] T021 Decisión de diseño: una actualización a un valor **idéntico** al vigente se acepta y **sí** genera una entrada de historial (consistente con FR-005: toda actualización exitosa queda trazada, sin excepción)
+- [x] T022 Si la inserción en `vat_rate_history` falla por cualquier motivo, la transacción completa se revierte y la actualización se reporta como fallida: no se permite un cambio del vigente sin su traza correspondiente
+- [x] T023 [P] Unit/integration test del caso "valor idéntico al vigente" y del caso "fallo al escribir historial → rollback completo"
+- [x] T024 [P] Test del caso "sin ningún porcentaje configurado": `GetCurrentVatRateUseCase` falla con `VatRateNotConfiguredError`, y el primer `PUT /admin/vat-rate` registra el porcentaje con `value_before` nulo en el historial (spec: estado inicial sin porcentaje)
 
 **Checkpoint**: todos los casos límite de la spec quedan representados en código y pruebas.
 
@@ -195,7 +195,7 @@ El valor viaja y se almacena como decimal exacto (`"19.00"`), no como `number` d
 
 ## Phase 5: Polish & Cross-Cutting Concerns
 
-- [ ] T025 Documentación OpenAPI de `PUT /admin/vat-rate` (payload, 200/400/401/403/422), publicada junto con el resto de contratos REST de Módulo 3
+- [x] T025 Documentación OpenAPI de `PUT /admin/vat-rate` (payload, 200/400/401/403/422), publicada junto con el resto de contratos REST de Módulo 3
 - [ ] T026 Logging estructurado del evento de actualización (actor, valor anterior, valor nuevo, timestamp), sin duplicar lo que ya persiste `vat_rate_history`
 
 ---

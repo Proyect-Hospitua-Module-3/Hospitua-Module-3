@@ -9,7 +9,7 @@ Este documento es el mapa de dónde está el código de la 007. El código no vi
 
 > Para encontrar todos los archivos de la 007 en VS Code: `Ctrl+Shift+F` y buscar `Feature 007`.
 
-**Alcance de esta entrega**: Historias de usuario 1, 2 y 3 completas. La 007 **no tiene endpoint**: es un caso de uso interno que invocarán 010 (Registrar check-out) y 006 (Generar factura final). Por eso no hay caso de prueba manual en `4-testing/`: se podrá probar a mano cuando exista la 010, y mientras tanto todo se verifica con pruebas automáticas (sección 4).
+**Alcance de esta entrega**: Historias de usuario 1, 2 y 3 completas. La 007 **no tiene endpoint**: es un caso de uso interno que invocan 010 (Registrar check-out) y 006 (Generar factura final). Por eso no tiene caso de prueba manual propio en `4-testing/`: se prueba a mano con el check-out real del [TC-010](../../010-registrar-checkout/4-testing/TC-010-registrar-checkout.md), que genera la liquidación, y además con las pruebas automáticas (sección 4).
 
 ---
 
@@ -177,7 +177,7 @@ Dobles de prueba propios: [fake-settlement-ports.ts](../../../test/support/settl
 | T031 (sin `UPDATE`) | Hecho: prueba de arquitectura + prueba de flujo que compara la fila antes y después |
 | T032 (log estructurado) | Hecho |
 | T033 (800 ms) | Hecho con Módulo 2 simulado; revisar con un Módulo 2 real |
-| T034 (coordinar con 010 y 002) | Pendiente: la tabla de errores y el uso de `SettlementCalculator` / `channelTermsOf` quedan listos para ellos |
+| T034 (coordinar con 010 y 002) | Hecho: 010 aplica la tabla de errores (reintento o DLQ según el código) y 002 reutiliza `SettlementCalculator` para la liquidación informativa |
 
 ---
 

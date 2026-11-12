@@ -152,7 +152,7 @@ Las suites de integración de 009 y 011 borran las mismas tablas; se turnan con 
 | FR-003 / BR-003 Regular por defecto | `defaultSeasonId` de 009; `unclassifiedRanges` | e2e "todo el año en default"; contrato DEFAULT |
 | FR-004 / SC-002 Detectar solapes y duplicados | `assertPublishable`; `YearCalendar.inspect`; EXCLUDE | unitarias; e2e 409; integración "filas heredadas que se solapan" |
 | FR-005 / BR-001 / SC-005 Solo Administrador | `@Roles('Administrador')` + `RolesGuard` | e2e 401 y 403 |
-| FR-006 / SC-003 Referencia única para la tarifa | `ResolveSeasonByDateUseCase` exportado para 005 | contrato del puerto (el uso real se probará con 005) |
+| FR-006 / SC-003 Referencia única para la tarifa | `ResolveSeasonByDateUseCase` exportado para 005 | contrato del puerto; uso real: e2e de la 005 y TC-005 (Sección 1, pasos 5 a 11) |
 | FR-007 Rango inválido sin resultado parcial | Validación completa antes de leer | unitarias; e2e 400 |
 | FR-008 / NFR-004 Vigencia y responsable | Revisión con `effectiveAt` y `changedBy` de la base y del token | e2e "revisión 1"; integración "hora de la base" |
 | FR-009 / SC-006 Publicar atómicamente | Transacción única; reemplazo completo | integración "atomicidad"; e2e "nada publicado" tras cada rechazo |
@@ -173,7 +173,8 @@ Las suites de integración de 009 y 011 borran las mismas tablas; se turnan con 
 | T005–T011 (fundación) | Hecho |
 | T012–T018 (Historia 1) | Hecho |
 | T019–T021, T023–T025 (Historia 2) | Hecho |
-| T022, T026 (no retroactividad y uso real por 005) | Pendiente: requiere la 005 |
+| T026 (uso real por 005) | Hecho: la 005 resuelve la temporada de cada noche con `ResolveSeasonByDateUseCase` (`dynamic-rate-calculator.ts`) |
+| T022 (no retroactividad ante una publicación nueva) | Pendiente: ya no está bloqueada (la 005 existe). La e2e de la 005 prueba que una cotización guardada no cambia cuando cambia una regla de la 009, pero no cuando se publica una revisión nueva del calendario |
 | T027–T035 (Historia 3) | Hecho |
 | T037 (logs estructurados) | Pendiente |
 | T038 (migración desde base vacía y restricciones) | Hecho: `prisma migrate deploy` sobre base vacía e integración "restricciones de la migración" |
@@ -194,8 +195,8 @@ Están en las Notes del [plan](../2-technical/plan.md#decisiones-de-implementaci
   - 011 lee el catálogo solo con su puerto `GetEffectiveSeasonRulesUseCase`.
   - El repositorio de 011 reemplaza al adaptador provisional `PendingSeasonCalendarReferenceAdapter` de 009 (ya borrado), así que retirar una temporada usada por el calendario ahora responde `409 SEASON_IN_USE`.
   - La carrera publicación/retiro (T016 de 009 y T030 de 011) se prueba en la integración de 011.
-  - Los documentos de 009 que todavía mencionan el adaptador provisional, y el script `reset-catalogo-temporadas.sql` (que ahora falla si el calendario usa temporadas), son de 009 y no se modificaron aquí. Mientras tanto, para reiniciar el catálogo corre antes [reset-calendario-temporadas.sql](../4-testing/reset-calendario-temporadas.sql).
-- **005 Consultar tarifa dinámica**: consumirá `RESOLVE_SEASON_BY_DATE_USE_CASE`, exportado por `PricingModule`, con el mismo `asOf` que use para las reglas de 009. Traduce `SEASON_CALENDAR_INCONSISTENT` y `SEASON_CALENDAR_UNAVAILABLE` a `422 UNEXPECTED_ERROR`.
+  - El script `reset-catalogo-temporadas.sql` de 009 falla si el calendario usa temporadas: para reiniciar el catálogo corre antes [reset-calendario-temporadas.sql](../4-testing/reset-calendario-temporadas.sql).
+- **005 Consultar tarifa dinámica**: consume `RESOLVE_SEASON_BY_DATE_USE_CASE`, exportado por `PricingModule`, con el mismo `asOf` que use para las reglas de 009. Traduce `SEASON_CALENDAR_INCONSISTENT` y `SEASON_CALENDAR_UNAVAILABLE` a `422 UNEXPECTED_ERROR`.
 - **Migraciones**: igual que en 009, las próximas se deben generar con `prisma migrate diff` desde el esquema anterior, para no perder el SQL escrito a mano.
 
 ---

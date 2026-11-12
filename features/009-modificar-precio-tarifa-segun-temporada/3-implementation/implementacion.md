@@ -79,7 +79,7 @@ HTTP ─► JwtAuthGuard + RolesGuard             ¿hay token? ¿es Administrado
 | [season.dto.ts](../../../src/infrastructure/adapters/in/http/pricing/dto/season.dto.ts) | Cuerpos y respuestas HTTP (también documentan Swagger) | — |
 | [prisma-season-rule.repository.ts](../../../src/infrastructure/adapters/out/persistence/repositories/pricing/prisma-season-rule.repository.ts) | Transacciones con `SELECT … FOR UPDATE`, versiones de regla, historial, retiro lógico y snapshot por instante | FR-003, FR-004, NFR-001, NFR-002 |
 | [season.mapper.ts](../../../src/infrastructure/adapters/out/persistence/mappers/pricing/season.mapper.ts) | Filas de PostgreSQL → dominio | — |
-| [pending-season-calendar-reference.adapter.ts](../../../src/infrastructure/adapters/out/calendar/pending-season-calendar-reference.adapter.ts) | **Provisional hasta la 011**: responde "no está en uso" porque aún no hay calendario | FR-001 |
+| [prisma-season-calendar.repository.ts](../../../src/infrastructure/adapters/out/persistence/repositories/pricing/prisma-season-calendar.repository.ts) (de la 011) | Implementa `SeasonCalendarReferencePort`: dice si el calendario vigente usa la temporada, para no retirarla (`409 SEASON_IN_USE`). Reemplazó al adaptador provisional de la 009, ya borrado | FR-001 |
 | [pricing.module.ts](../../../src/infrastructure/config/pricing.module.ts) | Conecta cada puerto con su adaptador y exporta el snapshot para 005 y 011 | — |
 
 ### Base de datos
@@ -149,9 +149,9 @@ npm run test:e2e     # endpoints de punta a punta
 |---|---|
 | T001–T011 (Setup y fundación) | Hecho. `Money` no se creó: el porcentaje usa `decimal.js` directamente, igual que el IVA de 001 |
 | T012–T015, T017–T020 (Historia 1) | Hecho |
-| T016 (integración) | Hecho, salvo la carrera con la publicación de 011: requiere la 011 |
+| T016 (integración) | Hecho. La carrera con la publicación de 011 se prueba en la integración de la 011 («publicar mientras 009 retira») |
 | T021–T023, T025–T027 (Historia 2) | Hecho |
-| T024 (no retroactividad con cotizaciones) | Pendiente: requiere la 005 |
+| T024 (no retroactividad con cotizaciones) | Cubierta por la e2e de la 005 «la cotización guardada no cambia si después cambia la regla de temporada (SC-007)» |
 | T028 | Hecho: 009 no escribe cotizaciones ni toca `settlement`/`invoice` |
 | T029–T033 (Historia 3) | Hecho |
 | T034 (OpenAPI) | Hecho: Swagger en `/docs` |
@@ -163,8 +163,8 @@ npm run test:e2e     # endpoints de punta a punta
 
 ## 7. Dependencias con otras features
 
-- **011 Revisar temporada del año**: cuando exista, debe reemplazar [`PendingSeasonCalendarReferenceAdapter`](../../../src/infrastructure/adapters/out/calendar/pending-season-calendar-reference.adapter.ts) por uno que consulte el calendario real, y bloquear en modo `FOR SHARE` las temporadas que asigne al publicar (plan 009, "Carrera con 011").
-- **005 Consultar tarifa dinámica**: consumirá `GET_EFFECTIVE_SEASON_RULES_USE_CASE`, exportado por `PricingModule`.
+- **011 Revisar temporada del año**: su repositorio de calendario implementa `SeasonCalendarReferencePort` (reemplazó al adaptador provisional de la 009) y bloquea en modo `FOR SHARE` las temporadas que asigna al publicar (plan 009, "Carrera con 011"). Si el calendario usa temporadas, [reset-catalogo-temporadas.sql](../4-testing/reset-catalogo-temporadas.sql) falla: correr antes [reset-calendario-temporadas.sql](../../011-revisar-temporada-del-año/4-testing/reset-calendario-temporadas.sql) de la 011.
+- **005 Consultar tarifa dinámica**: consume `GET_EFFECTIVE_SEASON_RULES_USE_CASE`, exportado por `PricingModule`.
 - **Migraciones**: las próximas se deben generar con `prisma migrate diff` desde el esquema anterior (ver el comentario al inicio de la migración de 009), para no perder los índices y restricciones escritos a mano.
 
 ---

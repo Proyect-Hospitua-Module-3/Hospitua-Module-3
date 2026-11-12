@@ -1,5 +1,7 @@
 -- Feature 009 · Deja el catálogo de temporadas como recién migrado: solo Regular, con 0.00.
 -- SOLO para preparar el caso de prueba TC-009 en la base local. Borra todas las temporadas.
+-- Si el calendario de la 011 usa temporadas, este script falla: correr antes
+-- features/011-revisar-temporada-del-año/4-testing/reset-calendario-temporadas.sql.
 -- Uso (PowerShell, desde la carpeta Hospitua-Module-3):
 --   Get-Content features/009-modificar-precio-tarifa-segun-temporada/4-testing/reset-catalogo-temporadas.sql | docker compose exec -T postgres psql -U hospitua -d modulo3
 

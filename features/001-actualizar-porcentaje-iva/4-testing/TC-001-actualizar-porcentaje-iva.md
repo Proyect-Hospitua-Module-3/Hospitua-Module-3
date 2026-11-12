@@ -22,7 +22,7 @@ This test case verifies that **el Administrador puede registrar y actualizar el 
 - registra quién hizo cada cambio y cuándo (FR-005, SC-004);
 - acepta un valor idéntico al vigente y también lo traza (casos límite de la spec).
 
-Cubre la Historia de usuario 1 de la spec. La Historia de usuario 2 (las facturas emitidas no cambian) depende de la feature 006, que aún no está implementada: ver *Test Case Limitations*.
+Cubre la Historia de usuario 1 de la spec. La Historia de usuario 2 (las facturas emitidas no cambian) la verifica la feature 006, que copia el porcentaje vigente en cada factura al emitirla: ver *Test Case Limitations*.
 
 ##### Document References
 | Reference Name | Type of Reference | Document Location / Link |
@@ -39,8 +39,8 @@ Cubre la Historia de usuario 1 de la spec. La Historia de usuario 2 (las factura
 
 ##### Test Case Limitations
 * Módulo 3 no tiene interfaz gráfica: las pruebas se hacen sobre la API REST con Swagger UI (<http://localhost:3000/docs>).
-* No existe un endpoint para consultar el porcentaje vigente (lo lee la feature 006 por un puerto interno). Para comprobar el vigente y el historial se consulta la base de datos con `psql` dentro del contenedor de Docker.
-* La Historia de usuario 2 de la spec (SC-001, SC-002: las facturas ya emitidas no cambian y las nuevas usan el nuevo porcentaje) no se puede probar todavía: requiere la feature 006 Generar factura final.
+* El vigente y el historial también se pueden ver con `GET /admin/vat-rate` (agregado después para el frontend, pantalla `/iva`); los pasos de este caso los comprueban en la base de datos con `psql` dentro del contenedor de Docker.
+* La Historia de usuario 2 de la spec (SC-001, SC-002: las facturas ya emitidas no cambian y las nuevas usan el nuevo porcentaje) no se prueba en este caso: la cubre el [TC-006](../../006-generar-factura-final/4-testing/TC-006-generar-factura-final.md) (Sección 1, pasos 6 y 7: un reenvío con el IVA cambiado conserva la factura original).
 * La concurrencia entre administradores y el rollback cuando falla el historial no se pueden provocar a mano de forma confiable; se verifican con las pruebas automáticas de la Sección 3.
 
 ##### Dependencies & Assumptions
@@ -122,7 +122,7 @@ Tomados de los casos límite de la spec.
 * **EC-004** : Valor idéntico al vigente. Se acepta y deja su entrada de historial. → Sección 1, pasos 6 y 10.
 * **EC-005** : Límites exactos del rango (0 y 100) y valores justo fuera de él. → Sección 1, pasos 7 y 8; Sección 2, pasos 2 y 3.
 * **EC-006** : Token expirado. Debe responder 401 `UNAUTHENTICATED`. → Repetir el paso 9 de la Sección 2 con un token de más de una hora.
-* **EC-007** : Una factura se genera en el instante exacto de una actualización, y las facturas emitidas no cambian (BR-002, BR-003). → **No aplicable todavía**: requiere la feature 006.
+* **EC-007** : Una factura se genera en el instante exacto de una actualización, y las facturas emitidas no cambian (BR-002, BR-003). → Que las facturas emitidas no cambian lo cubre el TC-006 (Sección 1, paso 7). La actualización en el instante exacto de una emisión (T016a del plan) no tiene prueba automática.
 
 --------------------------------------------------------------------------------
 

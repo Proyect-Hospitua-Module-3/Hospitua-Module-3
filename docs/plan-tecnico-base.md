@@ -782,7 +782,7 @@ Orden interno:
 
 Depende de que `settlement` ya tenga liquidaciones `Final` persistidas para tener datos que leer.
 
-- [ ] T023 003 Consultar porcentaje de comisión OTA — ver `features/003-consultar-porcentaje-comision-ota/2-technical/plan.md`
+- [x] T023 003 Consultar porcentaje de comisión OTA — ver `features/003-consultar-porcentaje-comision-ota/2-technical/plan.md`
 
 ---
 

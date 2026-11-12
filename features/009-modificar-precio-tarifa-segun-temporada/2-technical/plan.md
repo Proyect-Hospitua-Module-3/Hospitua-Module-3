@@ -209,10 +209,10 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 
 **Purpose**: Confirmar el ownership de datos y preparar el contexto `pricing`.
 
-- [ ] T001 Confirmar que el proyecto base tiene `PricingModule`, `PrismaService`, `Money`, JWT/roles y `ApiError` configurados.
-- [ ] T002 Coordinar con 011 el identificador estable de temporada usado por `season_calendar_entry` y el puerto de solo lectura para detectar referencias antes de borrar una temporada.
-- [ ] T003 Coordinar con 005 la firma `GetEffectiveSeasonRulesUseCase` y la semántica de `adjustmentPercent` para el cálculo por noche.
-- [ ] T004 Alinear el contrato REST administrativo con la matriz final del catálogo (`GET /admin/season-rules`, `POST /admin/season-rules`, `PUT /admin/season-rules/{seasonId}` y `DELETE /admin/season-rules/{seasonId}`), confirmando payloads, códigos de error y ejemplos de respuesta.
+- [x] T001 Confirmar que el proyecto base tiene `PricingModule`, `PrismaService`, `Money`, JWT/roles y `ApiError` configurados.
+- [x] T002 Coordinar con 011 el identificador estable de temporada usado por `season_calendar_entry` y el puerto de solo lectura para detectar referencias antes de borrar una temporada.
+- [x] T003 Coordinar con 005 la firma `GetEffectiveSeasonRulesUseCase` y la semántica de `adjustmentPercent` para el cálculo por noche.
+- [x] T004 Alinear el contrato REST administrativo con la matriz final del catálogo (`GET /admin/season-rules`, `POST /admin/season-rules`, `PUT /admin/season-rules/{seasonId}` y `DELETE /admin/season-rules/{seasonId}`), confirmando payloads, códigos de error y ejemplos de respuesta.
 
 **Checkpoint**: los límites de propiedad `009`/`011`/`005` y los contratos de integración están acordados.
 
@@ -220,13 +220,13 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 
 **Purpose**: Establecer modelo, invariantes, errores y persistencia atómica.
 
-- [ ] T005 Implementar `Season` con ID estable, nombre, color y protección del default.
-- [ ] T006 Implementar `SeasonAdjustmentPercent` con rango inclusivo `-100.00..100.00`, precisión de dos decimales y sin fijar un valor por defecto por nombre de temporada.
-- [ ] T007 Definir `SeasonRule`, `ModifySeasonRuleUseCase`, `GetEffectiveSeasonRulesUseCase` y los puertos de persistencia/consulta de calendario.
-- [ ] T008 Agregar tablas e índices de temporada/reglas/historial a Prisma (incluidos `version`, `archived_at`, el índice único parcial de nombre entre temporadas no retiradas y el `CHECK` que impide retirar el default); migración con una temporada default reservada, sin asumir categorías o colores adicionales.
-- [ ] T009 Implementar mapper y repositorio Prisma: snapshot por `asOf`, bloqueo/versionado transaccional, no-op sin historial redundante y rollback si falla auditoría.
-- [ ] T010 Registrar los bindings del catálogo, caso de uso administrativo y puerto de reglas efectivas en `PricingModule`.
-- [ ] T011 Registrar los errores de dominio y sus `errorCode` en el filtro compartido.
+- [x] T005 Implementar `Season` con ID estable, nombre, color y protección del default.
+- [x] T006 Implementar `SeasonAdjustmentPercent` con rango inclusivo `-100.00..100.00`, precisión de dos decimales y sin fijar un valor por defecto por nombre de temporada.
+- [x] T007 Definir `SeasonRule`, `ModifySeasonRuleUseCase`, `GetEffectiveSeasonRulesUseCase` y los puertos de persistencia/consulta de calendario.
+- [x] T008 Agregar tablas e índices de temporada/reglas/historial a Prisma (incluidos `version`, `archived_at`, el índice único parcial de nombre entre temporadas no retiradas y el `CHECK` que impide retirar el default); migración con una temporada default reservada, sin asumir categorías o colores adicionales.
+- [x] T009 Implementar mapper y repositorio Prisma: snapshot por `asOf`, bloqueo/versionado transaccional, no-op sin historial redundante y rollback si falla auditoría.
+- [x] T010 Registrar los bindings del catálogo, caso de uso administrativo y puerto de reglas efectivas en `PricingModule`.
+- [x] T011 Registrar los errores de dominio y sus `errorCode` en el filtro compartido.
 
 **Checkpoint**: las reglas y temporadas se pueden representar y persistir respetando unicidad, vigencia y auditoría.
 
@@ -238,18 +238,18 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 
 ### Tests for User Story 1
 
-- [ ] T012 [P] [US1] Unit tests del VO: límites `-100.00`, `0.00`, `100.00`; rechaza fuera de rango, formato no numérico, NaN/infinito y exceso de decimales.
-- [ ] T013 [P] [US1] Unit tests de `Season`: valida nombre/color/identidad, default no eliminable ni renombrable y reglaje validado por el rango firmado.
-- [ ] T014 [P] [US1] Unit tests de servicio: alta, cambio de ajuste (positivo y negativo), cambio de nombre/color, no-op idéntico, `expectedVersion` desactualizado, rechazo del default, temporada referenciada por una revisión activa, retiro permitido cuando solo la referencian revisiones históricas y temporada retirada no modificable.
-- [ ] T015 [P] [US1] Contract/e2e tests REST para autorización, alta/modificación/retiro, payload inválido, default protegido, `404` de temporada retirada y errores `409`.
-- [ ] T016 [US1] Integration test con Postgres: cambio de regla y registro de auditoría atómicos; fallo de historial revierte la regla; el retiro conserva `season_rule`, `season_rule_history` y las entradas históricas del calendario; un retiro concurrente con una publicación de 011 que la referencia termina en `SEASON_IN_USE` o en `UNKNOWN_SEASON_REFERENCE`, nunca en ambos éxitos.
+- [x] T012 [P] [US1] Unit tests del VO: límites `-100.00`, `0.00`, `100.00`; rechaza fuera de rango, formato no numérico, NaN/infinito y exceso de decimales.
+- [x] T013 [P] [US1] Unit tests de `Season`: valida nombre/color/identidad, default no eliminable ni renombrable y reglaje validado por el rango firmado.
+- [x] T014 [P] [US1] Unit tests de servicio: alta, cambio de ajuste (positivo y negativo), cambio de nombre/color, no-op idéntico, `expectedVersion` desactualizado, rechazo del default, temporada referenciada por una revisión activa, retiro permitido cuando solo la referencian revisiones históricas y temporada retirada no modificable.
+- [x] T015 [P] [US1] Contract/e2e tests REST para autorización, alta/modificación/retiro, payload inválido, default protegido, `404` de temporada retirada y errores `409`.
+- [x] T016 [US1] Integration test con Postgres: cambio de regla y registro de auditoría atómicos; fallo de historial revierte la regla; el retiro conserva `season_rule`, `season_rule_history` y las entradas históricas del calendario; un retiro concurrente con una publicación de 011 que la referencia termina en `SEASON_IN_USE` o en `UNKNOWN_SEASON_REFERENCE`, nunca en ambos éxitos.
 
 ### Implementation for User Story 1
 
-- [ ] T017 [US1] Implementar `ModifySeasonRuleService` con validación de entrada, protección del default, retiro lógico y verificación de referencias en revisiones activas del calendario.
-- [ ] T018 [US1] Implementar rutas administrativas protegidas por `Administrador` para crear, consultar, modificar y retirar temporadas.
-- [ ] T019 [US1] Implementar transacción de actualización y retiro con `SELECT … FOR UPDATE` sobre `season`, comparación opcional de `expectedVersion`, incremento de `version`, `valid_from` UTC y registro de historial.
-- [ ] T020 [US1] Implementar respuesta `ApiError` específica y mantener el estado anterior ante cualquier validación/conflicto.
+- [x] T017 [US1] Implementar `ModifySeasonRuleService` con validación de entrada, protección del default, retiro lógico y verificación de referencias en revisiones activas del calendario.
+- [x] T018 [US1] Implementar rutas administrativas protegidas por `Administrador` para crear, consultar, modificar y retirar temporadas.
+- [x] T019 [US1] Implementar transacción de actualización y retiro con `SELECT … FOR UPDATE` sobre `season`, comparación opcional de `expectedVersion`, incremento de `version`, `valid_from` UTC y registro de historial.
+- [x] T020 [US1] Implementar respuesta `ApiError` específica y mantener el estado anterior ante cualquier validación/conflicto.
 
 **Checkpoint**: un Administrador configura temporadas y ajustes; actores no autorizados o entradas inválidas no cambian el estado.
 
@@ -261,17 +261,17 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 
 ### Tests for User Story 2
 
-- [ ] T021 [P] [US2] Unit test del puerto de lectura: selecciona la única versión que contiene `asOf`, con bordes temporales exactos y en orden determinista.
-- [ ] T022 [P] [US2] Contract test interno consumido por 005: catálogo más reglas efectivas incluye `seasonId`, nombre, color, default, porcentaje firmado y timestamp de vigencia.
-- [ ] T023 [US2] Integration test concurrente de actualización/lectura: cada consulta ve el snapshot anterior o el nuevo, nunca una mezcla.
-- [ ] T024 [US2] Integration test de no retroactividad: una cotización guardada previo al cambio permanece idéntica, mientras una cotización nueva recibe la regla actual.
+- [x] T021 [P] [US2] Unit test del puerto de lectura: selecciona la única versión que contiene `asOf`, con bordes temporales exactos y en orden determinista.
+- [x] T022 [P] [US2] Contract test interno consumido por 005: catálogo más reglas efectivas incluye `seasonId`, nombre, color, default, porcentaje firmado y timestamp de vigencia.
+- [x] T023 [US2] Integration test concurrente de actualización/lectura: cada consulta ve el snapshot anterior o el nuevo, nunca una mezcla.
+- [x] T024 [US2] Integration test de no retroactividad: una cotización guardada previo al cambio permanece idéntica, mientras una cotización nueva recibe la regla actual.
 
 ### Implementation for User Story 2
 
-- [ ] T025 [US2] Implementar `GetEffectiveSeasonRulesUseCase.getAll(asOf)` como consulta interna sin endpoint público adicional.
-- [ ] T026 [US2] Exponer catálogo y regla por ID estable para integración de 005 y lectura de etiquetas/colores de 011.
-- [ ] T027 [US2] Definir la integración de 005: fecha sin clasificación explícita resuelve a `isDefault`; consultar regla como snapshot `asOf` y usar decimal exacto para el ajuste.
-- [ ] T028 [US2] Verificar que este caso de uso no escribe cotizaciones ni accede a `settlement`/`invoice`; 005 materializa nuevas cotizaciones y 007/006 no recalculan snapshots.
+- [x] T025 [US2] Implementar `GetEffectiveSeasonRulesUseCase.getAll(asOf)` como consulta interna sin endpoint público adicional.
+- [x] T026 [US2] Exponer catálogo y regla por ID estable para integración de 005 y lectura de etiquetas/colores de 011.
+- [x] T027 [US2] Definir la integración de 005: fecha sin clasificación explícita resuelve a `isDefault`; consultar regla como snapshot `asOf` y usar decimal exacto para el ajuste.
+- [x] T028 [US2] Verificar que este caso de uso no escribe cotizaciones ni accede a `settlement`/`invoice`; 005 materializa nuevas cotizaciones y 007/006 no recalculan snapshots.
 
 **Checkpoint**: la lectura concurrente es determinista y los cambios no alteran importes previamente materializados.
 
@@ -283,23 +283,23 @@ Cada cambio efectivo registra `actorId`, `seasonId`, `changedAt`, ajuste anterio
 
 ### Tests for User Story 3
 
-- [ ] T029 [P] [US3] Contract test de `GET /admin/season-rules`: lista completa ordenada determinísticamente, tasa vigente y metadatos de auditoría.
-- [ ] T030 [P] [US3] E2E test de autorización: Administrador obtiene el catálogo; sin token recibe 401 y un rol distinto recibe 403.
-- [ ] T031 [US3] Integration test del historial: cambio efectivo muestra actor, hora y valor anterior/nuevo; no-op idéntico no agrega historial redundante.
+- [x] T029 [P] [US3] Contract test de `GET /admin/season-rules`: lista completa ordenada determinísticamente, tasa vigente y metadatos de auditoría.
+- [x] T030 [P] [US3] E2E test de autorización: Administrador obtiene el catálogo; sin token recibe 401 y un rol distinto recibe 403.
+- [x] T031 [US3] Integration test del historial: cambio efectivo muestra actor, hora y valor anterior/nuevo; no-op idéntico no agrega historial redundante.
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] Implementar consulta de catálogo vigente sin mutación, con orden por nombre normalizado e ID estable como desempate.
-- [ ] T033 [US3] Mapear los datos auditables necesarios sin exponer secretos ni historial técnico innecesario.
+- [x] T032 [US3] Implementar consulta de catálogo vigente sin mutación, con orden por nombre normalizado e ID estable como desempate.
+- [x] T033 [US3] Mapear los datos auditables necesarios sin exponer secretos ni historial técnico innecesario.
 
 **Checkpoint**: la revisión identifica valores vigentes y cambios de forma verificable.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T034 Documentar el contrato REST en OpenAPI y el puerto de integración con 005/011.
+- [x] T034 Documentar el contrato REST en OpenAPI y el puerto de integración con 005/011.
 - [ ] T035 Verificar con test de arquitectura que `settlement`/`billing` no dependan de reglas actuales de `pricing`.
 - [ ] T036 Agregar logs estructurados para cambios efectivos, errores de validación y conflictos de concurrencia sin credenciales.
-- [ ] T037 Ejecutar pruebas de migración desde base vacía y validar que se crea una temporada default reservada y única, con ajuste válido dentro del rango firmado.
+- [x] T037 Ejecutar pruebas de migración desde base vacía y validar que se crea una temporada default reservada y única, con ajuste válido dentro del rango firmado.
 
 ## Dependencies & Execution Order
 
