@@ -16,9 +16,9 @@ No se expone endpoint ni se captura información tributaria por separado. `check
 ## Technical Context
 
 **Language/Version**: TypeScript 5.x sobre Node.js 20 LTS
-**Primary Dependencies**: NestJS 10.x, Prisma ORM, `decimal.js` dentro de `Money`, Jest, Testcontainers
+**Primary Dependencies**: NestJS 10.x, Prisma ORM, `decimal.js` dentro de `Money`, Jest
 **Storage**: PostgreSQL 16 — escritura en `invoice` y en el asignador transaccional de numeración; lectura de la `settlement` mediante el caso de uso 007 y del IVA mediante el caso de uso 001
-**Testing**: Jest para dominio y aplicación; Jest + Testcontainers para concurrencia, atomicidad e idempotencia de persistencia; pruebas de integración para los casos de uso 001 y 007 con puertos simulados
+**Testing**: Jest para dominio y aplicación; Jest + PostgreSQL mediante `TEST_DATABASE_URL` para concurrencia, atomicidad e idempotencia de persistencia; pruebas de integración para los casos de uso 001 y 007 con puertos simulados
 **Target Platform**: Servicio backend Linux en contenedor Docker
 **Project Type**: Servicio backend único (monolito modular hexagonal), bounded context `billing`, sin frontend
 **Performance Goals**: La factura se emite durante el procesamiento asíncrono del check-out; las operaciones de aplicación y persistencia deben completarse sin esperas externas adicionales. Se conserva el timeout de 500 ms de Módulo 2 definido por 007 cuando sea necesario generar la liquidación.
@@ -52,31 +52,27 @@ src/
 │   │       ├── invoice.ts                         # Factura ISSUED e inmutable
 │   │       ├── invoice-breakdown.ts               # Snapshot de importes y tasa aplicada
 │   │       └── billing-customer.ts                # Nombre/razón social y documento fiscal
-│   ├── errors/
+│   ├── errors/billing/
 │   │   ├── final-settlement-not-found.error.ts      # Guarda de integridad sobre lo que devuelve 007
 │   │   └── invoice-persistence-unavailable.error.ts # Fallo transitorio de BD/commit al emitir
 │   └── ports/
-│       ├── in/
+│       ├── in/billing/
 │       │   └── generate-final-invoice.use-case.ts
-│       └── out/
+│       └── out/billing/
 │           └── invoice-issuance.repository.port.ts # Idempotencia + número + factura atómicos
 │
 ├── application/
-│   ├── services/
-│   │   └── billing/
-│   │       └── generate-final-invoice.service.ts
-│   └── dto/
+│   └── services/
 │       └── billing/
-│           ├── generate-final-invoice.command.ts   # Reutiliza los datos de entrada del check-out
-│           └── generate-final-invoice.result.ts    # ISSUED con la factura | NOT_ISSUED con el motivo
+│           └── generate-final-invoice.service.ts
 │
 └── infrastructure/
     ├── adapters/
     │   └── out/
     │       └── persistence/
-    │           ├── mappers/
+    │           ├── mappers/billing/
     │           │   └── invoice.mapper.ts
-    │           └── repositories/
+    │           └── repositories/billing/
     │               └── prisma-invoice-issuance.repository.ts
     └── config/
         └── billing.module.ts                       # Wiring/exportación del caso de uso interno
@@ -224,7 +220,7 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 - [x] T001 Confirmar que el wiring de `billing` exporta `GenerateFinalInvoiceUseCase` solo a `checkout-ingestion` (010); ningún controller REST expone la operación.
 - [x] T002 Confirmar que 007 exporta `GenerateSettlementUseCase` y que su contrato acepta los datos de check-out (`roomId` y `categoryRoom` incluidos), sin recibir ni persistir `billingCustomer`.
 - [x] T003 Confirmar que 001 exporta `GetCurrentVatRateUseCase.getCurrent()`, devuelve una tasa decimal validada y distingue `VatRateNotConfiguredError` de `VatRateUnavailableError`; no consultar `vat_rate` directamente desde 006.
-- [ ] T004 Acordar con 002/008 los campos copiados de la factura y mantener sus adaptadores en solo lectura.
+- [x] T004 Acordar con 002/008 los campos copiados de la factura y mantener sus adaptadores en solo lectura.
 
 **Checkpoint**: las dependencias internas están disponibles con contratos tipados y no hay un nuevo endpoint o integración externa.
 
@@ -283,8 +279,8 @@ El log estructurado incluye `eventId`, `stayId`, `settlementId`, `invoiceId`/`in
 ### Implementation for User Story 2
 
 - [x] T027 [US2] Persistir el desglose explícito (`lodgingAmount`, `otaCommissionAmount`, `netIncome`, `vatRateApplied`, `vatAmount`, `totalAmount`) y `channel`/`otaId` como valores snapshot.
-- [x] T028 [US2] Documentar en el mapper/contrato que `commissionAmount` es referencia comercial, no componente cobrado al huésped; `totalAmount` siempre es `lodgingAmount + vatAmount`.
-- [ ] T029 [US2] Verificar que 008 obtiene todos los importes exclusivamente desde `invoice` y que 002 puede consultar la factura sin recalcularla.
+- [x] T028 [US2] Documentar en el mapper/contrato que `otaCommissionAmount` es referencia comercial, no componente cobrado al huésped; `totalAmount` siempre es `lodgingAmount + vatAmount`.
+- [x] T029 [US2] Verificar que 008 obtiene todos los importes exclusivamente desde `invoice` y que 002 puede consultar la factura sin recalcularla.
 
 **Checkpoint**: los canales directo y OTA producen el desglose fiscal y de conciliación conforme a la spec.
 
