@@ -71,10 +71,11 @@ La documentación interactiva queda en <http://localhost:3000/docs> (Swagger). P
 
 ```bash
 npm test             # unitarias, de contrato y de integración
-npm run test:e2e     # endpoint de punta a punta (no necesita PostgreSQL)
+npm run test:e2e     # endpoints de punta a punta
 ```
 
 Las pruebas de integración del repositorio necesitan una base PostgreSQL ya migrada en `TEST_DATABASE_URL`;
 sin esa variable se omiten. Prisma lee el `.env` automáticamente, así que basta con que la variable esté ahí
 para que esas pruebas se ejecuten. Las de mensajería (feature 010) necesitan un RabbitMQ en `TEST_RABBITMQ_URL`,
-con la misma regla; la E2E del check-out (`test/e2e/checkout/`) necesita las dos variables.
+con la misma regla. La mayoría de las E2E no necesita PostgreSQL; las de 008 (`test/e2e/billing/gestionar-facturacion`)
+y 003 (`test/e2e/ota-commission/`) necesitan `TEST_DATABASE_URL`, y la del check-out (`test/e2e/checkout/`) las dos variables.

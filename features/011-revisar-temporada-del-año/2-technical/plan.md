@@ -237,9 +237,9 @@ Se usa `UNKNOWN_SEASON_REFERENCE` y no `SEASON_NOT_FOUND` porque este último es
 **Purpose**: Coordinar el ownership del calendario, catálogo e instantánea con 009/005.
 
 - [ ] T001 Confirmar que están disponibles `PricingModule`, `PrismaService`, JWT/roles, `ApiError` y `DateRange` del plan base.
-- [ ] T002 Acordar con 009 el contrato de consulta por `seasonId`, catálogo/default y regla efectiva por un único `asOf`.
-- [ ] T003 Acordar con 005 la semántica de fecha civil, resolución por noche y propagación del mismo `asOf` al puerto de reglas de 009.
-- [ ] T004 Publicar en OpenAPI que 011 permite revisar (`GET`) y reemplazar atómicamente (`PUT`) una revisión anual del calendario.
+- [x] T002 Acordar con 009 el contrato de consulta por `seasonId`, catálogo/default y regla efectiva por un único `asOf`.
+- [x] T003 Acordar con 005 la semántica de fecha civil, resolución por noche y propagación del mismo `asOf` al puerto de reglas de 009.
+- [x] T004 Publicar en OpenAPI que 011 permite revisar (`GET`) y reemplazar atómicamente (`PUT`) una revisión anual del calendario.
 
 **Checkpoint**: se han fijado dueños de catálogo/calendario y la firma de resolución interna.
 
@@ -247,13 +247,13 @@ Se usa `UNKNOWN_SEASON_REFERENCE` y no `SEASON_NOT_FOUND` porque este último es
 
 **Purpose**: Crear los modelos y garantías comunes a revisión, administración y resolución.
 
-- [ ] T005 Implementar `CalendarYear`, `CalendarDateRange` y validación de fechas civiles inclusivas del año.
-- [ ] T006 Implementar `SeasonCalendarEntry` con tipos `BASE`/`EXCEPTION` y precedencia puntual explícita.
-- [ ] T007 Definir puertos de entrada `ReviewSeasonCalendarUseCase`, `ReplaceSeasonCalendarUseCase` y `ResolveSeasonByDateUseCase`, más tokens.
-- [ ] T008 Definir `SeasonCalendarRepositoryPort` y `SeasonCatalogQueryPort` hacia 009.
-- [ ] T009 Crear modelos Prisma de revisión/entradas/`season_calendar_active_base` e índices; agregar en SQL manual de la migración la restricción `EXCLUDE USING gist (period WITH &&)` (no requiere `btree_gist`, porque solo compara rangos); no duplicar nombre, color o ajuste del catálogo 009.
-- [ ] T010 Implementar `SeasonCalendarMapper` y repositorio Prisma con transacción de publicación, historial y lectura por snapshot `asOf`.
-- [ ] T011 Registrar errores de dominio, códigos `ApiError` y bindings de puertos en `PricingModule`.
+- [x] T005 Implementar `CalendarYear`, `CalendarDateRange` y validación de fechas civiles inclusivas del año.
+- [x] T006 Implementar `SeasonCalendarEntry` con tipos `BASE`/`EXCEPTION` y precedencia puntual explícita.
+- [x] T007 Definir puertos de entrada `ReviewSeasonCalendarUseCase`, `ReplaceSeasonCalendarUseCase` y `ResolveSeasonByDateUseCase`, más tokens.
+- [x] T008 Definir `SeasonCalendarRepositoryPort` y `SeasonCatalogQueryPort` hacia 009.
+- [x] T009 Crear modelos Prisma de revisión/entradas/`season_calendar_active_base` e índices; agregar en SQL manual de la migración la restricción `EXCLUDE USING gist (period WITH &&)` (no requiere `btree_gist`, porque solo compara rangos); no duplicar nombre, color o ajuste del catálogo 009.
+- [x] T010 Implementar `SeasonCalendarMapper` y repositorio Prisma con transacción de publicación, historial y lectura por snapshot `asOf`.
+- [x] T011 Registrar errores de dominio, códigos `ApiError` y bindings de puertos en `PricingModule`.
 
 **Checkpoint**: la revisión del calendario se puede validar y leer sin depender de endpoints remotos ni datos duplicados.
 
@@ -265,16 +265,16 @@ Se usa `UNKNOWN_SEASON_REFERENCE` y no `SEASON_NOT_FOUND` porque este último es
 
 ### Tests for User Story 1
 
-- [ ] T012 [P] [US1] Unit tests del resolver: rango base, excepción sobre base, default para hueco y límites inclusivos de fechas.
-- [ ] T013 [P] [US1] Unit tests de validación: fin anterior a inicio, inicio fuera del año propietario, período BASE válido que cruza al año siguiente, BASE que excede el año siguiente, excepción fuera de su año y catálogo sin temporada referenciada.
-- [ ] T014 [P] [US1] Contract/e2e test de `GET /admin/season-calendar`: año completo, rango parcial, entrada heredada desde el año anterior, autenticación, rol, huecos y enriquecimiento con nombre/color de 009.
-- [ ] T015 [US1] Integration test Postgres que comprueba lectura de una revisión completa en una sola transacción y reporta explícitamente filas conflictivas heredadas.
+- [x] T012 [P] [US1] Unit tests del resolver: rango base, excepción sobre base, default para hueco y límites inclusivos de fechas.
+- [x] T013 [P] [US1] Unit tests de validación: fin anterior a inicio, inicio fuera del año propietario, período BASE válido que cruza al año siguiente, BASE que excede el año siguiente, excepción fuera de su año y catálogo sin temporada referenciada.
+- [x] T014 [P] [US1] Contract/e2e test de `GET /admin/season-calendar`: año completo, rango parcial, entrada heredada desde el año anterior, autenticación, rol, huecos y enriquecimiento con nombre/color de 009.
+- [x] T015 [US1] Integration test Postgres que comprueba lectura de una revisión completa en una sola transacción y reporta explícitamente filas conflictivas heredadas.
 
 ### Implementation for User Story 1
 
-- [ ] T016 [US1] Implementar `ReviewSeasonCalendarService` y read model que expone períodos propios, BASE heredadas del año anterior, excepciones y huecos con clasificación default visible.
-- [ ] T017 [US1] Implementar `GET /admin/season-calendar`, validar `year/from/to`, proteger con JWT/rol Administrador.
-- [ ] T018 [US1] Resolver/adjuntar nombres, colores y reglas vigentes con el catálogo de 009 para que el Administrador pueda revisar la leyenda completa.
+- [x] T016 [US1] Implementar `ReviewSeasonCalendarService` y read model que expone períodos propios, BASE heredadas del año anterior, excepciones y huecos con clasificación default visible.
+- [x] T017 [US1] Implementar `GET /admin/season-calendar`, validar `year/from/to`, proteger con JWT/rol Administrador.
+- [x] T018 [US1] Resolver/adjuntar nombres, colores y reglas vigentes con el catálogo de 009 para que el Administrador pueda revisar la leyenda completa.
 
 **Checkpoint**: la vista administrativa representa la temporada efectiva y no oculta huecos o incoherencias.
 
@@ -286,17 +286,17 @@ Se usa `UNKNOWN_SEASON_REFERENCE` y no `SEASON_NOT_FOUND` porque este último es
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Contract test del puerto para BASE propio, BASE heredado del año anterior, EXCEPTION prevalente sobre ambos, DEFAULT y fecha sin revisión propia.
-- [ ] T020 [P] [US2] Unit tests: excepción prevalece sobre BASE propio o heredado; resolución consulta la revisión del año anterior; solapamiento BASE entre revisiones anuales levanta error de inconsistencia en vez de elegir prioridad.
-- [ ] T021 [US2] Integration test concurrente de resolución/publicación: una lectura ve revisiones completas del año y año anterior para el mismo `asOf`; no mezcla entradas.
+- [x] T019 [P] [US2] Contract test del puerto para BASE propio, BASE heredado del año anterior, EXCEPTION prevalente sobre ambos, DEFAULT y fecha sin revisión propia.
+- [x] T020 [P] [US2] Unit tests: excepción prevalece sobre BASE propio o heredado; resolución consulta la revisión del año anterior; solapamiento BASE entre revisiones anuales levanta error de inconsistencia en vez de elegir prioridad.
+- [x] T021 [US2] Integration test concurrente de resolución/publicación: una lectura ve revisiones completas del año y año anterior para el mismo `asOf`; no mezcla entradas.
 - [ ] T022 [US2] Integration test de no retroactividad: publicación nueva cambia la resolución de futuros cálculos, pero no actualiza una cotización ya persistida por 005.
 
 ### Implementation for User Story 2
 
-- [ ] T023 [US2] Implementar `ResolveSeasonByDateService.resolve(date, asOf)` con precedencia `EXCEPTION > BASE > DEFAULT`.
-- [ ] T024 [US2] Implementar selección de revisiones del año de la fecha y el anterior por `asOf`, resolviendo BASE heredado y reportando su año/revisión propietario; fallar explícitamente si el catálogo, revisión o referencias están corruptos.
-- [ ] T025 [US2] Exportar el puerto tipado para 005 y documentar que se usa el mismo instante de snapshot del puerto 009.
-- [ ] T026 [US2] Confirmar que 005 utiliza el resultado por fecha en vez de una clasificación local o enum hardcodeado.
+- [x] T023 [US2] Implementar `ResolveSeasonByDateService.resolve(date, asOf)` con precedencia `EXCEPTION > BASE > DEFAULT`.
+- [x] T024 [US2] Implementar selección de revisiones del año de la fecha y el anterior por `asOf`, resolviendo BASE heredado y reportando su año/revisión propietario; fallar explícitamente si el catálogo, revisión o referencias están corruptos.
+- [x] T025 [US2] Exportar el puerto tipado para 005 y documentar que se usa el mismo instante de snapshot del puerto 009.
+- [x] T026 [US2] Confirmar que 005 utiliza el resultado por fecha en vez de una clasificación local o enum hardcodeado.
 
 **Checkpoint**: todas las consultas usan la clasificación canónica, determinista y consistente del calendario.
 
@@ -308,28 +308,28 @@ Se usa `UNKNOWN_SEASON_REFERENCE` y no `SEASON_NOT_FOUND` porque este último es
 
 ### Tests for User Story 3
 
-- [ ] T027 [P] [US3] Unit tests de `ReplaceSeasonCalendarService`: alta/modificación/borrado mediante reemplazo completo, excepción válida, temporada inexistente y temporada retirada (`UNKNOWN_SEASON_REFERENCE`).
-- [ ] T028 [P] [US3] Tests de conflictos: rangos base con cualquier día compartido; excepción-excepción duplicada; excepción única sobre base aceptada.
-- [ ] T029 [US3] E2E/contract tests del `PUT`: validación, control `expectedRevision`, 409 en carrera, auth 401/403 y respuesta de revisión.
-- [ ] T030 [US3] Integration test Postgres de publicaciones concurrentes del mismo año y de años vecinos que intentan crear solapamientos BASE; solo se activa una configuración compatible y `season_calendar_active_base` nunca contiene períodos solapados. Incluye una publicación concurrente con el retiro de una temporada que referencia (ver T016 de 009).
-- [ ] T031 [US3] Integration test de atomicidad: falla al insertar una entrada o auditoría y la revisión activa anterior sigue intacta.
+- [x] T027 [P] [US3] Unit tests de `ReplaceSeasonCalendarService`: alta/modificación/borrado mediante reemplazo completo, excepción válida, temporada inexistente y temporada retirada (`UNKNOWN_SEASON_REFERENCE`).
+- [x] T028 [P] [US3] Tests de conflictos: rangos base con cualquier día compartido; excepción-excepción duplicada; excepción única sobre base aceptada.
+- [x] T029 [US3] E2E/contract tests del `PUT`: validación, control `expectedRevision`, 409 en carrera, auth 401/403 y respuesta de revisión.
+- [x] T030 [US3] Integration test Postgres de publicaciones concurrentes del mismo año y de años vecinos que intentan crear solapamientos BASE; solo se activa una configuración compatible y `season_calendar_active_base` nunca contiene períodos solapados. Incluye una publicación concurrente con el retiro de una temporada que referencia (ver T016 de 009).
+- [x] T031 [US3] Integration test de atomicidad: falla al insertar una entrada o auditoría y la revisión activa anterior sigue intacta.
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] Implementar reemplazo completo del año propietario validando referencias y solapamientos BASE con las revisiones efectivas de los años vecinos antes de persistir.
-- [ ] T033 [US3] Crear nueva `SeasonCalendarRevision` con actor y hora DB, activar atómicamente e inmovilizar revisiones anteriores.
-- [ ] T034 [US3] Implementar control de concurrencia `expectedRevision`, `pg_advisory_xact_lock` ordenado sobre `N-1`/`N`/`N+1`, bloqueo `FOR SHARE` de las temporadas referenciadas, reescritura de `season_calendar_active_base` y traducción de la violación `23P01` a `OVERLAPPING_SEASON_CALENDAR`.
-- [ ] T035 [US3] Mapear errores de dominio a respuestas `ApiError` accionables; no aceptar ni publicar resultados parciales.
+- [x] T032 [US3] Implementar reemplazo completo del año propietario validando referencias y solapamientos BASE con las revisiones efectivas de los años vecinos antes de persistir.
+- [x] T033 [US3] Crear nueva `SeasonCalendarRevision` con actor y hora DB, activar atómicamente e inmovilizar revisiones anteriores.
+- [x] T034 [US3] Implementar control de concurrencia `expectedRevision`, `pg_advisory_xact_lock` ordenado sobre `N-1`/`N`/`N+1`, bloqueo `FOR SHARE` de las temporadas referenciadas, reescritura de `season_calendar_active_base` y traducción de la violación `23P01` a `OVERLAPPING_SEASON_CALENDAR`.
+- [x] T035 [US3] Mapear errores de dominio a respuestas `ApiError` accionables; no aceptar ni publicar resultados parciales.
 
 **Checkpoint**: las configuraciones son versionadas, auditables y solo una revisión íntegra es visible por año/instante.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T036 Documentar ambos contratos (HTTP y puerto interno) en OpenAPI/documentación técnica del módulo.
+- [x] T036 Documentar ambos contratos (HTTP y puerto interno) en OpenAPI/documentación técnica del módulo.
 - [ ] T037 Añadir logs estructurados por `year`, `revision`, `actorId`, resultado y duración; omitir tokens.
-- [ ] T038 Ejecutar pruebas de migración desde BD vacía y validar índices/constraints PostgreSQL para rangos solapados.
+- [x] T038 Ejecutar pruebas de migración desde BD vacía y validar índices/constraints PostgreSQL para rangos solapados.
 - [ ] T039 Añadir test de arquitectura: `pricing` es el único dueño de escrituras del calendario; 005 solo resuelve/lee; 007/006 no consumen reglas actuales para recalcular snapshots.
-- [ ] T040 Añadir tests de solapamiento BASE entre años vecinos, tanto al publicar el año de inicio como al publicar el año siguiente con una entrada incompatible.
+- [x] T040 Añadir tests de solapamiento BASE entre años vecinos, tanto al publicar el año de inicio como al publicar el año siguiente con una entrada incompatible.
 
 ## Dependencies & Execution Order
 

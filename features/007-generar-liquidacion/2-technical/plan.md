@@ -262,8 +262,8 @@ Cada mensaje dice qué falló y con qué dato (reserva, habitación, OTA), para 
 **Purpose**: Verificar que la base del proyecto y las piezas de `pricing` están disponibles
 
 - [ ] T001 Confirmar que el proyecto base (Fases 1 y 2 de `docs/plan-tecnico-base.md`) está completo: VOs compartidos (`Money`, `Channel`, `DateRange`), `PrismaService`, `ExceptionFilter` global y errores de dominio base
-- [ ] T002 Confirmar con la feature 005 que `lodging_quote` y `lodging_quote_night` existen, que la cotización expone `roomId` y la `baseRate` de cada noche, y que `PrismaLodgingQuoteRepository` implementa `LodgingQuoteQueryPort.findByIds`; si aún no, acordarlo con su responsable antes de seguir
-- [ ] T003 Agregar `MODULE2_BASE_URL` y `MODULE2_TIMEOUT_MS=500` a `.env.example` y al módulo de configuración; agregar las dependencias `decimal.js`, `opossum` y `@nestjs/axios`
+- [x] T002 Confirmar con la feature 005 que `lodging_quote` y `lodging_quote_night` existen, que la cotización expone `roomId` y la `baseRate` de cada noche, y que `PrismaLodgingQuoteRepository` implementa `LodgingQuoteQueryPort.findByIds`; si aún no, acordarlo con su responsable antes de seguir
+- [x] T003 Agregar `MODULE2_BASE_URL` y `MODULE2_TIMEOUT_MS=500` a `.env.example` y al módulo de configuración; agregar las dependencias `decimal.js`, `opossum` y `@nestjs/axios`
 
 ---
 
@@ -273,15 +273,15 @@ Cada mensaje dice qué falló y con qué dato (reserva, habitación, OTA), para 
 
 **⚠️ CRITICAL**: Ninguna historia puede empezar hasta completar esta fase
 
-- [ ] T004 [P] Crear los errores de dominio `ReservationNotFoundError`, `QuoteNotFoundError`, `InvalidCommissionError` y `Module2UnavailableError` en `src/domain/errors/` y registrarlos en el `ExceptionFilter` global con su `errorCode`
-- [ ] T005 [P] Implementar el VO `CommissionPercentage` (0–100) en `src/domain/model/settlement/commission-percentage.vo.ts`
-- [ ] T006 [P] Implementar `ReservationData` y `CheckoutData` en `src/domain/model/settlement/`
-- [ ] T007 Implementar la entidad `Settlement` (estado siempre `Final`, sin métodos de modificación) en `src/domain/model/settlement/settlement.ts`
-- [ ] T008 Definir `GenerateSettlementUseCase`, `ReservationClientPort` y `SettlementRepositoryPort` con sus tokens en `src/domain/ports/`
-- [ ] T009 Agregar el modelo `Settlement` a `prisma/schema.prisma` y crear la migración `<timestamp>_create_settlement` con `UNIQUE(stay_id)`
-- [ ] T010 Implementar `PrismaSettlementRepository` y `SettlementMapper` (`findByStayId`, `insert` que traduce la violación de `UNIQUE(stay_id)` a un conflicto controlado, `findByReservationAndRoom` y los dos índices de lectura)
-- [ ] T011 Implementar `Module2ReservationClient` con timeout de 500 ms y circuit breaker `opossum`
-- [ ] T012 Registrar el binding de los puertos y exportar `GenerateSettlementUseCase` en `src/infrastructure/config/settlement.module.ts`
+- [x] T004 [P] Crear los errores de dominio `ReservationNotFoundError`, `QuoteNotFoundError`, `InvalidCommissionError` y `Module2UnavailableError` en `src/domain/errors/` y registrarlos en el `ExceptionFilter` global con su `errorCode`
+- [x] T005 [P] Implementar el VO `CommissionPercentage` (0–100) en `src/domain/model/settlement/commission-percentage.vo.ts`
+- [x] T006 [P] Implementar `ReservationData` y `CheckoutData` en `src/domain/model/settlement/`
+- [x] T007 Implementar la entidad `Settlement` (estado siempre `Final`, sin métodos de modificación) en `src/domain/model/settlement/settlement.ts`
+- [x] T008 Definir `GenerateSettlementUseCase`, `ReservationClientPort` y `SettlementRepositoryPort` con sus tokens en `src/domain/ports/`
+- [x] T009 Agregar el modelo `Settlement` a `prisma/schema.prisma` y crear la migración `<timestamp>_create_settlement` con `UNIQUE(stay_id)`
+- [x] T010 Implementar `PrismaSettlementRepository` y `SettlementMapper` (`findByStayId`, `insert` que traduce la violación de `UNIQUE(stay_id)` a un conflicto controlado, `findByReservationAndRoom` y los dos índices de lectura)
+- [x] T011 Implementar `Module2ReservationClient` con timeout de 500 ms y circuit breaker `opossum`
+- [x] T012 Registrar el binding de los puertos y exportar `GenerateSettlementUseCase` en `src/infrastructure/config/settlement.module.ts`
 
 **Checkpoint**: Fundación lista — las historias pueden implementarse
 
@@ -295,17 +295,17 @@ Cada mensaje dice qué falló y con qué dato (reserva, habitación, OTA), para 
 
 ### Tests for User Story 1
 
-- [ ] T013 [P] [US1] Unit test de `SettlementCalculator` para canal directo (neto = hospedaje, comisión 0, sin IVA; desglose base/dinámica, incluido un ajuste negativo) en `test/unit/domain/settlement/settlement-calculator.spec.ts`
-- [ ] T014 [P] [US1] Unit test de `GenerateSettlementService` con puertos mockeados: cotización elegida por `roomId` (dos habitaciones del mismo tipo con cotizaciones distintas), varias habitaciones, reenvío idéntico devuelve la existente sin llamar a Módulo 2, reserva inexistente → `ReservationNotFoundError`, sin cotización de la habitación → `QuoteNotFoundError`, Módulo 2 caído → `Module2UnavailableError`, varias cotizaciones de la misma habitación → siempre la de menor `quoteId`, en `test/unit/application/settlement/generate-settlement.service.spec.ts`
-- [ ] T015 [P] [US1] Integration test de `Module2ReservationClient` contra un servidor HTTP simulado: 200, 404, timeout de 500 ms, 5xx y circuito abierto, en `test/integration/http/module2-reservation.client.spec.ts`
-- [ ] T016 [P] [US1] Contract test de la respuesta de `GET /api/reservations/{reservationRef}` (campos y tipos acordados con Módulo 2) en `test/contract/settlement/module2-reservation.contract.spec.ts`
-- [ ] T017 [P] [US1] Integration test de `PrismaSettlementRepository` contra Postgres (Testcontainers): `insert`, `findByStayId` y dos `insert` simultáneos del mismo `stayId` que terminan en una sola fila, en `test/integration/persistence/settlement/prisma-settlement.repository.spec.ts`
+- [x] T013 [P] [US1] Unit test de `SettlementCalculator` para canal directo (neto = hospedaje, comisión 0, sin IVA; desglose base/dinámica, incluido un ajuste negativo) en `test/unit/domain/settlement/settlement-calculator.spec.ts`
+- [x] T014 [P] [US1] Unit test de `GenerateSettlementService` con puertos mockeados: cotización elegida por `roomId` (dos habitaciones del mismo tipo con cotizaciones distintas), varias habitaciones, reenvío idéntico devuelve la existente sin llamar a Módulo 2, reserva inexistente → `ReservationNotFoundError`, sin cotización de la habitación → `QuoteNotFoundError`, Módulo 2 caído → `Module2UnavailableError`, varias cotizaciones de la misma habitación → siempre la de menor `quoteId`, en `test/unit/application/settlement/generate-settlement.service.spec.ts`
+- [x] T015 [P] [US1] Integration test de `Module2ReservationClient` contra un servidor HTTP simulado: 200, 404, timeout de 500 ms, 5xx y circuito abierto, en `test/integration/http/module2-reservation.client.spec.ts`
+- [x] T016 [P] [US1] Contract test de la respuesta de `GET /api/reservations/{reservationRef}` (campos y tipos acordados con Módulo 2) en `test/contract/settlement/module2-reservation.contract.spec.ts`
+- [x] T017 [P] [US1] Integration test de `PrismaSettlementRepository` contra Postgres (Testcontainers): `insert`, `findByStayId` y dos `insert` simultáneos del mismo `stayId` que terminan en una sola fila, en `test/integration/persistence/settlement/prisma-settlement.repository.spec.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Implementar `SettlementCalculator` para canal directo en `src/domain/model/settlement/settlement-calculator.ts`
-- [ ] T019 [US1] Implementar `GenerateSettlementService.generate` (pasos 1 a 7 del flujo) en `src/application/services/settlement/generate-settlement.service.ts`
-- [ ] T020 [US1] Implementar `GenerateSettlementCommand` en `src/application/dto/settlement/`
+- [x] T018 [US1] Implementar `SettlementCalculator` para canal directo en `src/domain/model/settlement/settlement-calculator.ts`
+- [x] T019 [US1] Implementar `GenerateSettlementService.generate` (pasos 1 a 7 del flujo) en `src/application/services/settlement/generate-settlement.service.ts`
+- [x] T020 [US1] Implementar `GenerateSettlementCommand` en `src/application/dto/settlement/`
 
 **Checkpoint**: La liquidación de canal directo funciona y es idempotente
 
@@ -319,14 +319,14 @@ Cada mensaje dice qué falló y con qué dato (reserva, habitación, OTA), para 
 
 ### Tests for User Story 2
 
-- [ ] T021 [P] [US2] Unit test de `CommissionPercentage`: acepta 0 y 100, rechaza negativo y mayor a 100, en `test/unit/domain/settlement/commission-percentage.vo.spec.ts`
-- [ ] T022 [P] [US2] Unit test de `SettlementCalculator` para OTA: comisión y neto exactos, redondeo half-up a 2 decimales, sin IVA
-- [ ] T023 [P] [US2] Unit test del servicio: OTA sin porcentaje → `MissingCommissionError`; porcentaje inválido → `InvalidCommissionError`; reserva sin canal → Directo sin comisión
+- [x] T021 [P] [US2] Unit test de `CommissionPercentage`: acepta 0 y 100, rechaza negativo y mayor a 100, en `test/unit/domain/settlement/commission-percentage.vo.spec.ts`
+- [x] T022 [P] [US2] Unit test de `SettlementCalculator` para OTA: comisión y neto exactos, redondeo half-up a 2 decimales, sin IVA
+- [x] T023 [P] [US2] Unit test del servicio: OTA sin porcentaje → `MissingCommissionError`; porcentaje inválido → `InvalidCommissionError`; reserva sin canal → Directo sin comisión
 
 ### Implementation for User Story 2
 
-- [ ] T024 [US2] Extender `SettlementCalculator` con el canal OTA
-- [ ] T025 [US2] Construir `Channel` y `CommissionPercentage` en el paso 4 del servicio y guardar `ota_id`, `ota_confirmation_code` y `ota_commission_percentage`
+- [x] T024 [US2] Extender `SettlementCalculator` con el canal OTA
+- [x] T025 [US2] Construir `Channel` y `CommissionPercentage` en el paso 4 del servicio y guardar `ota_id`, `ota_confirmation_code` y `ota_commission_percentage`
 
 **Checkpoint**: HU1 y HU2 funcionan de forma independiente
 
@@ -340,14 +340,14 @@ Cada mensaje dice qué falló y con qué dato (reserva, habitación, OTA), para 
 
 ### Tests for User Story 3
 
-- [ ] T026 [P] [US3] Unit test: mismo `stayId` con datos distintos → `SettlementAlreadyExistsError` y la original intacta
-- [ ] T027 [P] [US3] Integration test: violación de `UNIQUE(stay_id)` con datos distintos termina en `SettlementAlreadyExistsError` y no en un error genérico
-- [ ] T028 [P] [US3] Test de arquitectura (`dependency-cruiser`): solo `checkout-ingestion` (010) y `billing` (006) pueden importar `GenerateSettlementUseCase`; ningún controller lo usa [FR-001]
+- [x] T026 [P] [US3] Unit test: mismo `stayId` con datos distintos → `SettlementAlreadyExistsError` y la original intacta
+- [x] T027 [P] [US3] Integration test: violación de `UNIQUE(stay_id)` con datos distintos termina en `SettlementAlreadyExistsError` y no en un error genérico
+- [x] T028 [P] [US3] Test de arquitectura (`dependency-cruiser`): solo `checkout-ingestion` (010) y `billing` (006) pueden importar `GenerateSettlementUseCase`; ningún controller lo usa [FR-001]
 
 ### Implementation for User Story 3
 
-- [ ] T029 [US3] Implementar la comparación de datos del check-out en el paso 1 y el reintento de lectura tras un conflicto de `UNIQUE(stay_id)` en el paso 6
-- [ ] T030 [US3] Agregar la regla de `dependency-cruiser` de T028
+- [x] T029 [US3] Implementar la comparación de datos del check-out en el paso 1 y el reintento de lectura tras un conflicto de `UNIQUE(stay_id)` en el paso 6
+- [x] T030 [US3] Agregar la regla de `dependency-cruiser` de T028
 
 **Checkpoint**: Las tres historias funcionan de forma independiente
 
@@ -357,10 +357,10 @@ Cada mensaje dice qué falló y con qué dato (reserva, habitación, OTA), para 
 
 **Purpose**: Garantías transversales de la feature
 
-- [ ] T031 Verificar que la tabla `settlement` no tiene ningún `UPDATE` en el código (búsqueda en el repositorio + test que compara la fila antes y después de un reenvío) [FR-009, FR-017]
-- [ ] T032 Logging estructurado de cada generación (`stayId`, `reservationRef`, canal, `quoteId`, resultado o `errorCode`, duración), sin datos personales del huésped [NFR-003, NFR-006]
-- [ ] T033 Medir el tiempo de `generate` con Módulo 2 simulado y confirmar que cabe en el objetivo de 800 ms [NFR-002]
-- [ ] T034 Coordinar con 010 el manejo de errores de la tabla "Errores y qué hace quien llama" (dead-letter o cola de reintento) y con 002 la reutilización de `SettlementCalculator`
+- [x] T031 Verificar que la tabla `settlement` no tiene ningún `UPDATE` en el código (búsqueda en el repositorio + test que compara la fila antes y después de un reenvío) [FR-009, FR-017]
+- [x] T032 Logging estructurado de cada generación (`stayId`, `reservationRef`, canal, `quoteId`, resultado o `errorCode`, duración), sin datos personales del huésped [NFR-003, NFR-006]
+- [x] T033 Medir el tiempo de `generate` con Módulo 2 simulado y confirmar que cabe en el objetivo de 800 ms [NFR-002]
+- [x] T034 Coordinar con 010 el manejo de errores de la tabla "Errores y qué hace quien llama" (dead-letter o cola de reintento) y con 002 la reutilización de `SettlementCalculator`
 
 ---
 

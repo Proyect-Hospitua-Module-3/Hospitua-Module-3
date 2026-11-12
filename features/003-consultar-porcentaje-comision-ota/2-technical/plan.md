@@ -228,7 +228,7 @@ Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se tra
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: depende de que `settlement` (feature 007) ya tenga su tabla creada con las columnas y el índice indicados (Phase 4 del plan base). Si `settlement` aún no está implementado, esta feature puede avanzar con un doble de prueba de `OtaCommissionQueryPort`; la integración real (T009) queda bloqueada hasta que exista la tabla.
+- **Setup (Phase 1)**: depende de que `settlement` (feature 007) ya tenga su tabla creada con las columnas y el índice indicados (Phase 4 del plan base). Cumplido: la 007 ya creó la tabla y el índice (T002).
 - **Foundational (Phase 2)**: depende de Setup; BLOQUEA todas las historias de usuario. Debe hacerse temprano porque protege el resto del desarrollo.
 - **User Story 1 (Phase 3)**: depende de Phase 1 y 2. Es la vía principal de valor.
 - **User Story 3 (Phase 4)**: depende de Phase 3 (reutiliza `GetLatestOtaCommissionService`) y añade la capa de autorización por actor.
@@ -250,7 +250,7 @@ Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se tra
 
 ### Nota de secuenciación con el plan base
 
-El plan base ubica `ota-commission` en la Phase 6 (T023), después de `settlement`, porque esta consulta necesita liquidaciones `Final` reales para tener datos que leer. El plan puede desarrollarse antes a nivel de código (contra un doble del puerto), pero su prueba de integración real y su habilitación dependen de que `settlement` (features 007, 010 y 002) ya genere liquidaciones.
+El plan base ubica `ota-commission` en la Phase 6 (T023), después de `settlement`, porque esta consulta necesita liquidaciones `Final` reales para tener datos que leer. Se implementó con `settlement` (007, 010 y 002) ya en funcionamiento: la E2E genera liquidaciones reales con la 007 antes de consultarlas.
 
 ## Notes
 

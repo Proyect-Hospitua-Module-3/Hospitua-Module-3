@@ -101,7 +101,7 @@ npm test
 | FR-001 Actualizar el IVA vigente | `UpdateVatRateService`, controller                          | e2e "registra el primer porcentaje"         |
 | FR-002 Rango 0–100               | `VatRateValue`; `CHECK` en la migración                     | unitaria del VO; e2e "validación"           |
 | FR-003 Sin valor por defecto     | `GetCurrentVatRateService`; tabla nace vacía                | unitaria "sin porcentaje configurado"       |
-| FR-004 No toca facturas          | El repositorio solo escribe `vat_rate` y `vat_rate_history` | Pendiente: requiere la 006 (T014)           |
+| FR-004 No toca facturas          | El repositorio solo escribe `vat_rate` y `vat_rate_history` | integración de la 006 «reenvío con el IVA cambiado» (la factura conserva su IVA) |
 | FR-005 Quién y cuándo            | Historial en la misma transacción; hora de la base de datos | unitaria e integración                      |
 | FR-006 Solo Administrador        | `@Roles('Administrador')` + `RolesGuard`                    | e2e 401 y 403                               |
 | FR-007 Concurrencia              | `pg_advisory_xact_lock` en el repositorio                   | integración: 10 actualizaciones simultáneas |
@@ -113,8 +113,10 @@ npm test
 | Tarea                                       | Estado                         |
 | ------------------------------------------- | ------------------------------ |
 | T001–T012 (Setup e Historia 1)              | Hecho                          |
-| T013, T020 (reglas de `dependency-cruiser`) | Pendiente                      |
-| T014, T016a (pruebas con facturas)          | Pendiente: requieren la 006    |
+| T013 (regla de dependencias de `UpdateVatRateService`) | Pendiente |
+| T020 (006 solo lee el IVA) | Hecho en la prueba de arquitectura de la 006 (`test/architecture/billing-dependencies.spec.ts`, con Jest en vez de `dependency-cruiser`) |
+| T014 (factura emitida no cambia al actualizar el IVA) | Cubierta por la integración de la 006 «reenvío con el IVA cambiado: misma factura y número» |
+| T016a (actualización en el instante de una emisión) | Pendiente: ya no está bloqueada (la 006 existe), falta la prueba |
 | T015 (concurrencia real)                    | Hecho: pasa contra PostgreSQL  |
 | T016–T019, T021                             | Hecho                          |
 | T022–T024                                   | Hecho: pasan contra PostgreSQL |
@@ -125,7 +127,7 @@ npm test
 
 ## 6. Piezas compartidas que usa la 001
 
-No son de la 001: son de la base del proyecto y las reutilizarán las demás features.
+No son de la 001: son de la base del proyecto y las reutilizan las demás features.
 
 - Login y roles: [src/infrastructure/adapters/in/http/auth/](../../../src/infrastructure/adapters/in/http/auth/)
 - Formato de errores `ApiError`: [domain-exception.filter.ts](../../../src/infrastructure/adapters/in/http/domain-exception.filter.ts)
