@@ -98,18 +98,18 @@ Ninguna tabla ni migración: la 004 no guarda la tarifa base (FR-002, SC-004).
 
 ## 4. Pruebas
 
-| Archivo | Qué comprueba | Pruebas |
-|---|---|:-:|
-| [base-rate.spec.ts](../../../test/unit/domain/pricing/base-rate.spec.ts) | Importe positivo, escala 2, ceros finales; rechazo de tarifa no positiva, mal formada, con más de 2 decimales o que no sea texto (T004) | 17 |
-| [money.vo.spec.ts](../../../test/unit/domain/shared/money.vo.spec.ts) | Redondeo a escala 2 y rechazo de entrada inválida. El archivo incluye también las operaciones que agregaron las features siguientes | 20 |
-| [get-base-rate.service.spec.ts](../../../test/unit/application/pricing/get-base-rate.service.spec.ts) | Resultado, consultas independientes por fecha, determinismo, dato vigente en llamadas sucesivas, validación previa al puerto con `errorCode`, UUID en mayúsculas o fuera del RFC (`a0000000-0000-0000-0000-000000000101`) y 29 de febrero (T005, T012) | 14 |
-| [module1-base-rate.client.spec.ts](../../../test/integration/http/module1-base-rate.client.spec.ts) | Servidor HTTP simulado: éxito y campos extra, sin caché, 404 estructurado y sin cuerpo, 403, 5xx, timeout de 500 ms, corte de conexión, cada respuesta malformada, eco de `roomId` sin distinguir mayúsculas, apertura del circuito en el quinto fallo, semiabierto (con timers falsos) y validación de la configuración (T006, T013) | 42 |
-| [module1-base-rate.contract.spec.ts](../../../test/contract/pricing/module1-base-rate.contract.spec.ts) | Clasificación del cuerpo de éxito y de `ROOM_NOT_FOUND`, `INVALID_BASE_RATE` y `MODULE1_UNAVAILABLE` según el contrato (T007) | 9 |
-| [base-rate.e2e-spec.ts](../../../test/e2e/pricing/base-rate.e2e-spec.ts) | `GetBaseRateUseCase` resuelto desde `AppModule` hasta el cliente HTTP real, con un servidor local en lugar de Módulo 1: éxito, entrada inválida sin llamar a Módulo 1, sin reutilizar la tarifa, `ROOM_NOT_FOUND` y `MODULE1_UNAVAILABLE` | 7 |
+| Archivo | Qué comprueba |
+|---|---|
+| [base-rate.spec.ts](../../../test/unit/domain/pricing/base-rate.spec.ts) | Importe positivo, escala 2, ceros finales; rechazo de tarifa no positiva, mal formada, con más de 2 decimales o que no sea texto (T004) |
+| [money.vo.spec.ts](../../../test/unit/domain/shared/money.vo.spec.ts) | Redondeo a escala 2 y rechazo de entrada inválida. El archivo incluye también las operaciones que agregaron las features siguientes |
+| [get-base-rate.service.spec.ts](../../../test/unit/application/pricing/get-base-rate.service.spec.ts) | Resultado, consultas independientes por fecha, determinismo, dato vigente en llamadas sucesivas, validación previa al puerto con `errorCode`, UUID en mayúsculas o fuera del RFC (`a0000000-0000-0000-0000-000000000101`) y 29 de febrero (T005, T012) |
+| [module1-base-rate.client.spec.ts](../../../test/integration/http/module1-base-rate.client.spec.ts) | Servidor HTTP simulado: éxito y campos extra, sin caché, 404 estructurado y sin cuerpo, 403, 5xx, timeout de 500 ms, corte de conexión, cada respuesta malformada, eco de `roomId` sin distinguir mayúsculas, apertura del circuito en el quinto fallo, semiabierto (con timers falsos) y validación de la configuración (T006, T013) |
+| [module1-base-rate.contract.spec.ts](../../../test/contract/pricing/module1-base-rate.contract.spec.ts) | Clasificación del cuerpo de éxito y de `ROOM_NOT_FOUND`, `INVALID_BASE_RATE` y `MODULE1_UNAVAILABLE` según el contrato (T007) |
+| [base-rate.e2e-spec.ts](../../../test/e2e/pricing/base-rate.e2e-spec.ts) | `GetBaseRateUseCase` resuelto desde `AppModule` hasta el cliente HTTP real, con un servidor local en lugar de Módulo 1: éxito, entrada inválida sin llamar a Módulo 1, sin reutilizar la tarifa, `ROOM_NOT_FOUND` y `MODULE1_UNAVAILABLE` |
 
 Dobles de prueba: [module1-http-fixture.ts](../../../test/support/pricing/module1-http-fixture.ts) (servidor HTTP local configurable que guarda las peticiones en `requestLog`) y [e2e-env.ts](../../../test/support/e2e-env.ts) (valores por defecto de `MODULE1_*` para que las E2E no dependan del `.env`; después 007 agregó lo mismo para `MODULE2_*`).
 
-Resultado actual: **las 89 pruebas de la 004 pasan** (82 con `npm test` y 7 E2E, sin contar las de `Money`). Ninguna necesita PostgreSQL ni RabbitMQ.
+Las pruebas de la 004 se ejecutan con los comandos siguientes. Ninguna necesita PostgreSQL ni RabbitMQ.
 
 ```bash
 npm test -- --runTestsByPath test/unit/domain/pricing/base-rate.spec.ts test/unit/application/pricing/get-base-rate.service.spec.ts test/integration/http/module1-base-rate.client.spec.ts test/contract/pricing/module1-base-rate.contract.spec.ts
