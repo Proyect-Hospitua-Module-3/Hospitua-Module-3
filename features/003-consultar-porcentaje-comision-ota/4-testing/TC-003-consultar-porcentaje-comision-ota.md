@@ -83,28 +83,28 @@ Para consultar la base de datos en los pasos que lo indican, en una terminal apa
 
 * **Liquidaciones** : `docker compose exec postgres psql -U hospitua -d modulo3 -c "SELECT id, reservation_ref, channel, ota_id, ota_commission_percentage, ota_commission_amount, net_income, generated_at FROM settlement WHERE reservation_ref LIKE 'RES-TC003-%' ORDER BY generated_at"`
 
-**Evidencia** : por cada paso, una captura de Postman (petición, código y cuerpo) o de la terminal, nombrada `TC-003-S<sección>-P<paso>.png`.
+**Evidencia** : opcional. Si se guardan capturas, una por paso de Postman (petición, código y cuerpo) o de la terminal, nombrada `TC-003-S<sección>-P<paso>.png`. La ejecución del 2026-11-13 no guardó capturas: se comparó la respuesta de cada paso con el resultado esperado.
 
 --------------------------------------------------------------------------------
 
 #### Test Execution Flow  *(mandatory)*
 
-**Última ejecución** : pendiente (caso de prueba en estado Draft, aún no ejecutado).
+**Última ejecución** : 2026-11-13, todos los pasos ✔. Con el backend en `npm run start:dev`, una base temporal migrada desde cero con el seed y `datos-tc-003.sql`, RabbitMQ y el Módulo 2 simulado de esta carpeta. Las consultas a `GET /ota-commission/{otaId}` y el login se hicieron en Swagger UI; el `PUT`/`POST` del paso 9 de la Sección 1, con `curl`; el check-out de la Sección 3, con `publicar-checkout.js`; las consultas a la base, con `psql`, y la búsqueda del paso 9 de la Sección 3, con `Select-String`. La Sección 5, con PostgreSQL y RabbitMQ: 45, 15, 9 y 7 pruebas, y en la regresión `npm test` 1287 y `npm run test:e2e` 167, sin omitidas.
 
 ##### Section 1: Módulo 2 consulta el historial de una OTA (HU1)
 Sin token.
 
 | Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
 | :---: | ------ | ------ | ------ | ------ | :---: | ------ |
-| 1 | Abrir la documentación de la API | Abrir el navegador en `/docs` | <http://localhost:3000/docs> | Aparece `GET /ota-commission/{otaId}` en «Comisión OTA (Módulo 2 y OTA)» | [ ] | — |
-| 2 | Revisar la base antes de consultar | Consulta **Liquidaciones** | N/A | 6 liquidaciones `RES-TC003-*` como en la tabla de historial. Anotar las filas para el paso 7 | [ ] | — |
-| 3 | OTA con varias liquidaciones (HU1 escenario 1) | `GET http://localhost:3000/ota-commission/ota-tc003-a` | Sin `Authorization` | **200** con exactamente `{ "otaId": "ota-tc003-a", "historical": true, "percentage": "15.00", "settlementId": "0c030000-0000-4000-8000-000000000003", "settlementDate": "2026-10-08T16:02:00.000Z" }`. Es la más reciente: no el 12.00 ni el 13.50 ni un promedio | [ ] | — |
-| 4 | Liquidación muy antigua (caso límite) | `GET /ota-commission/ota-tc003-antigua` | Sin `Authorization` | **200** con `historical: true`, `percentage: "9.00"`, `settlementDate: "2015-02-01T14:00:00.000Z"`: no expira por antigüedad | [ ] | — |
-| 5 | Repetir la consulta del paso 3 (FR-008) | `GET /ota-commission/ota-tc003-a` | Sin `Authorization` | **200** con exactamente el mismo cuerpo del paso 3 | [ ] | — |
-| 6 | OTA sin liquidaciones (HU1 escenario 2) | `GET /ota-commission/ota-tc003-sin-historial` | Sin `Authorization` | **200** con exactamente `{ "otaId": "ota-tc003-sin-historial", "historical": false }`: sin `percentage`, sin 0 y sin 404 | [ ] | — |
-| 7 | Canal directo (caso límite, FR-006) | `GET /ota-commission/DIRECT` y luego `GET /ota-commission/direct` | Sin `Authorization` | Las dos: **400** `INVALID_QUERY_PARAMS` con el mensaje «El canal directo no es una OTA: no tiene porcentaje de comisión que consultar.». Ninguna devuelve `percentage` | [ ] | — |
-| 8 | La consulta no cambia nada (FR-005, SC-004) | Consulta **Liquidaciones** | N/A | Exactamente las mismas filas del paso 2 | [ ] | — |
-| 9 | No se puede modificar el porcentaje (caso límite) | `PUT http://localhost:3000/ota-commission/ota-tc003-a` y luego `POST` a la misma ruta | Cuerpo `{ "percentage": "5.00" }` | Las dos: **404** `NOT_FOUND` (la ruta no existe). Repetir el paso 3: sigue en `15.00` | [ ] | — |
+| 1 | Abrir la documentación de la API | Abrir el navegador en `/docs` | <http://localhost:3000/docs> | Aparece `GET /ota-commission/{otaId}` en «Comisión OTA (Módulo 2 y OTA)» | [✔] | — |
+| 2 | Revisar la base antes de consultar | Consulta **Liquidaciones** | N/A | 6 liquidaciones `RES-TC003-*` como en la tabla de historial. Anotar las filas para el paso 7 | [✔] | — |
+| 3 | OTA con varias liquidaciones (HU1 escenario 1) | `GET http://localhost:3000/ota-commission/ota-tc003-a` | Sin `Authorization` | **200** con exactamente `{ "otaId": "ota-tc003-a", "historical": true, "percentage": "15.00", "settlementId": "0c030000-0000-4000-8000-000000000003", "settlementDate": "2026-10-08T16:02:00.000Z" }`. Es la más reciente: no el 12.00 ni el 13.50 ni un promedio | [✔] | — |
+| 4 | Liquidación muy antigua (caso límite) | `GET /ota-commission/ota-tc003-antigua` | Sin `Authorization` | **200** con `historical: true`, `percentage: "9.00"`, `settlementDate: "2015-02-01T14:00:00.000Z"`: no expira por antigüedad | [✔] | — |
+| 5 | Repetir la consulta del paso 3 (FR-008) | `GET /ota-commission/ota-tc003-a` | Sin `Authorization` | **200** con exactamente el mismo cuerpo del paso 3 | [✔] | — |
+| 6 | OTA sin liquidaciones (HU1 escenario 2) | `GET /ota-commission/ota-tc003-sin-historial` | Sin `Authorization` | **200** con exactamente `{ "otaId": "ota-tc003-sin-historial", "historical": false }`: sin `percentage`, sin 0 y sin 404 | [✔] | — |
+| 7 | Canal directo (caso límite, FR-006) | `GET /ota-commission/DIRECT` y luego `GET /ota-commission/direct` | Sin `Authorization` | Las dos: **400** `INVALID_QUERY_PARAMS` con el mensaje «El canal directo no es una OTA: no tiene porcentaje de comisión que consultar.». Ninguna devuelve `percentage` | [✔] | — |
+| 8 | La consulta no cambia nada (FR-005, SC-004) | Consulta **Liquidaciones** | N/A | Exactamente las mismas filas del paso 2 | [✔] | — |
+| 9 | No se puede modificar el porcentaje (caso límite) | `PUT http://localhost:3000/ota-commission/ota-tc003-a` y luego `POST` a la misma ruta | Cuerpo `{ "percentage": "5.00" }` | Las dos: **404** `NOT_FOUND` (la ruta no existe). Repetir el paso 3: sigue en `15.00` | [✔] | — |
 
 --------------------------------------------------------------------------------
 
@@ -112,14 +112,14 @@ Sin token.
 
 | Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
 | :---: | ------ | ------ | ------ | ------ | :---: | ------ |
-| 1 | Iniciar sesión como OTA | `POST http://localhost:3000/auth/login` → copiar `accessToken` | `{ "username": "ota-demo", "password": "<SEED_OTA_PASSWORD>" }` | **200** con `accessToken` | [ ] | — |
-| 2 | Usar el token de la OTA | Postman: **Authorization → Bearer Token** con el `accessToken` (Swagger: **Authorize**) | Token del paso 1 | — | [ ] | — |
-| 3 | La OTA consulta su propio `otaId` (HU3 escenario 1) | `GET /ota-commission/booking` | Token de `ota-demo` | **200** con `otaId: "booking"`, `historical: true`, `percentage: "16.00"`, `settlementId: "0c030000-0000-4000-8000-000000000005"` | [ ] | — |
-| 4 | La OTA consulta otra OTA con historial (HU3 escenario 2) | `GET /ota-commission/ota-tc003-a` | Token de `ota-demo` | **403** `FORBIDDEN` con el mensaje «No tiene permiso para consultar la información de esta OTA.»; sin `15.00` ni ningún porcentaje en el cuerpo | [ ] | — |
-| 5 | La OTA consulta otra OTA sin historial | `GET /ota-commission/ota-tc003-sin-historial` | Token de `ota-demo` | **403** con el mismo `errorCode` y el mismo mensaje del paso 4: la respuesta no revela si la otra OTA tiene historial (SC-006) | [ ] | — |
-| 6 | La OTA consulta el canal directo | `GET /ota-commission/DIRECT` | Token de `ota-demo` | **400** `INVALID_QUERY_PARAMS` (el canal directo no es una OTA) | [ ] | — |
-| 7 | Un Administrador no consulta comisiones (FR-007) | Login como `admin` → Bearer Token → `GET /ota-commission/booking` | `{ "username": "admin", "password": "<SEED_ADMIN_PASSWORD>" }` | **403** `FORBIDDEN` | [ ] | — |
-| 8 | Token inválido | Bearer Token con el valor `abc` → `GET /ota-commission/booking` | `abc` | **401** `UNAUTHENTICATED` | [ ] | — |
+| 1 | Iniciar sesión como OTA | `POST http://localhost:3000/auth/login` → copiar `accessToken` | `{ "username": "ota-demo", "password": "<SEED_OTA_PASSWORD>" }` | **200** con `accessToken` | [✔] | — |
+| 2 | Usar el token de la OTA | Postman: **Authorization → Bearer Token** con el `accessToken` (Swagger: **Authorize**) | Token del paso 1 | — | [✔] | — |
+| 3 | La OTA consulta su propio `otaId` (HU3 escenario 1) | `GET /ota-commission/booking` | Token de `ota-demo` | **200** con `otaId: "booking"`, `historical: true`, `percentage: "16.00"`, `settlementId: "0c030000-0000-4000-8000-000000000005"` | [✔] | — |
+| 4 | La OTA consulta otra OTA con historial (HU3 escenario 2) | `GET /ota-commission/ota-tc003-a` | Token de `ota-demo` | **403** `FORBIDDEN` con el mensaje «No tiene permiso para consultar la información de esta OTA.»; sin `15.00` ni ningún porcentaje en el cuerpo | [✔] | — |
+| 5 | La OTA consulta otra OTA sin historial | `GET /ota-commission/ota-tc003-sin-historial` | Token de `ota-demo` | **403** con el mismo `errorCode` y el mismo mensaje del paso 4: la respuesta no revela si la otra OTA tiene historial (SC-006) | [✔] | — |
+| 6 | La OTA consulta el canal directo | `GET /ota-commission/DIRECT` | Token de `ota-demo` | **400** `INVALID_QUERY_PARAMS` (el canal directo no es una OTA) | [✔] | — |
+| 7 | Un Administrador no consulta comisiones (FR-007) | Login como `admin` → Bearer Token → `GET /ota-commission/booking` | `{ "username": "admin", "password": "<SEED_ADMIN_PASSWORD>" }` | **403** `FORBIDDEN` | [✔] | — |
+| 8 | Token inválido | Bearer Token con el valor `abc` → `GET /ota-commission/booking` | `abc` | **401** `UNAUTHENTICATED` | [✔] | — |
 
 --------------------------------------------------------------------------------
 
@@ -128,16 +128,16 @@ Check-out real de la reserva `RES-TC003-NUEVA`: Módulo 2 informa el **18 %** pa
 
 | Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
 | :---: | ------ | ------ | ------ | ------ | :---: | ------ |
-| 1 | Levantar Módulo 2 simulado | Terminal aparte: `node features/003-consultar-porcentaje-comision-ota/4-testing/modulo2-simulado.js` | Puerto 8081 | «Módulo 2 simulado (TC-003) en http://localhost:8081» | [ ] | Si está corriendo el simulador de otro TC, detenerlo antes |
-| 2 | Porcentaje histórico antes del check-out | `GET /ota-commission/ota-tc003-a` | Sin `Authorization` | **200** con `percentage: "15.00"` (igual que la Sección 1, paso 3) | [ ] | — |
-| 3 | Publicar el check-out (como Módulo 1) | Otra terminal: `$env:ROOM_ID = "0a030000-0000-4000-8000-000000000101"; $env:RESERVATION_REF = "RES-TC003-NUEVA"; $env:SIN_DATOS_TRIBUTARIOS = "1"; node features/010-registrar-checkout/4-testing/publicar-checkout.js` | Estancia 2026-12-20 a 2026-12-23, sin datos tributarios (no se emite factura: el TC-003 no la necesita) | El script confirma la publicación en `hospitua.events` | [ ] | Al terminar, cerrar esa terminal o borrar las variables |
-| 4 | 007 pidió la reserva a Módulo 2 | Mirar la terminal del Módulo 2 simulado | N/A | Una petición `GET /api/reservations/RES-TC003-NUEVA` | [ ] | — |
-| 5 | La liquidación usa el porcentaje de la reserva (HU2 escenario 1) | Consulta **Liquidaciones** | N/A | Una fila nueva `RES-TC003-NUEVA`, `OTA`, `ota-tc003-a`, `ota_commission_percentage` **18.00**, `ota_commission_amount` **135000.00**, `net_income` **615000.00**. No usa el 15.00 histórico. Anotar su `id` | [ ] | — |
-| 6 | La liquidación anterior no cambió | Consulta **Liquidaciones** | N/A | Las 6 filas del paso 2 de la Sección 1 siguen iguales | [ ] | — |
-| 7 | La referencia histórica pasa a ser la nueva liquidación | `GET /ota-commission/ota-tc003-a` | Sin `Authorization` | **200** con `percentage: "18.00"` y `settlementId` = el `id` anotado en el paso 5 | [ ] | — |
-| 8 | Repetir la consulta | `GET /ota-commission/ota-tc003-a` | Sin `Authorization` | **200** con el mismo cuerpo del paso 7 | [ ] | — |
-| 9 | Revisión del diseño: settlement no conoce esta consulta (HU2 escenario 2) | En la carpeta `Hospitua-Module-3`: `Select-String -Path src\domain\model\settlement\*.ts, src\application\services\settlement\*.ts, src\domain\ports\in\settlement\*.ts, src\domain\ports\out\settlement\*.ts -Pattern "ota-commission"` | N/A | Sin resultados: ningún archivo de `settlement` importa ni menciona `ota-commission` | [ ] | — |
-| 10 | Revisión del diseño: el módulo no se exporta | Abrir [ota-commission.module.ts](../../../src/infrastructure/config/ota-commission.module.ts) | N/A | El `@Module` no tiene `exports`: ningún otro módulo puede inyectar el caso de uso | [ ] | La prueba de la Sección 5, paso 2 lo verifica automáticamente |
+| 1 | Levantar Módulo 2 simulado | Terminal aparte: `node features/003-consultar-porcentaje-comision-ota/4-testing/modulo2-simulado.js` | Puerto 8081 | «Módulo 2 simulado (TC-003) en http://localhost:8081» | [✔] | Si está corriendo el simulador de otro TC, detenerlo antes |
+| 2 | Porcentaje histórico antes del check-out | `GET /ota-commission/ota-tc003-a` | Sin `Authorization` | **200** con `percentage: "15.00"` (igual que la Sección 1, paso 3) | [✔] | — |
+| 3 | Publicar el check-out (como Módulo 1) | Otra terminal: `$env:ROOM_ID = "0a030000-0000-4000-8000-000000000101"; $env:RESERVATION_REF = "RES-TC003-NUEVA"; $env:SIN_DATOS_TRIBUTARIOS = "1"; node features/010-registrar-checkout/4-testing/publicar-checkout.js` | Estancia 2026-12-20 a 2026-12-23, sin datos tributarios (no se emite factura: el TC-003 no la necesita) | El script confirma la publicación en `hospitua.events` | [✔] | Al terminar, cerrar esa terminal o borrar las variables |
+| 4 | 007 pidió la reserva a Módulo 2 | Mirar la terminal del Módulo 2 simulado | N/A | Una petición `GET /api/reservations/RES-TC003-NUEVA` | [✔] | — |
+| 5 | La liquidación usa el porcentaje de la reserva (HU2 escenario 1) | Consulta **Liquidaciones** | N/A | Una fila nueva `RES-TC003-NUEVA`, `OTA`, `ota-tc003-a`, `ota_commission_percentage` **18.00**, `ota_commission_amount` **135000.00**, `net_income` **615000.00**. No usa el 15.00 histórico. Anotar su `id` | [✔] | — |
+| 6 | La liquidación anterior no cambió | Consulta **Liquidaciones** | N/A | Las 6 filas del paso 2 de la Sección 1 siguen iguales | [✔] | — |
+| 7 | La referencia histórica pasa a ser la nueva liquidación | `GET /ota-commission/ota-tc003-a` | Sin `Authorization` | **200** con `percentage: "18.00"` y `settlementId` = el `id` anotado en el paso 5 | [✔] | — |
+| 8 | Repetir la consulta | `GET /ota-commission/ota-tc003-a` | Sin `Authorization` | **200** con el mismo cuerpo del paso 7 | [✔] | — |
+| 9 | Revisión del diseño: settlement no conoce esta consulta (HU2 escenario 2) | En la carpeta `Hospitua-Module-3`: `Select-String -Path src\domain\model\settlement\*.ts, src\application\services\settlement\*.ts, src\domain\ports\in\settlement\*.ts, src\domain\ports\out\settlement\*.ts -Pattern "ota-commission"` | N/A | Sin resultados: ningún archivo de `settlement` importa ni menciona `ota-commission` | [✔] | — |
+| 10 | Revisión del diseño: el módulo no se exporta | Abrir [ota-commission.module.ts](../../../src/infrastructure/config/ota-commission.module.ts) | N/A | El `@Module` no tiene `exports`: ningún otro módulo puede inyectar el caso de uso | [✔] | La prueba de la Sección 5, paso 2 lo verifica automáticamente |
 
 --------------------------------------------------------------------------------
 
@@ -145,9 +145,9 @@ Check-out real de la reserva `RES-TC003-NUEVA`: Módulo 2 informa el **18 %** pa
 
 | Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
 | :---: | ------ | ------ | ------ | ------ | :---: | ------ |
-| 1 | `otaId` solo con espacios | `GET /ota-commission/%20%20` | Sin `Authorization` | **400** `INVALID_QUERY_PARAMS` con el mensaje «Indica el identificador de la OTA (otaId).» | [ ] | — |
-| 2 | Formato de los errores | Cualquier respuesta de error de este TC | N/A | El cuerpo es `{ errorCode, message, timestamp, path }`; ninguna respuesta es 5xx | [ ] | — |
-| 3 | Campos de la respuesta (NFR-003) | Revisar las respuestas 200 de las Secciones 1–3 | N/A | Solo `otaId`, `historical`, `percentage`, `settlementId`, `settlementDate`; ningún dato del huésped, de la reserva ni de otra OTA | [ ] | — |
+| 1 | `otaId` solo con espacios | `GET /ota-commission/%20%20` | Sin `Authorization` | **400** `INVALID_QUERY_PARAMS` con el mensaje «Indica el identificador de la OTA (otaId).» | [✔] | — |
+| 2 | Formato de los errores | Cualquier respuesta de error de este TC | N/A | El cuerpo es `{ errorCode, message, timestamp, path }`; ninguna respuesta es 5xx | [✔] | — |
+| 3 | Campos de la respuesta (NFR-003) | Revisar las respuestas 200 de las Secciones 1–3 | N/A | Solo `otaId`, `historical`, `percentage`, `settlementId`, `settlementDate`; ningún dato del huésped, de la reserva ni de otra OTA | [✔] | — |
 
 --------------------------------------------------------------------------------
 
@@ -155,11 +155,11 @@ Check-out real de la reserva `RES-TC003-NUEVA`: Módulo 2 informa el **18 %** pa
 
 | Step # | Step Description | Path & Action | Test Data | Expected Results | Pass/Fail | Comments |
 | :---: | ------ | ------ | ------ | ------ | :---: | ------ |
-| 1 | Specs de la 003 sin base de datos | `npm test -- --runTestsByPath test/unit/domain/ota-commission/ota-commission-query.spec.ts test/unit/application/ota-commission/get-latest-ota-commission.service.spec.ts test/unit/infrastructure/ota-commission/ota-commission-access.guard.spec.ts test/contract/ota-commission/ota-commission.contract.spec.ts` | Cuatro specs | `Test Suites: 4 passed`; `Tests: 45 passed`. Incluye el token expirado y el token OTA sin `otaId` (401) | [ ] | 2026-11-12: pasan en el equipo de desarrollo |
-| 2 | Reglas de dependencia (HU2 escenario 2) | `npm test -- --runTestsByPath test/architecture/ota-commission-dependencies.spec.ts test/architecture/settlement-dependencies.spec.ts` | N/A | `Tests: 15 passed`: `settlement` nunca importa `ota-commission`, solo `AppModule` importa su módulo, el adaptador solo lee y el controller solo tiene `GET` | [ ] | 2026-11-12: pasan en el equipo de desarrollo |
-| 3 | Adaptador contra PostgreSQL | `npm test -- --runInBand --runTestsByPath test/integration/persistence/ota-commission/prisma-ota-commission-query.adapter.spec.ts` | `TEST_DATABASE_URL` con una base de pruebas migrada | `Tests: 9 passed`, sin omitidas. Incluye dos liquidaciones del mismo instante y que el índice `(ota_id, generated_at DESC)` existe | [ ] | — |
-| 4 | E2E de la 003 (incluye HU2 con 007 real) | `npm run test:e2e -- --runInBand --runTestsByPath test/e2e/ota-commission/consultar-comision-ota.e2e-spec.ts` | `TEST_DATABASE_URL` definida | `Tests: 7 passed`. Incluye que 007 no lee el puerto de la 003 al generar la liquidación | [ ] | — |
-| 5 | Regresión del proyecto | `npm test` y `npm run test:e2e` | `TEST_DATABASE_URL` definida | Todas pasan; solo se omiten las que necesitan RabbitMQ si no hay `TEST_RABBITMQ_URL` | [ ] | — |
+| 1 | Specs de la 003 sin base de datos | `npm test -- --runTestsByPath test/unit/domain/ota-commission/ota-commission-query.spec.ts test/unit/application/ota-commission/get-latest-ota-commission.service.spec.ts test/unit/infrastructure/ota-commission/ota-commission-access.guard.spec.ts test/contract/ota-commission/ota-commission.contract.spec.ts` | Cuatro specs | `Test Suites: 4 passed`; `Tests: 45 passed`. Incluye el token expirado y el token OTA sin `otaId` (401) | [✔] | 2026-11-12: pasan en el equipo de desarrollo |
+| 2 | Reglas de dependencia (HU2 escenario 2) | `npm test -- --runTestsByPath test/architecture/ota-commission-dependencies.spec.ts test/architecture/settlement-dependencies.spec.ts` | N/A | `Tests: 15 passed`: `settlement` nunca importa `ota-commission`, solo `AppModule` importa su módulo, el adaptador solo lee y el controller solo tiene `GET` | [✔] | 2026-11-12: pasan en el equipo de desarrollo |
+| 3 | Adaptador contra PostgreSQL | `npm test -- --runInBand --runTestsByPath test/integration/persistence/ota-commission/prisma-ota-commission-query.adapter.spec.ts` | `TEST_DATABASE_URL` con una base de pruebas migrada | `Tests: 9 passed`, sin omitidas. Incluye dos liquidaciones del mismo instante y que el índice `(ota_id, generated_at DESC)` existe | [✔] | — |
+| 4 | E2E de la 003 (incluye HU2 con 007 real) | `npm run test:e2e -- --runInBand --runTestsByPath test/e2e/ota-commission/consultar-comision-ota.e2e-spec.ts` | `TEST_DATABASE_URL` definida | `Tests: 7 passed`. Incluye que 007 no lee el puerto de la 003 al generar la liquidación | [✔] | — |
+| 5 | Regresión del proyecto | `npm test` y `npm run test:e2e` | `TEST_DATABASE_URL` definida | Todas pasan; solo se omiten las que necesitan RabbitMQ si no hay `TEST_RABBITMQ_URL` | [✔] | — |
 
 --------------------------------------------------------------------------------
 
