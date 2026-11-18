@@ -108,6 +108,8 @@ export class Module2ReservationClient implements ReservationClientPort {
           {
             headers: {
               Accept: 'application/json',
+              // Módulo 2 exige identificar al módulo que llama; sin ella responde 400 INVALID_CLIENT.
+              'X-Client': 'MODULE3',
               ...(correlationId ? { 'X-Correlation-Id': correlationId } : {}),
             },
             // Este timeout cancela la petición HTTP; el del circuito (arriba) también sigue activo.

@@ -58,6 +58,7 @@ describe('Module2ReservationClient HTTP integration', () => {
     expect(request.method).toBe('GET');
     expect(request.url).toBe(`/api/reservations/${REF}`);
     expect(request.headers.accept).toBe('application/json');
+    expect(request.headers['x-client']).toBe('MODULE3');
     expect(request.headers['x-correlation-id']).toBe(CORRELATION_ID);
     expect(request.headers.authorization).toBeUndefined();
   });

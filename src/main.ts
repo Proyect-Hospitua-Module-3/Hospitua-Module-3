@@ -6,6 +6,16 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
 
+  // Orígenes del navegador que pueden llamar a la API (por ejemplo, el frontend publicado),
+  // separados por coma. Sin la variable no se habilita CORS: llamadas entre módulos no la necesitan.
+  const corsOrigins = (process.env.CORS_ORIGIN ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+  if (corsOrigins.length > 0) {
+    app.enableCors({ origin: corsOrigins });
+  }
+
   const openApi = new DocumentBuilder()
     .setTitle('HOSPITUA - Módulo 3')
     .setDescription('Facturación, Consumos y Liquidación')
