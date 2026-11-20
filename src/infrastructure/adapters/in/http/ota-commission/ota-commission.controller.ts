@@ -3,6 +3,7 @@ import { Controller, Get, Inject, Param, Req, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiHeader,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
@@ -22,6 +23,7 @@ import {
   GetLatestOtaCommissionUseCase,
 } from '../../../../../domain/ports/in/ota-commission/get-latest-ota-commission.use-case';
 import { AuthenticatedUser } from '../auth/authenticated-user';
+import { Module2InternalKeyGuard } from '../auth/internal-key.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { OtaCommissionDto } from './dto/ota-commission.dto';
 import { OtaCommissionAccessGuard } from './ota-commission-access.guard';
@@ -40,7 +42,12 @@ export class OtaCommissionController {
   ) {}
 
   @Get(':otaId')
-  @UseGuards(OptionalJwtAuthGuard, OtaCommissionAccessGuard)
+  @UseGuards(OptionalJwtAuthGuard, OtaCommissionAccessGuard, Module2InternalKeyGuard)
+  @ApiHeader({
+    name: 'X-Internal-Key',
+    required: false,
+    description: 'Clave interna del módulo que llama sin token; se exige si INBOUND_KEY_MODULE2 está configurada.',
+  })
   @ApiOperation({
     summary: 'Porcentaje de comisión de la liquidación Final más reciente de una OTA (referencial)',
     description:

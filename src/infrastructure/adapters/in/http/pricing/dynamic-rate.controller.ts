@@ -3,6 +3,7 @@ import { Controller, Get, Inject, Query, Req, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiHeader,
   ApiFailedDependencyResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -20,6 +21,7 @@ import {
   INTERNAL_CALLER,
 } from '../../../../../domain/ports/in/pricing/get-dynamic-rate.use-case';
 import { AuthenticatedUser } from '../auth/authenticated-user';
+import { Module2InternalKeyGuard } from '../auth/internal-key.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { DynamicRateQueryDto, DynamicRateResponseDto } from './dto/dynamic-rate.dto';
 import { InternalOrOtaGuard } from './internal-or-ota.guard';
@@ -39,7 +41,12 @@ export class DynamicRateController {
   ) {}
 
   @Get('dynamic-rate')
-  @UseGuards(OptionalJwtAuthGuard, InternalOrOtaGuard)
+  @UseGuards(OptionalJwtAuthGuard, InternalOrOtaGuard, Module2InternalKeyGuard)
+  @ApiHeader({
+    name: 'X-Internal-Key',
+    required: false,
+    description: 'Clave interna del módulo que llama sin token; se exige si INBOUND_KEY_MODULE2 está configurada.',
+  })
   @ApiOperation({
     summary: 'Tarifa dinámica de una habitación, noche por noche (Módulo 2 y OTA)',
     description:
