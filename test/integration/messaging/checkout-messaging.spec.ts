@@ -20,6 +20,7 @@ import {
   HOSPITUA_EVENTS_EXCHANGE,
 } from '../../../src/infrastructure/config/rabbitmq.config';
 import { toBody, validEnvelope } from '../../support/checkout-ingestion/checkout-event-fixtures';
+import { declareModule1Exchange } from '../../support/checkout-ingestion/module1-exchange';
 
 const TEST_RABBITMQ_URL = process.env.TEST_RABBITMQ_URL;
 const describeWithBroker = TEST_RABBITMQ_URL ? describe : describe.skip;
@@ -53,6 +54,7 @@ describeWithBroker('Mensajería de la feature 010 (RabbitMQ real)', () => {
   beforeAll(async () => {
     connection = await connect(TEST_RABBITMQ_URL!);
     channel = await connection.createConfirmChannel();
+    await declareModule1Exchange(channel);
     await assertCheckoutTopology(channel);
   });
 

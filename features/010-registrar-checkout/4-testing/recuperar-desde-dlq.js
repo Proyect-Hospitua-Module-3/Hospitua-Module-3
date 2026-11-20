@@ -7,7 +7,8 @@
 //        $env:EVENT_ID = "<eventId>"; node features/010-registrar-checkout/4-testing/recuperar-desde-dlq.js
 //
 // Busca el mensaje en `modulo3.checkout.dlq` y lo vuelve a publicar en `modulo3.checkout` por
-// el exchange por defecto, persistente, con `mandatory` y `x-retry-count = 0` (nuevo ciclo de
+// el exchange `modulo3.direct` (Módulo 3 no puede escribir en el exchange por defecto del
+// broker común), persistente, con `mandatory` y `x-retry-count = 0` (nuevo ciclo de
 // reintentos). Solo después del publisher confirm y sin `basic.return` lo quita de la DLQ.
 // Las copias duplicadas del mismo eventId (la DLQ puede recibirlas) se descartan; los demás
 // mensajes vuelven a la DLQ sin cambios.
@@ -15,6 +16,7 @@ const { connect } = require('amqplib');
 
 const DLQ = 'modulo3.checkout.dlq';
 const CHECKOUT_QUEUE = 'modulo3.checkout';
+const MODULE3_DIRECT_EXCHANGE = 'modulo3.direct';
 
 function eventIdOf(message) {
   try {
@@ -32,7 +34,7 @@ function publishConfirmed(channel, message) {
     };
     channel.once('return', onReturn);
     channel.publish(
-      '',
+      MODULE3_DIRECT_EXCHANGE,
       CHECKOUT_QUEUE,
       message.content,
       {

@@ -20,6 +20,26 @@ export interface ReservationData {
   readonly otaConfirmationCode?: string;
   // Tal como llega (número JSON o texto); ausente o null si Módulo 2 no lo informó.
   readonly otaCommissionPercentage?: number | string | null;
+  // Habitación actual de cada cotización (Módulo 2, con X-Client: MODULE3). Si la reserva
+  // cambió de habitación antes del check-in, la nueva hereda el quoteId de la anterior y
+  // la cotización guardada conserva el roomId viejo. Ausente si Módulo 2 aún no la envía;
+  // vacía en reservas de Booking.
+  readonly rooms?: readonly ReservationRoom[];
+}
+
+export interface ReservationRoom {
+  readonly roomId: string;
+  readonly quoteId: string;
+}
+
+// El quoteId que Módulo 2 asigna a la habitación (lista rooms), o undefined si la lista
+// no viene o no la incluye: entonces se sigue eligiendo la cotización por su roomId.
+export function assignedQuoteIdOf(
+  reservation: ReservationData,
+  roomId: string,
+): string | undefined {
+  const room = roomId.toLowerCase();
+  return reservation.rooms?.find((entry) => entry.roomId.toLowerCase() === room)?.quoteId;
 }
 
 export interface ChannelTerms {

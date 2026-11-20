@@ -7,7 +7,11 @@ import CircuitBreaker from 'opossum';
 import { firstValueFrom } from 'rxjs';
 import { Module2UnavailableError } from '../../../../domain/errors/settlement/module2-unavailable.error';
 import { ReservationNotFoundError } from '../../../../domain/errors/settlement/reservation-not-found.error';
-import { OTA_CHANNEL, ReservationData } from '../../../../domain/model/settlement/reservation-data';
+import {
+  OTA_CHANNEL,
+  ReservationData,
+  ReservationRoom,
+} from '../../../../domain/model/settlement/reservation-data';
 import { ReservationClientPort } from '../../../../domain/ports/out/settlement/reservation.client.port';
 
 // Mismos parámetros del circuito que el cliente de Módulo 1 (004).
@@ -155,10 +159,11 @@ export class Module2ReservationClient implements ReservationClientPort {
     if (channel !== null && typeof channel !== 'string') {
       throw new ReservationContractMismatch('channel debe ser texto');
     }
+    const rooms = parseRooms(body.rooms);
 
     // Cualquier canal distinto de OTA es directo y sus campos de OTA se ignoran.
     if (channel !== OTA_CHANNEL) {
-      return { reservationRef, quoteIds, channel };
+      return { reservationRef, quoteIds, channel, ...(rooms && { rooms }) };
     }
     if (!isFilledText(body.otaId)) {
       throw new ReservationContractMismatch('otaId es obligatorio con channel = OTA');
@@ -183,6 +188,30 @@ export class Module2ReservationClient implements ReservationClientPort {
       otaId: body.otaId,
       otaConfirmationCode: body.otaConfirmationCode,
       otaCommissionPercentage: percentage,
+      ...(rooms && { rooms }),
     };
   }
+}
+
+// rooms es opcional: Módulo 2 la agrega para los cambios de habitación. Ausente o null →
+// undefined (se elige la cotización por roomId, como antes); si viene, cada elemento debe
+// traer roomId y un quoteId UUID.
+function parseRooms(value: unknown): ReservationRoom[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (
+    !Array.isArray(value) ||
+    !value.every(
+      (entry) =>
+        isRecord(entry) &&
+        isFilledText(entry.roomId) &&
+        typeof entry.quoteId === 'string' &&
+        UUID_FORMAT.test(entry.quoteId),
+    )
+  ) {
+    throw new ReservationContractMismatch('rooms debe ser una lista de { roomId, quoteId UUID }');
+  }
+  return value.map((entry: Record<string, unknown>) => ({
+    roomId: entry.roomId as string,
+    quoteId: entry.quoteId as string,
+  }));
 }

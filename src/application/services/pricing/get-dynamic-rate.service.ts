@@ -3,7 +3,11 @@ import { DynamicRateAccessDeniedError } from '../../../domain/errors/pricing/dyn
 import { InvalidPricingRequestError } from '../../../domain/errors/pricing/invalid-pricing-request.error';
 import { ReservationNotFoundError } from '../../../domain/errors/settlement/reservation-not-found.error';
 import { StayRange } from '../../../domain/model/pricing/stay-range';
-import { OTA_CHANNEL, ReservationData } from '../../../domain/model/settlement/reservation-data';
+import {
+  assignedQuoteIdOf,
+  OTA_CHANNEL,
+  ReservationData,
+} from '../../../domain/model/settlement/reservation-data';
 import { Money } from '../../../domain/model/shared/money.vo';
 import {
   DynamicRateCaller,
@@ -73,13 +77,18 @@ export class GetDynamicRateService implements GetDynamicRateUseCase {
     if (reservation.channel !== OTA_CHANNEL || reservation.otaId !== otaId) {
       throw new DynamicRateAccessDeniedError();
     }
-    const quotes =
-      reservation.quoteIds.length === 0
-        ? []
-        : await this.quotes.findByIds([...reservation.quoteIds]);
+    // Si Módulo 2 informa en rooms el quoteId de la habitación (cambio de habitación), basta
+    // con que esa cotización exista; si no, alguna cotización debe tener ese roomId.
+    const assigned = assignedQuoteIdOf(reservation, roomId)?.toLowerCase();
+    const ids = assigned ? [assigned] : [...reservation.quoteIds];
+    const quotes = ids.length === 0 ? [] : await this.quotes.findByIds(ids);
     // Las cotizaciones guardan el roomId en minúsculas (uuid de PostgreSQL).
     const room = roomId.toLowerCase();
-    if (!quotes.some((quote) => quote.roomId.toLowerCase() === room)) {
+    if (
+      !quotes.some((quote) =>
+        assigned ? quote.quoteId.toLowerCase() === assigned : quote.roomId.toLowerCase() === room,
+      )
+    ) {
       throw new DynamicRateAccessDeniedError();
     }
   }

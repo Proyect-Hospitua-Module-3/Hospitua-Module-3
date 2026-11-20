@@ -136,6 +136,27 @@ describe('Contrato con Módulo 2: GET /api/reservations/{reservationRef}', () =>
     await expect(client.getReservation('RES-000124')).resolves.toMatchObject({ quoteIds: [] });
   });
 
+  it('rooms (cambio de habitación): devuelve la habitación actual de cada cotización', async () => {
+    const rooms = [
+      { roomId: 'a0000000-0000-0000-0000-000000000201', quoteId: QUOTE_A },
+      { roomId: 'a0000000-0000-0000-0000-000000000205', quoteId: QUOTE_B },
+    ];
+    fixture.setReply({ status: 200, body: { ...OTA_TWO_ROOMS, rooms } });
+
+    await expect(client.getReservation('RES-000123')).resolves.toEqual({ ...OTA_TWO_ROOMS, rooms });
+  });
+
+  it.each([
+    ['vacía', []],
+    ['null', null],
+  ])('rooms %s es válida: se elige la cotización por roomId', async (_label, rooms) => {
+    fixture.setReply({ status: 200, body: { ...DIRECT_WITHOUT_CHANNEL, rooms } });
+
+    const reservation = await client.getReservation('RES-000124');
+
+    expect(reservation.rooms ?? []).toEqual([]);
+  });
+
   it('404 → RESERVATION_NOT_FOUND', async () => {
     fixture.setReply({ status: 404 });
 
@@ -154,6 +175,9 @@ describe('Contrato con Módulo 2: GET /api/reservations/{reservationRef}', () =>
     ['OTA sin otaId', { ...OTA_TWO_ROOMS, otaId: undefined }],
     ['OTA sin otaConfirmationCode', { ...OTA_TWO_ROOMS, otaConfirmationCode: '' }],
     ['porcentaje de otro tipo', { ...OTA_TWO_ROOMS, otaCommissionPercentage: true }],
+    ['rooms no es una lista', { ...OTA_TWO_ROOMS, rooms: {} }],
+    ['rooms sin roomId', { ...OTA_TWO_ROOMS, rooms: [{ quoteId: QUOTE_A }] }],
+    ['rooms con quoteId no UUID', { ...OTA_TWO_ROOMS, rooms: [{ roomId: 'r', quoteId: 'Q-1' }] }],
     ['una lista en lugar de un objeto', [OTA_TWO_ROOMS]],
   ])('cuerpo malformado (%s) → MODULE2_UNAVAILABLE', async (_label, body) => {
     fixture.setReply({ status: 200, body });

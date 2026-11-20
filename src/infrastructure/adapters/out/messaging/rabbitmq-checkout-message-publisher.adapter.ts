@@ -1,11 +1,17 @@
 // Feature 010 · Registrar Check-out
 import type { ConfirmChannel } from 'amqplib';
 import { CheckoutMessagePublisherPort } from '../../../../domain/ports/out/checkout-ingestion/checkout-message-publisher.port';
-import { CHECKOUT_DEAD_LETTER_QUEUE, CHECKOUT_RETRY_QUEUE } from '../../../config/rabbitmq.config';
+import {
+  CHECKOUT_DEAD_LETTER_QUEUE,
+  CHECKOUT_RETRY_QUEUE,
+  MODULE3_DIRECT_EXCHANGE,
+} from '../../../config/rabbitmq.config';
 
 export const DEFAULT_CONFIRM_TIMEOUT_MS = 10_000;
 
-// Publica a la cola de reintento o a la DLQ por el exchange por defecto, con mensajes
+// Publica a la cola de reintento o a la DLQ por modulo3.direct (cada cola enlazada con su
+// nombre como routing key; Módulo 3 no tiene permiso de escritura en el exchange por
+// defecto del broker común), con mensajes
 // persistentes y `mandatory`. Cada promesa se resuelve solo con publisher confirm y sin
 // `basic.return`; un nack, una devolución, el cierre del canal o la falta de
 // confirmación a tiempo la rechazan.
@@ -62,7 +68,7 @@ export class RabbitMqCheckoutMessagePublisher implements CheckoutMessagePublishe
       );
       try {
         this.channel.publish(
-          '',
+          MODULE3_DIRECT_EXCHANGE,
           queue,
           Buffer.from(body),
           { persistent: true, mandatory: true, headers },
@@ -72,7 +78,9 @@ export class RabbitMqCheckoutMessagePublisher implements CheckoutMessagePublishe
               reject(new Error(`El broker no confirmó la publicación a ${queue}.`));
             } else if (this.returned) {
               reject(
-                new Error(`El broker devolvió el mensaje (basic.return): ${queue} no existe.`),
+                new Error(
+                  `El broker devolvió el mensaje (basic.return): ${queue} no existe o no está enlazada.`,
+                ),
               );
             } else {
               resolve();
