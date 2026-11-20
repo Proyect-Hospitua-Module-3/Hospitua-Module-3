@@ -18,6 +18,7 @@ class FakeChannel extends EventEmitter {
   readonly consumed: string[] = [];
   prefetchCount?: number;
   closed = false;
+  async checkExchange(): Promise<void> {}
   async assertExchange(): Promise<void> {}
   async assertQueue(queue: string): Promise<void> {
     this.queues.push(queue);

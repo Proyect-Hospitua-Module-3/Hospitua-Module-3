@@ -44,6 +44,9 @@ X-Correlation-Id: 9b1f6d3e-2c4a-4f7b-8e5d-3a1c0b9d8e72
 | `otaId` | string | Si `channel = OTA` | Identificador de la OTA | [BASE] |
 | `otaConfirmationCode` | string | Si `channel = OTA` | Código de confirmación de la OTA | [BASE] |
 | `otaCommissionPercentage` | number \| string | Si `channel = OTA` | Porcentaje pactado, de 0 a 100 | [BASE] [SPEC FR-005] |
+| `rooms` | `{ roomId: string, quoteId: UUID }[]` | No | Habitación actual (id de Módulo 1) de cada cotización. Si la reserva cambió de habitación antes del check-in, la nueva hereda el `quoteId` de la anterior. Ausente o `null` → se elige la cotización por `roomId`; vacía en reservas de Booking. Acordado con Módulo 2 el 2026-11-20 | [SPEC FR-020] |
+
+Con `rooms`, la cotización de una habitación es la que `rooms` le asigna aunque la cotización guardada tenga otro `roomId`; si la habitación no está en `rooms`, se usa la de `roomId` igual al del check-out [SPEC FR-020].
 
 Los campos desconocidos se ignoran. Cualquier `channel` distinto de `OTA` se trata como canal directo y se ignoran los campos de OTA que lleguen [SPEC FR-007, BR-003].
 
@@ -63,6 +66,23 @@ Los campos desconocidos se ignoran. Cualquier `channel` distinto de `OTA` se tra
 }
 ```
 
+### Ejemplo (cambio de habitación: la 205 reemplazó a otra y hereda su cotización)
+
+```json
+{
+  "reservationRef": "RES-000125",
+  "quoteIds": [
+    "a1f2c3d4-e5b6-4789-8a9b-0c1d2e3f4a5b",
+    "b7c8d9e0-f1a2-4b3c-8d4e-5f6a7b8c9d0e"
+  ],
+  "channel": "DIRECT",
+  "rooms": [
+    { "roomId": "a0000000-0000-0000-0000-000000000201", "quoteId": "a1f2c3d4-e5b6-4789-8a9b-0c1d2e3f4a5b" },
+    { "roomId": "a0000000-0000-0000-0000-000000000205", "quoteId": "b7c8d9e0-f1a2-4b3c-8d4e-5f6a7b8c9d0e" }
+  ]
+}
+```
+
 ### Ejemplo (canal directo)
 
 ```json
@@ -79,8 +99,8 @@ Los campos desconocidos se ignoran. Cualquier `channel` distinto de `OTA` se tra
 | `200` con datos válidos | `ReservationData` | — | [BASE] |
 | `200` con `channel = OTA` sin `otaCommissionPercentage` (ausente o `null`) | `MISSING_COMMISSION` (lo lanza el servicio, no el cliente) | No | [SPEC FR-014] |
 | `200` con `otaCommissionPercentage` < 0 o > 100 | `INVALID_COMMISSION` (lo lanza el servicio) | No | [SPEC casos límite] |
-| `200` con `quoteIds` vacío o sin ninguna cuyo `roomId` coincida con el del check-out | `QUOTE_NOT_FOUND` (lo lanza el servicio) | No | [SPEC FR-014] |
-| `200` con cuerpo que no cumple esta forma (falta `reservationRef` o `quoteIds`, tipos incorrectos) | `MODULE2_UNAVAILABLE`; se registra la discrepancia de contrato | Sí | [CONV] |
+| `200` con `quoteIds` vacío, sin ninguna cuyo `roomId` coincida con el del check-out o con un `quoteId` de `rooms` que no está guardado | `QUOTE_NOT_FOUND` (lo lanza el servicio) | No | [SPEC FR-014] |
+| `200` con cuerpo que no cumple esta forma (falta `reservationRef` o `quoteIds`, tipos incorrectos, `rooms` que no es una lista de `{ roomId, quoteId UUID }`) | `MODULE2_UNAVAILABLE`; se registra la discrepancia de contrato | Sí | [CONV] |
 | `404` | `RESERVATION_NOT_FOUND` | No | [BASE] [SPEC FR-014] |
 | Timeout (500 ms), `5xx` o fallo de red | `MODULE2_UNAVAILABLE` | Sí | [SPEC FR-021] [BASE] |
 | Circuito abierto | `MODULE2_UNAVAILABLE` sin llamar a Módulo 2 | Sí | [PLAN] |

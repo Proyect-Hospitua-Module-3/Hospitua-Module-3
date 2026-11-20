@@ -130,7 +130,7 @@ Como sistema de gestión hotelera, quiero garantizar que ninguna estancia tenga 
 - **FR-017**: El sistema DEBE permitir consultar posteriormente una liquidación ya generada sin recalcularla, para que su valor pueda reutilizarse en la generación de la factura final.
 - **FR-018**: El sistema NO DEBE modificar el estado de disponibilidad, ocupación o bloqueo de la habitación como efecto de generar una liquidación.
 - **FR-019**: El sistema DEBE permitir que `Generar liquidación` sea incluido (`<<include>>`) también por `Generar factura final`, que es el caso de uso que produce la factura fiscal definitiva a partir de la liquidación `Final`; `Generar liquidación` no invoca ni emite la factura por sí mismo.
-- **FR-020**: El sistema DEBE generar una liquidación por cada habitación: cuando una reserva incluye varias habitaciones, cada check-out de habitación produce su propia liquidación, usando la cotización cuya habitación coincide con la que informa Módulo 1 en el evento.
+- **FR-020**: El sistema DEBE generar una liquidación por cada habitación: cuando una reserva incluye varias habitaciones, cada check-out de habitación produce su propia liquidación, usando la cotización cuya habitación coincide con la que informa Módulo 1 en el evento. Si la reserva cambió de habitación antes del check-in, Módulo 2 indica qué cotización corresponde a la habitación actual y se usa esa (la habitación nueva hereda la cotización de la anterior).
 - **FR-021**: El sistema NO DEBE generar la liquidación cuando Módulo 2 no esté disponible; debe distinguir esa falla de comunicación de una reserva inexistente y permitir que el check-out se procese de nuevo cuando Módulo 2 responda.
 
 ### Entidades clave *(incluir si la funcionalidad maneja datos)*

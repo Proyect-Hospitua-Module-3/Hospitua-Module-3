@@ -312,6 +312,18 @@ describe('GetSettlementService — HU2: Módulo 1 consulta la liquidación de un
     });
   });
 
+  describe('cambio de habitación (rooms de Módulo 2)', () => {
+    it('la informativa usa el quoteId que rooms asigna a la habitación consultada', async () => {
+      reservations.respondWith(otaReservation({ rooms: [{ roomId: ROOM_B, quoteId: QUOTE_A }] }));
+
+      const settlement = singleOf(
+        await asModule1({ reservationRef: RESERVATION_REF, roomId: ROOM_B }),
+      );
+
+      expect(settlement.breakdown.lodgingAmount).toBe('750000.00');
+    });
+  });
+
   describe('errores del cálculo informativo, sin valores parciales (FR-012)', () => {
     it('reserva inexistente en Módulo 2 → RESERVATION_NOT_FOUND, sin pedir cotizaciones', async () => {
       reservations.respondWith(new ReservationNotFoundError(RESERVATION_REF));

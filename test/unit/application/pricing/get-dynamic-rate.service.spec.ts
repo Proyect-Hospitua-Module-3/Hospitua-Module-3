@@ -323,6 +323,17 @@ describe('GetDynamicRateService', () => {
       expect(result.total.toString()).toBe('1020000.00');
     });
 
+    it('cambio de habitación: reconoce la habitación nueva si rooms le asigna una cotización guardada', async () => {
+      reservations.reservations.set(
+        RESERVATION_REF,
+        reservation({ rooms: [{ roomId: OTHER_ROOM_ID, quoteId: QUOTE_ID }] }),
+      );
+
+      const result = await service.execute(otaQuery({ roomId: OTHER_ROOM_ID }), OTA);
+
+      expect(result.total.toString()).toBe('1020000.00');
+    });
+
     it.each<[string, () => void]>([
       [
         'reserva de otra OTA',

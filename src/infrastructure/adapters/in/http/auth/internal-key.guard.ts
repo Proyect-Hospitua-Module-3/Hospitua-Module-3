@@ -8,8 +8,10 @@ import { Request } from 'express';
 // cabecera X-Internal-Key. Hay una clave por módulo que llama, para revocarlas por
 // separado (acordado con Módulo 1 y Módulo 2):
 // - INBOUND_KEY_MODULE1: Módulo 1 → GET /api/settlements.
-// - INBOUND_KEY_MODULE2: Módulo 2 → POST /pricing/quotes, GET /pricing/dynamic-rate y
-//   GET /ota-commission/{otaId}.
+// - INBOUND_KEY_MODULE2: Módulo 2 → POST /pricing/quotes (la única que llama, confirmado
+//   por Módulo 2 el 2026-11-20). También cubre las llamadas sin token a
+//   GET /pricing/dynamic-rate y GET /ota-commission/{otaId}: con la clave configurada,
+//   quedan cerradas a quien no la tenga; la OTA las sigue usando con su JWT.
 //
 // Va después del guard de acceso de cada ruta:
 // - Con cabecera Authorization pasa sin revisar la clave: es la OTA (o un rol rechazado) y

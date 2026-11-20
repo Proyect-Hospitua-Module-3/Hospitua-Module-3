@@ -173,7 +173,7 @@ export interface SettlementRepositoryPort {
 2. **Reserva en Módulo 2**: `getReservation(reservationRef)`.
    - 404 → `ReservationNotFoundError` [FR-014].
    - Timeout (500 ms), 5xx o circuito abierto → `Module2UnavailableError`, reintentable [FR-021].
-3. **Elegir la cotización**: `findByIds(reservation.quoteIds)` y quedarse con las de `roomId` igual al `roomId` del check-out [FR-020]. El `categoryRoom` no interviene.
+3. **Elegir la cotización**: si `reservation.rooms` asigna un `quoteId` al `roomId` del check-out (cambio de habitación), `findByIds([ese quoteId])`; si no, `findByIds(reservation.quoteIds)` y quedarse con las de `roomId` igual al `roomId` del check-out [FR-020]. El `categoryRoom` no interviene.
    - Ninguna coincide → `QuoteNotFoundError` [FR-014].
    - Varias coinciden (no debería ocurrir: una cotización por habitación) → se toma la de menor `quoteId` para que el resultado sea siempre el mismo [NFR-001, casos límite].
 4. **Canal**: `Channel` a partir de `reservation.channel`; sin canal informado → Directo [FR-003, FR-004].

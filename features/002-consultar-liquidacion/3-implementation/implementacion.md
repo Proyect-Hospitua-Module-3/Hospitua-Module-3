@@ -56,7 +56,7 @@ HTTP ─► NoStoreMiddleware            Cache-Control: no-store (también en lo
           └─ Módulo 1 ─► 007 findByReservationAndRoom(reservationRef, roomId en minúsculas)
                     ├─ hay FINAL ─► su factura ◄── 200 { settlementType: "FINAL", … }
                     └─ no hay ─► 007 getReservation (Módulo 2)                                 → 404 / 424
-                                 005 findByIds(quoteIds); la de ese roomId                      → 404
+                                 005 findByIds: la que rooms asigna, o la de ese roomId         → 404
                                  007 channelTermsOf (canal y comisión)                          → 409
                                  007 SettlementCalculator (sin guardar nada)
                                  ◄── 200 { settlementType: "INFORMATIVE", categoryRoom: null, invoice: null, … }

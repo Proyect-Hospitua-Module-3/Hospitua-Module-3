@@ -125,7 +125,7 @@ Devuelve todas las liquidaciones `FINAL` de habitaciones de la reserva que ya tu
 | `invoice` | objeto o null | Subconjunto de factura 006/008: `invoiceId`, `invoiceNumber`, `issuedAt`, `vatRateApplied`, `vatAmount`, `totalAmount`, `status`. Nulo si no hay factura emitida o si es informativa. Los tipos de estos campos son los definidos en [UC-generate-final-invoice.md](../../../006-generar-factura-final/2-technical/contracts/UC-generate-final-invoice.md). |
 | `generatedAt` | fecha y hora ISO 8601 | Momento del cálculo o generación. |
 
-Para Módulo 1, una consulta sin liquidación final calcula en memoria una informativa a partir de `SettlementCalculator` de 007, la reserva obtenida por `ReservationClientPort` y la cotización seleccionada por `roomId`: se pasan a `LodgingQuoteQueryPort.findByIds` los `quoteIds` de la reserva. No la persiste. Para OTA, no se devuelve una informativa [SPEC FR-009, FR-011].
+Para Módulo 1, una consulta sin liquidación final calcula en memoria una informativa a partir de `SettlementCalculator` de 007, la reserva obtenida por `ReservationClientPort` y la cotización seleccionada por `roomId`: se pasan a `LodgingQuoteQueryPort.findByIds` los `quoteIds` de la reserva. Si Módulo 2 informa en `rooms` el `quoteId` de la habitación consultada (cambio de habitación), se usa esa cotización, igual que en 007. No la persiste. Para OTA, no se devuelve una informativa [SPEC FR-009, FR-011].
 
 ## 4. Cómo interpreta cada respuesta
 

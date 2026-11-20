@@ -112,6 +112,58 @@ describe('GenerateSettlementService', () => {
       expect(settlement.lodgingAmount).toBe('100000.00');
     });
 
+    it('cambio de habitación: usa el quoteId que Módulo 2 asigna en rooms a la habitación del check-out', async () => {
+      reservations.respondWith(
+        directReservation({ rooms: [{ roomId: ROOM_B, quoteId: QUOTE_A }] }),
+      );
+
+      const settlement = await service([storedQuote(QUOTE_A, ROOM_A)]).generate(
+        checkoutCommand({ roomId: ROOM_B }),
+      );
+
+      expect(settlement.quoteId).toBe(QUOTE_A);
+      expect(settlement.roomId).toBe(ROOM_B);
+      expect(settlement.lodgingAmount).toBe('750000.00');
+    });
+
+    it('rooms prevalece sobre el roomId guardado en las cotizaciones', async () => {
+      reservations.respondWith(
+        directReservation({
+          quoteIds: [QUOTE_A, QUOTE_B],
+          rooms: [
+            { roomId: ROOM_A, quoteId: QUOTE_B },
+            { roomId: ROOM_B, quoteId: QUOTE_A },
+          ],
+        }),
+      );
+
+      const settlement = await service([
+        storedQuote(QUOTE_A, ROOM_A),
+        storedQuote(QUOTE_B, ROOM_B, [['2026-12-20', '180000.00', '180000.00']], '180000.00'),
+      ]).generate(checkoutCommand({ roomId: ROOM_A }));
+
+      expect(settlement.quoteId).toBe(QUOTE_B);
+    });
+
+    it('rooms vacía o sin la habitación: elige la cotización por roomId, como antes', async () => {
+      reservations.respondWith(directReservation({ rooms: [] }));
+
+      const settlement = await service().generate(checkoutCommand());
+
+      expect(settlement.quoteId).toBe(QUOTE_A);
+    });
+
+    it('rooms asigna un quoteId que no está guardado → QUOTE_NOT_FOUND y no guarda nada', async () => {
+      reservations.respondWith(
+        directReservation({ rooms: [{ roomId: ROOM_A, quoteId: QUOTE_B }] }),
+      );
+
+      await expect(service().generate(checkoutCommand())).rejects.toBeInstanceOf(
+        QuoteNotFoundError,
+      );
+      expect(settlements.inserts).toBe(0);
+    });
+
     it('salida anticipada: guarda las fechas reales pero cobra el valor de la cotización (BR-004)', async () => {
       const settlement = await service().generate(
         checkoutCommand({ checkInDate: '2026-12-20', checkOutDate: '2026-12-21' }),

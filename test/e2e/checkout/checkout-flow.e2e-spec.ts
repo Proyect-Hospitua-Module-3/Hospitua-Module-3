@@ -25,6 +25,7 @@ import {
 } from '../../../src/infrastructure/config/rabbitmq.config';
 import { InMemoryVatRateRepository } from '../../support/billing/in-memory-vat-rate.repository';
 import { toBody, validEnvelope } from '../../support/checkout-ingestion/checkout-event-fixtures';
+import { declareModule1Exchange } from '../../support/checkout-ingestion/module1-exchange';
 import { Module1HttpFixture } from '../../support/pricing/module1-http-fixture';
 import {
   InMemoryLodgingQuotes,
@@ -92,6 +93,7 @@ describeWithInfrastructure('Check-out de punta a punta (RabbitMQ + PostgreSQL + 
 
     broker = await connect(TEST_RABBITMQ_URL!);
     channel = await broker.createChannel();
+    await declareModule1Exchange(channel);
     await assertCheckoutTopology(channel);
     for (const queue of QUEUES) await channel.purgeQueue(queue);
 

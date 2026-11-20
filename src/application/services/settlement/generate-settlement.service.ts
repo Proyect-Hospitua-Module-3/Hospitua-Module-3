@@ -4,7 +4,11 @@ import { QuoteNotFoundError } from '../../../domain/errors/settlement/quote-not-
 import { SettlementAlreadyExistsError } from '../../../domain/errors/settlement/settlement-already-exists.error';
 import { LodgingQuote } from '../../../domain/model/pricing/lodging-quote';
 import { CheckoutData } from '../../../domain/model/settlement/checkout-data';
-import { channelTermsOf, ReservationData } from '../../../domain/model/settlement/reservation-data';
+import {
+  assignedQuoteIdOf,
+  channelTermsOf,
+  ReservationData,
+} from '../../../domain/model/settlement/reservation-data';
 import { Settlement } from '../../../domain/model/settlement/settlement';
 import { SettlementCalculator } from '../../../domain/model/settlement/settlement-calculator';
 import {
@@ -84,18 +88,23 @@ export class GenerateSettlementService implements GenerateSettlementUseCase {
   }
 
   // La cotización de la habitación del check-out, elegida por roomId y no por tipo de
-  // habitación (FR-020). Si hubiera varias (no debería), la de menor quoteId, para que el
-  // resultado sea siempre el mismo (NFR-001).
+  // habitación (FR-020). Si Módulo 2 informa en rooms el quoteId de esa habitación (cambio
+  // de habitación antes del check-in: hereda la cotización de la anterior), se usa ese;
+  // si no, la cotización cuyo roomId es el del check-out. Si hubiera varias (no debería),
+  // la de menor quoteId, para que el resultado sea siempre el mismo (NFR-001).
   private async quoteOf(
     reservation: ReservationData,
     checkout: CheckoutData,
   ): Promise<LodgingQuote> {
-    const candidates =
-      reservation.quoteIds.length === 0
-        ? []
-        : await this.quotes.findByIds([...reservation.quoteIds]);
+    const assigned = assignedQuoteIdOf(reservation, checkout.roomId)?.toLowerCase();
+    const ids = assigned ? [assigned] : [...reservation.quoteIds];
+    const candidates = ids.length === 0 ? [] : await this.quotes.findByIds(ids);
     const [quote] = candidates
-      .filter((candidate) => candidate.roomId.toLowerCase() === checkout.roomId)
+      .filter((candidate) =>
+        assigned
+          ? candidate.quoteId.toLowerCase() === assigned
+          : candidate.roomId.toLowerCase() === checkout.roomId,
+      )
       .sort((a, b) => compareIds(a.quoteId, b.quoteId));
     if (!quote) {
       throw new QuoteNotFoundError(checkout.reservationRef, checkout.roomId);
