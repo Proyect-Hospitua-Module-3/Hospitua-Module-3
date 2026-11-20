@@ -3,6 +3,7 @@ import { Body, Controller, HttpCode, Inject, Post, UseGuards } from '@nestjs/com
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiHeader,
   ApiFailedDependencyResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -16,6 +17,7 @@ import {
   CreateLodgingQuoteUseCase,
 } from '../../../../../domain/ports/in/pricing/create-lodging-quote.use-case';
 import { CreateLodgingQuoteDto, LodgingQuoteResponseDto } from './dto/lodging-quote.dto';
+import { Module2InternalKeyGuard } from '../auth/internal-key.guard';
 import { InternalCallOnlyGuard } from './internal-call-only.guard';
 import { pricingRequestPipe } from './pricing-validation';
 
@@ -34,7 +36,12 @@ export class LodgingQuoteController {
 
   @Post('quotes')
   @HttpCode(200)
-  @UseGuards(InternalCallOnlyGuard)
+  @UseGuards(InternalCallOnlyGuard, Module2InternalKeyGuard)
+  @ApiHeader({
+    name: 'X-Internal-Key',
+    required: false,
+    description: 'Clave interna del módulo que llama sin token; se exige si INBOUND_KEY_MODULE2 está configurada.',
+  })
   @ApiOperation({
     summary: 'Cotiza y guarda el hospedaje de una habitación (Módulo 2, al crear la reserva)',
   })

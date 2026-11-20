@@ -40,6 +40,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export class Module1BaseRateClient implements BaseRateClientPort {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
+  // Clave que Módulo 1 nos asignó para X-Internal-Key; sin valor no se envía la cabecera.
+  private readonly internalKey: string | undefined;
   private consecutiveFailures = 0;
   private readonly breaker: CircuitBreaker;
 
@@ -61,6 +63,7 @@ export class Module1BaseRateClient implements BaseRateClientPort {
     }
     this.baseUrl = configuredBaseUrl.replace(/\/$/, '');
     this.timeoutMs = timeout;
+    this.internalKey = config.get<string>('OUTBOUND_KEY_MODULE1')?.trim() || undefined;
     this.breaker = new CircuitBreaker(
       (roomId: string, date: string) => this.request(roomId, date),
       {
@@ -105,6 +108,7 @@ export class Module1BaseRateClient implements BaseRateClientPort {
       const response = await firstValueFrom(
         this.http.get<unknown>(`${this.baseUrl}/api/rooms/${roomId}/base-rate`, {
           params: { date },
+          ...(this.internalKey ? { headers: { 'X-Internal-Key': this.internalKey } } : {}),
           // Este timeout cancela la petición HTTP; el del circuito (arriba) también sigue activo.
           timeout: this.timeoutMs,
         }),

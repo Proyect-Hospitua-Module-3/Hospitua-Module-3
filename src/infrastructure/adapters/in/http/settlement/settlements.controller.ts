@@ -3,6 +3,7 @@ import { Controller, Get, Inject, Query, Req, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiHeader,
   ApiConflictResponse,
   ApiExtraModels,
   ApiFailedDependencyResponse,
@@ -26,6 +27,7 @@ import {
   GetSettlementUseCase,
 } from '../../../../../domain/ports/in/settlement/get-settlement.use-case';
 import { AuthenticatedUser } from '../auth/authenticated-user';
+import { Module1InternalKeyGuard } from '../auth/internal-key.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { CORRELATION_ID_HEADER } from '../correlation-id.middleware';
 import { OtaSettlementsDto, SettlementDto, SettlementQueryDto } from './dto/settlement.dto';
@@ -46,7 +48,12 @@ export class SettlementsController {
   ) {}
 
   @Get()
-  @UseGuards(OptionalJwtAuthGuard, SettlementAccessGuard)
+  @UseGuards(OptionalJwtAuthGuard, SettlementAccessGuard, Module1InternalKeyGuard)
+  @ApiHeader({
+    name: 'X-Internal-Key',
+    required: false,
+    description: 'Clave interna del módulo que llama sin token; se exige si INBOUND_KEY_MODULE1 está configurada.',
+  })
   @ApiOperation({
     summary: 'Liquidación de una habitación (Módulo 1) o de una reserva propia (OTA)',
     description:
