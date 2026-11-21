@@ -15,11 +15,11 @@ Define la llamada saliente que realiza el contexto `pricing` de Módulo 3 para o
 | Elemento | Valor |
 |---|---|
 | Método y ruta | `GET {MODULE1_BASE_URL}/api/rooms/{roomId}/base-rate?date=YYYY-MM-DD` |
-| Autenticación | Sin token, comunicación interna [BASE] |
+| Autenticación | Sin token. Cabecera `X-Internal-Key` con `OUTBOUND_KEY_MODULE1`, la clave que Módulo 1 asignó a Módulo 3; sin valor no se envía. Sin ella, o con una incorrecta, Módulo 1 responde `401 INTEGRATION_UNAUTHORIZED` [BASE] |
 | `roomId` | UUID de la habitación en la ruta; Módulo 3 inserta el `roomId`, ya validado como UUID, en la ruta sin transformarlo. Se acepta cualquier UUID 8-4-4-4-12 hexadecimal, sin exigir versión ni variante del RFC 4122, porque Módulo 1 siembra ids como `a0000000-0000-0000-0000-000000000101` [PLAN] |
 | `date` | Fecha consultada, obligatoria, formato `YYYY-MM-DD` |
 | Objetivo de Módulo 1 | p95 < 200 ms, acordado con Módulo 1 |
-| Timeout | `MODULE1_TIMEOUT_MS = 500` [SPEC NFR-002] [PLAN] |
+| Timeout | `MODULE1_TIMEOUT_MS`: 500 ms por defecto (`.env.example` y pruebas); 1500 ms en el despliegue de Render, porque la primera llamada por internet con TLS supera los 500 ms. Siempre por debajo de los 3 s que Módulo 1 y Módulo 2 esperan a Módulo 3 [SPEC NFR-002] [PLAN] |
 | Circuit breaker | opossum: se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s [PLAN] |
 
 Ejemplo:
@@ -61,7 +61,7 @@ Respuesta `200`:
 | `200` con `baseRate` no decimal, cuerpo no JSON, campos ausentes o tipo incorrecto | `MODULE1_UNAVAILABLE` | Sí | Sí | [SPEC FR-006] [PLAN] |
 | `404` con cuerpo estructurado `ROOM_NOT_FOUND` | `ROOM_NOT_FOUND`; detiene el cálculo invocante | No | No | [SPEC FR-004] [CONV] |
 | `404` sin cuerpo estructurado | `MODULE1_UNAVAILABLE` | Sí | Sí | [PLAN] |
-| Otro `4xx` | `MODULE1_UNAVAILABLE` | Sí | Sí | [PLAN] |
+| Otro `4xx` (incluido `401 INTEGRATION_UNAUTHORIZED` por clave ausente o incorrecta) | `MODULE1_UNAVAILABLE` | Sí | Sí | [PLAN] [BASE] |
 | Timeout, `5xx`, error de red o circuito abierto | `MODULE1_UNAVAILABLE` | Sí | Sí | [SPEC NFR-002] [PLAN] |
 
 El cuerpo estructurado de error sigue la forma `ApiError` del Plan Base. Los campos adicionales del cuerpo, tanto en la respuesta `200` como en `ApiError` (por ejemplo `details`), se ignoran y no cuentan como cuerpo malformado. Módulo 3 no sustituye una respuesta inválida por un importe predeterminado [SPEC FR-004, FR-006]. Una respuesta malformada lanza `MalformedBaseRateResponseError` en el adaptador, cuenta como fallo del circuit breaker y se traduce a `MODULE1_UNAVAILABLE`; un importe decimal en texto menor o igual a cero lanza `InvalidBaseRateError`, no cuenta como fallo del circuit breaker y se traduce a `INVALID_BASE_RATE` [PLAN].

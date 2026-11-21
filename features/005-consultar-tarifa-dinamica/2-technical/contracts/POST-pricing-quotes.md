@@ -31,7 +31,7 @@ La cotización es **inmutable**: no se modifica ni se recalcula aunque cambien d
 
 ### Autenticación y autorización
 
-**Solo Módulo 2**, por llamada interna en la red de Docker Compose, **sin token** [BASE] [SPEC FR-016, BR-008].
+**Solo Módulo 2**, por llamada interna **sin token** y con la cabecera `X-Internal-Key` [BASE] [SPEC FR-016, BR-008]. Cuando `INBOUND_KEY_MODULE2` tiene valor, la cabecera debe coincidir; si falta o no coincide → `401 UNAUTHENTICATED` [BASE].
 
 Cualquier solicitud que traiga un JWT (de OTA o de Administrador) se rechaza con `403 FORBIDDEN`, porque este endpoint no se publica a personas ni a OTA [PLAN].
 
@@ -41,6 +41,7 @@ Cualquier solicitud que traiga un JWT (de OTA o de Administrador) se rechaza con
 |---|---|---|---|---|
 | `Content-Type` | Sí | `application/json` | Formato del cuerpo. | [CONV] |
 | `Accept` | No | `application/json` | Tipo MIME esperado. | [CONV] |
+| `X-Internal-Key` | Sí, cuando `INBOUND_KEY_MODULE2` tiene valor | string | Clave que Módulo 3 asignó a Módulo 2. | [BASE] |
 | `X-Correlation-Id` | No | string | Identificador de trazabilidad distribuida; si no llega, Módulo 3 lo genera. | [BASE] |
 
 ### Cuerpo de la Petición
@@ -125,6 +126,7 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 |---|---|---|---|---|
 | **400** | `INVALID_QUERY_PARAMS` | Faltan campos del cuerpo, tienen formato inválido o la fecha no es válida. (El código es el mismo que usa el plan base para parámetros inválidos.) | No | [PLAN] [CONV] |
 | **400** | `INVALID_DATE_RANGE` | `checkOutDate` anterior o igual a `checkInDate`. | No | [SPEC FR-015] [PLAN] |
+| **401** | `UNAUTHENTICATED` | Falta la cabecera `X-Internal-Key` o no coincide con `INBOUND_KEY_MODULE2`. | No | [BASE] |
 | **403** | `FORBIDDEN` | La solicitud trae un JWT (de OTA o de Administrador). | No | [SPEC FR-016, BR-008, SC-008] [PLAN] |
 | **404** | `ROOM_NOT_FOUND` | Módulo 1 informa que la habitación no existe (no cuenta como fallo del circuit breaker). La solicitud falla y no se guarda ninguna cotización. | No | [SPEC FR-015] [BASE] [004] |
 | **424** | `INVALID_BASE_RATE` | Módulo 1 reporta para alguna noche una tarifa base menor o igual a cero (no cuenta como fallo del circuit breaker). La solicitud completa falla y no se guarda ninguna cotización. | No | [SPEC FR-015] [BASE] [004] |

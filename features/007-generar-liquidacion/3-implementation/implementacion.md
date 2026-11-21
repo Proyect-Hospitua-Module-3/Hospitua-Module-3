@@ -85,7 +85,7 @@ Así viaja `generate({ eventId, stayId, reservationRef, roomId, categoryRoom, ch
 
 | Archivo | Qué hace |
 |---|---|
-| [module2-reservation.client.ts](../../../src/infrastructure/adapters/out/http/module2-reservation.client.ts) | `GET {MODULE2_BASE_URL}/api/reservations/{ref}` sin token, con `X-Correlation-Id`. Timeout de 500 ms y circuit breaker (se abre en el 5.º fallo seguido y prueba de nuevo a los 30 s), igual que el cliente de Módulo 1 de la 004. Valida la forma de la respuesta y descarta los demás campos |
+| [module2-reservation.client.ts](../../../src/infrastructure/adapters/out/http/module2-reservation.client.ts) | `GET {MODULE2_BASE_URL}/api/reservations/{ref}` sin token, con `X-Client: MODULE3`, `X-Internal-Key` (si `OUTBOUND_KEY_MODULE2` tiene valor) y `X-Correlation-Id`. Timeout `MODULE2_TIMEOUT_MS` (500 ms por defecto, 1500 ms en Render) y circuit breaker (se abre en el 5.º fallo seguido y prueba de nuevo a los 30 s), igual que el cliente de Módulo 1 de la 004. Valida la forma de la respuesta y descarta los demás campos |
 | [settlement.mapper.ts](../../../src/infrastructure/adapters/out/persistence/mappers/settlement/settlement.mapper.ts) | Dominio ↔ fila de Prisma; fechas civiles sin zona horaria, importes como texto |
 | [prisma-settlement.repository.ts](../../../src/infrastructure/adapters/out/persistence/repositories/settlement/prisma-settlement.repository.ts) | Solo `INSERT` y `SELECT`. Traduce la violación de `UNIQUE(stay_id)` a `STAY_ALREADY_SETTLED` |
 | [logged-generate-settlement.use-case.ts](../../../src/infrastructure/logging/settlement/logged-generate-settlement.use-case.ts) | Envuelve el caso de uso con un log JSON por generación (T032), sin datos personales |
@@ -156,7 +156,7 @@ Dobles de prueba propios: [fake-settlement-ports.ts](../../../test/support/settl
 | FR-020 / BR-011 / SC-011 Una por habitación, por `roomId` | `quoteOf` usa el `quoteId` que `rooms` asigna a la habitación (cambio de habitación) o, si no, filtra por `roomId`, no por tipo (`assignedQuoteIdOf` en `reservation-data.ts`) | servicio "dos habitaciones del mismo tipo" |
 | FR-021 Módulo 2 caído → reintentable | `MODULE2_UNAVAILABLE` distinto de `RESERVATION_NOT_FOUND` | cliente; servicio; flujo |
 | NFR-001 Determinismo | Menor `quoteId`; cálculo puro | servicio y calculadora |
-| NFR-002 Tiempo | Timeout de 500 ms hacia Módulo 2 | flujo (< 800 ms) |
+| NFR-002 Tiempo | Timeout hacia Módulo 2 (`MODULE2_TIMEOUT_MS`: 500 ms por defecto, 1500 ms en Render) | flujo (< 800 ms) |
 | NFR-003 Trazabilidad | `quote_id`, `source_event_id`, `generated_at`; log por generación | repositorio; log |
 | NFR-006 Sin datos personales | El cliente descarta todo lo que no es del contrato; el log no los incluye | contrato; log |
 | NFR-007 Integridad | `CHECK` del desglose y del canal | repositorio (CHECK) |
@@ -212,5 +212,5 @@ Lo que no fijaban la spec, el plan ni los contratos:
 - **002 Consultar liquidación**: usa `findByReservationAndRoom`, `SettlementCalculator`, `channelTermsOf` y los HTTP ya registrados en el filtro.
 - **003 Comisión OTA**: lee `settlement` con su propio puerto; el índice `(ota_id, generated_at DESC)` ya existe.
 - **Archivos compartidos que tocó la 007**: `money.vo.ts` (+ su prueba), `domain-exception.filter.ts`, `app.module.ts`, `schema.prisma`, `.env.example`, `test/support/e2e-env.ts`, `test/support/pricing/module1-http-fixture.ts` (cabeceras de cada petición) y los contract tests de la 005 que arrancan `AppModule` (necesitan `MODULE2_*`).
-- **Configuración**: `MODULE2_BASE_URL` y `MODULE2_TIMEOUT_MS` son obligatorias; sin ellas la aplicación no arranca.
+- **Configuración**: `MODULE2_BASE_URL` y `MODULE2_TIMEOUT_MS` son obligatorias; sin ellas la aplicación no arranca. `OUTBOUND_KEY_MODULE2` es opcional: sin valor no se envía `X-Internal-Key`.
 - **Migraciones**: la próxima se debe generar con `prisma migrate diff` desde el esquema anterior, para no perder los `CHECK` escritos a mano.

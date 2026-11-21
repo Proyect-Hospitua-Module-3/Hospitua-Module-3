@@ -64,7 +64,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálcul
 ### Casos límite
 
 - Un cambio posterior de tarifa base no altera la cotización de hospedaje ya guardada.
-- Módulo 1 responde después de 500 ms: se trata como falta de respuesta y se informa una falla de dependencia, sin esperar más.
+- Módulo 1 responde después del tiempo máximo (NFR-002): se trata como falta de respuesta y se informa una falla de dependencia, sin esperar más.
 - Estancia de una sola noche: se consulta únicamente la tarifa de la fecha de entrada.
 - Módulo 1 devuelve una moneda distinta de COP: se trata como falla de dependencia.
 - Módulo 1 responde con un `roomId` o una fecha distintos de los consultados: se trata como falla de dependencia.
@@ -97,7 +97,7 @@ Como sistema de Facturación, Consumos y Liquidación, quiero detener el cálcul
 ## Requisitos no funcionales
 
 - **NFR-001**: Determinismo: para la misma habitación identificada por su `roomId`, fecha y dato proporcionado por Módulo 1, la consulta produce el mismo resultado.
-- **NFR-002**: Rendimiento: cada consulta a Módulo 1 se completa o falla dentro de 500 ms.
+- **NFR-002**: Rendimiento: cada consulta a Módulo 1 se completa o falla dentro de un tiempo máximo configurable: 500 ms por defecto y 1500 ms en el entorno desplegado, donde la llamada por internet supera los 500 ms en la primera conexión. Siempre menos que los 3 s que Módulo 1 y Módulo 2 esperan a Módulo 3.
 - **NFR-003**: Actualidad: la consulta refleja el dato proporcionado por Módulo 1 en el momento de la solicitud y no depende de una copia desactualizada.
 
 ## Criterios de éxito *(obligatorio)*

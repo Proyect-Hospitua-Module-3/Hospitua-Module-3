@@ -37,11 +37,11 @@ Es una operación **exclusivamente de lectura** sobre liquidaciones ya generadas
 
 | Quién llama | Cómo se identifica | Alcance | Origen |
 |---|---|---|---|
-| **Módulo 2** | Llamada interna por la red de Docker Compose, **sin token** | Cualquier `otaId` | [BASE] [PLAN] |
+| **Módulo 2** | Llamada interna **sin token**, con la cabecera `X-Internal-Key` (`INBOUND_KEY_MODULE2`). Módulo 2 confirmó que hoy no llama a esta ruta | Cualquier `otaId` | [BASE] [PLAN] |
 | **OTA** | `Authorization: Bearer <token>` con `role = OTA` y claim `otaId` | **Solo su propio** `otaId` | [SPEC FR-009, BR-003] [PLAN] |
 | Administrador u otro rol | JWT con un rol distinto de `OTA` | Rechazado con `403 FORBIDDEN` | [PLAN] |
 
-Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se trata como llamada interna de un módulo [BASE]. El plan base no distingue qué módulo llama en la red interna, por lo que el Guard no valida si es Módulo 1 o Módulo 2; la spec limita el caso de uso a Módulo 2 y OTA [PLAN].
+Si llega un token, se valida y se aplican las reglas de OTA; si no llega, se trata como llamada interna de un módulo [BASE]. La llamada interna se acepta solo con la clave de Módulo 2 (`Module2InternalKeyGuard`); la spec limita el caso de uso a Módulo 2 y OTA [BASE] [PLAN].
 
 La comparación entre el claim `otaId` del token y el `{otaId}` de la ruta es una regla de negocio y se hace en el caso de uso, **antes de leer `settlement`** [BASE regla 9] [PLAN].
 
@@ -65,10 +65,11 @@ No hay query params ni cuerpo.
 
 ### Ejemplos de Petición
 
-#### Llamada de Módulo 2 (red interna, sin token)
+#### Llamada de Módulo 2 (sin token, con su clave)
 ```http
 GET /ota-commission/booking
 Accept: application/json
+X-Internal-Key: <clave de Módulo 2>
 X-Correlation-Id: c89b3f0e-2d11-4a9f-9c02-7a8b9c0d1e2f
 ```
 
@@ -83,7 +84,7 @@ Accept: application/json
 
 ## 3. Reglas de Procesamiento
 
-1. **Identificar al actor**: sin token es una llamada interna; con token se valida (inválido o expirado → `401 UNAUTHENTICATED`) y debe tener `role = OTA` (otro rol → `403 FORBIDDEN`) [SPEC FR-007, SC-005] [PLAN].
+1. **Identificar al actor**: sin token es una llamada interna y debe traer la `X-Internal-Key` correcta cuando `INBOUND_KEY_MODULE2` tiene valor (si no → `401 UNAUTHENTICATED`) [BASE]; con token se valida (inválido o expirado → `401 UNAUTHENTICATED`) y debe tener `role = OTA` (otro rol → `403 FORBIDDEN`) [SPEC FR-007, SC-005] [PLAN].
 2. **Canal directo**: si `otaId` es `DIRECT`, se rechaza con `400 INVALID_QUERY_PARAMS` sin consultar `settlement` [SPEC FR-006] [PLAN].
 3. **Alcance de la OTA**: si el actor es una OTA, `claim.otaId` debe ser igual a `{otaId}`; si no, `403 FORBIDDEN`, sin haber leído nada de `settlement`. Una OTA nunca accede al historial de otra [SPEC FR-009, BR-003, SC-006] [PLAN].
 4. **Lectura**: se busca en `settlement` la liquidación del canal `OTA` con ese `otaId` y el `generated_at` más reciente (ver sección 4) [SPEC FR-001] [PLAN].
@@ -162,7 +163,7 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 | HTTP | `errorCode` | Cuándo ocurre | Reintentable | Origen |
 |---|---|---|---|---|
 | **400** | `INVALID_QUERY_PARAMS` | `otaId` es `DIRECT` (canal directo, no es una OTA). | No | [SPEC FR-006] [PLAN] |
-| **401** | `UNAUTHENTICATED` | Llega un token JWT inválido o expirado. | No | [BASE] [PLAN] |
+| **401** | `UNAUTHENTICATED` | Llega un token JWT inválido o expirado, o una llamada sin token no trae la `X-Internal-Key` correcta (cuando `INBOUND_KEY_MODULE2` tiene valor). | No | [BASE] [PLAN] |
 | **403** | `FORBIDDEN` | Una OTA consulta el `otaId` de otra OTA, o el token tiene un rol distinto de `OTA`. | No | [SPEC FR-009, BR-003] [PLAN] |
 | **422** | `UNEXPECTED_ERROR` | Error inesperado. | Sí | [PLAN] |
 

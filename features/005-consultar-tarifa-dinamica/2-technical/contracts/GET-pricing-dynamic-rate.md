@@ -36,7 +36,8 @@ El resultado **no depende de la reserva, del canal ni de quién consulta**: la m
 
 | Quién llama | Cómo se identifica | Resultado |
 |---|---|---|
-| **Módulo 2** | Llamada interna por la red de Docker Compose, **sin token** | Permitido [BASE] |
+| **Módulo 2** | Llamada interna **sin token**, con la cabecera `X-Internal-Key` (`INBOUND_KEY_MODULE2`). Módulo 2 confirmó que hoy no llama a esta ruta | Permitido [BASE] |
+| Llamada sin token con `X-Internal-Key` ausente o incorrecta (cuando `INBOUND_KEY_MODULE2` tiene valor) | — | `401 UNAUTHENTICATED` [BASE] |
 | **OTA** | `Authorization: Bearer <token>` con `role = OTA` y claim `otaId` | Permitido solo para habitaciones de sus reservas (regla 2) [BASE] |
 | Token con otro rol (`Administrador`) | `Authorization: Bearer <token>` | `403 FORBIDDEN` [BASE] |
 | Token inválido o expirado | `Authorization: Bearer <token>` | `401 UNAUTHENTICATED` [BASE] |
@@ -191,7 +192,7 @@ Todos los errores siguen el estándar `ApiError` del plan base: `{ errorCode, me
 |---|---|---|---|---|
 | **400** | `INVALID_QUERY_PARAMS` | Faltan parámetros, tienen formato inválido (por ejemplo una fecha mal escrita), se combinan `date` y el rango, o la OTA no envía `reservationRef`. | No | [PLAN] [CONV] [BASE] |
 | **400** | `INVALID_DATE_RANGE` | `checkOutDate` anterior o igual a `checkInDate`. | No | [SPEC FR-008] [PLAN] |
-| **401** | `UNAUTHENTICATED` | El token es inválido o expiró. Sin token no aplica: es una llamada interna. | No | [BASE] |
+| **401** | `UNAUTHENTICATED` | El token es inválido o expiró, o una llamada sin token no trae la `X-Internal-Key` correcta (cuando `INBOUND_KEY_MODULE2` tiene valor). | No | [BASE] |
 | **403** | `FORBIDDEN` | El token no es de rol `OTA`, o la OTA consulta una habitación que no pertenece a una reserva suya (reserva de otra OTA, del canal directo, inexistente o sin esa habitación). Mismo mensaje en todos los casos. | No | [SPEC FR-010, SC-005] [BASE] |
 | **404** | `ROOM_NOT_FOUND` | Módulo 1 informa que la habitación consultada no existe (no cuenta como fallo del circuit breaker). | No | [SPEC FR-006] [BASE] [004] |
 | **424** | `INVALID_BASE_RATE` | Módulo 1 reporta para alguna noche una tarifa base menor o igual a cero (no cuenta como fallo del circuit breaker). | No | [SPEC FR-006] [BASE] [004] |
