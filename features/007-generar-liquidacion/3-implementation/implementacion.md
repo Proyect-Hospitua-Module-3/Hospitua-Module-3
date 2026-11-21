@@ -152,6 +152,7 @@ Dobles de prueba propios: [fake-settlement-ports.ts](../../../test/support/settl
 | FR-016 Identifica la estancia | Columnas de `settlement` | settlement.spec; repositorio |
 | FR-018 / BR-008 No toca la habitación | El servicio no tiene ningún puerto hacia Módulo 1 | (por diseño) |
 | FR-019 / BR-009 No emite la factura | Ningún puerto hacia `billing` | arquitectura |
+| FR-022 Booking: reserva OTA sin `quoteIds` | `quoteOf` cotiza la estancia con `StayQuotePort` (`stay-quote.port.ts`, implementado por `PricingStayQuoteAdapter` con `CreateLodgingQuoteUseCase` de 005); salida el mismo día → una noche | servicio "Booking: reserva OTA sin quoteIds, cotizada en el check-out" |
 | FR-020 / BR-011 / SC-011 Una por habitación, por `roomId` | `quoteOf` usa el `quoteId` que `rooms` asigna a la habitación (cambio de habitación) o, si no, filtra por `roomId`, no por tipo (`assignedQuoteIdOf` en `reservation-data.ts`) | servicio "dos habitaciones del mismo tipo" |
 | FR-021 Módulo 2 caído → reintentable | `MODULE2_UNAVAILABLE` distinto de `RESERVATION_NOT_FOUND` | cliente; servicio; flujo |
 | NFR-001 Determinismo | Menor `quoteId`; cálculo puro | servicio y calculadora |

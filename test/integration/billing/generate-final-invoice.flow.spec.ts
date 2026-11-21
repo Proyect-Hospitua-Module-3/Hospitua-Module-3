@@ -28,7 +28,10 @@ import {
   lockBillingTestDatabase,
 } from '../../support/database/billing-test-database-lock';
 import { Module1HttpFixture } from '../../support/pricing/module1-http-fixture';
-import { InMemoryLodgingQuotes } from '../../support/settlement/fake-settlement-ports';
+import {
+  FakeStayQuotes,
+  InMemoryLodgingQuotes,
+} from '../../support/settlement/fake-settlement-ports';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const describeWithDatabase = TEST_DATABASE_URL ? describe : describe.skip;
@@ -119,6 +122,7 @@ describeWithDatabase(
         new GenerateSettlementService(
           moduleRef.get(Module2ReservationClient),
           new InMemoryLodgingQuotes(),
+          new FakeStayQuotes(),
           new PrismaSettlementRepository(prisma),
         ),
         new GetCurrentVatRateService(vatRates),

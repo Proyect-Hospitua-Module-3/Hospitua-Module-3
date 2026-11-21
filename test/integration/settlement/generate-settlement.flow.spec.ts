@@ -13,6 +13,7 @@ import { PrismaSettlementRepository } from '../../../src/infrastructure/adapters
 import { Module1HttpFixture } from '../../support/pricing/module1-http-fixture';
 import {
   checkoutCommand,
+  FakeStayQuotes,
   InMemoryLodgingQuotes,
   QUOTE_A,
   RESERVATION_REF,
@@ -75,6 +76,7 @@ describeWithDatabase('GenerateSettlement de punta a punta (Módulo 2 simulado + 
     service = new GenerateSettlementService(
       moduleRef.get(Module2ReservationClient),
       new InMemoryLodgingQuotes(),
+      new FakeStayQuotes(),
       new PrismaSettlementRepository(prisma),
     );
   });

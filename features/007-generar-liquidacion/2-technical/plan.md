@@ -156,6 +156,12 @@ export interface LodgingQuoteQueryPort {
   findByIds(quoteIds: string[]): Promise<LodgingQuote[]>;
 }
 
+// src/domain/ports/out/settlement/stay-quote.port.ts — solo Booking (FR-022); lo implementa
+// pricing con CreateLodgingQuoteUseCase de 005 (mismo cálculo y guardado que POST /pricing/quotes)
+export interface StayQuotePort {
+  create(request: { roomId: string; checkInDate: string; checkOutDate: string }): Promise<LodgingQuote>;
+}
+
 // src/domain/ports/out/settlement.repository.port.ts
 export interface SettlementRepositoryPort {
   findByStayId(stayId: string): Promise<Settlement | null>;
@@ -173,7 +179,7 @@ export interface SettlementRepositoryPort {
 2. **Reserva en Módulo 2**: `getReservation(reservationRef)`.
    - 404 → `ReservationNotFoundError` [FR-014].
    - Timeout (500 ms), 5xx o circuito abierto → `Module2UnavailableError`, reintentable [FR-021].
-3. **Elegir la cotización**: si `reservation.rooms` asigna un `quoteId` al `roomId` del check-out (cambio de habitación), `findByIds([ese quoteId])`; si no, `findByIds(reservation.quoteIds)` y quedarse con las de `roomId` igual al `roomId` del check-out [FR-020]. El `categoryRoom` no interviene.
+3. **Elegir la cotización**: si la reserva es OTA y `quoteIds` viene vacía (Booking), `StayQuotePort.create` cotiza la habitación con las fechas reales del check-out (salida el mismo día → una noche) y se usa esa cotización [FR-022]; los errores de la cotización (`MODULE1_UNAVAILABLE`, `ROOM_NOT_FOUND`, temporadas) se propagan. Si no, si `reservation.rooms` asigna un `quoteId` al `roomId` del check-out (cambio de habitación), `findByIds([ese quoteId])`; si no, `findByIds(reservation.quoteIds)` y quedarse con las de `roomId` igual al `roomId` del check-out [FR-020]. El `categoryRoom` no interviene.
    - Ninguna coincide → `QuoteNotFoundError` [FR-014].
    - Varias coinciden (no debería ocurrir: una cotización por habitación) → se toma la de menor `quoteId` para que el resultado sea siempre el mismo [NFR-001, casos límite].
 4. **Canal**: `Channel` a partir de `reservation.channel`; sin canal informado → Directo [FR-003, FR-004].
@@ -245,6 +251,8 @@ La tabla no tiene `UPDATE` en ningún camino de código: la liquidación es inmu
 | `InvalidCommissionError` | `INVALID_COMMISSION` | No | Dead-letter |
 | `SettlementAlreadyExistsError` | `SETTLEMENT_ALREADY_EXISTS` | No | Dead-letter (datos distintos para una estancia ya liquidada) |
 | `Module2UnavailableError` | `MODULE2_UNAVAILABLE` | Sí | Cola de reintento `modulo3.checkout.retry.30s` (cada 30 s, hasta 5 veces); agotados, dead-letter |
+| Solo Booking (FR-022): `Module1UnavailableError`, `SeasonRulesUnavailableError`, `SeasonCalendarUnavailableError` al cotizar | `MODULE1_UNAVAILABLE`, `SEASON_RULES_UNAVAILABLE`, `SEASON_CALENDAR_UNAVAILABLE` | Sí | Cola de reintento, igual que `MODULE2_UNAVAILABLE` |
+| Solo Booking (FR-022): `RoomNotFoundError`, `InvalidBaseRateError` u otro error de configuración al cotizar | `ROOM_NOT_FOUND`, `INVALID_BASE_RATE`, … | No | Dead-letter |
 
 007 no devuelve ninguna respuesta HTTP, así que no genera 5xx. Los 5xx que aparecen en este plan son los que *recibimos* de Módulo 2. Si un endpoint que reutilice este cálculo (002) recibe `Module2UnavailableError`, lo responde como 424 con `MODULE2_UNAVAILABLE` (plan base); no es una decisión de 007.
 

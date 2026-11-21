@@ -29,6 +29,11 @@ export const TRANSIENT_CHECKOUT_ERROR_CODES: ReadonlySet<string> = new Set([
   'MODULE2_UNAVAILABLE',
   'VAT_RATE_UNAVAILABLE',
   'DATABASE_UNAVAILABLE',
+  // Al cotizar una reserva de Booking en el check-out (007): Módulo 1 (tarifa base) o la
+  // configuración de temporadas no respondieron.
+  'MODULE1_UNAVAILABLE',
+  'SEASON_RULES_UNAVAILABLE',
+  'SEASON_CALENDAR_UNAVAILABLE',
 ]);
 const DATABASE_UNAVAILABLE = 'DATABASE_UNAVAILABLE';
 const UNEXPECTED_ERROR = 'UNEXPECTED_ERROR';

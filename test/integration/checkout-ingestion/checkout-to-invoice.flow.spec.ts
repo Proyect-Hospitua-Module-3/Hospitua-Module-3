@@ -19,6 +19,7 @@ import { InMemoryCheckoutEventLogRepository } from '../../support/checkout-inges
 import {
   directReservation,
   FakeReservationClient,
+  FakeStayQuotes,
   InMemoryLodgingQuotes,
   InMemorySettlementRepository,
   otaReservation,
@@ -52,6 +53,7 @@ describe('Check-out → liquidación → factura (010 + 007 + 006 + 001, en memo
     const generateSettlement = new GenerateSettlementService(
       reservations,
       new InMemoryLodgingQuotes([storedQuote(QUOTE_A, ROOM_ID)]),
+      new FakeStayQuotes(),
       settlements,
     );
     const generateInvoice = new GenerateFinalInvoiceService(

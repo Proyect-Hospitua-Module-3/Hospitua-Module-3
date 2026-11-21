@@ -27,7 +27,7 @@ Módulo 1 publica un evento por estancia cuando registra el check-out. La 010:
 | Liquidación y factura emitidas | ack | `PROCESSED` |
 | Sin datos tributarios (006 devuelve `NOT_ISSUED`) | ack; la liquidación queda guardada | `PROCESSED` + nota "Factura no emitida: datos tributarios ausentes o incompletos" |
 | Entrega repetida del mismo `eventId` ya cerrado | ack sin reprocesar | sin cambios |
-| Falla transitoria (`MODULE2_UNAVAILABLE`, `VAT_RATE_UNAVAILABLE`, `DATABASE_UNAVAILABLE`) | `modulo3.checkout.retry.30s` con `x-retry-count + 1`; a los 30 s vuelve a `modulo3.checkout` | `PENDING` |
+| Falla transitoria (`MODULE2_UNAVAILABLE`, `VAT_RATE_UNAVAILABLE`, `DATABASE_UNAVAILABLE` y, al cotizar una reserva de Booking (007), `MODULE1_UNAVAILABLE`, `SEASON_RULES_UNAVAILABLE`, `SEASON_CALENDAR_UNAVAILABLE`) | `modulo3.checkout.retry.30s` con `x-retry-count + 1`; a los 30 s vuelve a `modulo3.checkout` | `PENDING` |
 | Falla transitoria con `x-retry-count = 5` | `modulo3.checkout.dlq` | `DEAD_LETTER` + código |
 | Error de negocio (`RESERVATION_NOT_FOUND`, `QUOTE_NOT_FOUND`, `MISSING_COMMISSION`, `INVALID_COMMISSION`, `SETTLEMENT_ALREADY_EXISTS`, `VAT_RATE_NOT_CONFIGURED`, `FINAL_SETTLEMENT_NOT_FOUND`) o error no tipado | DLQ sin reintentos | `DEAD_LETTER` + código |
 | Evento inválido o sobre no reconocible | DLQ | `REJECTED` + `INVALID_CHECKOUT_EVENT` |

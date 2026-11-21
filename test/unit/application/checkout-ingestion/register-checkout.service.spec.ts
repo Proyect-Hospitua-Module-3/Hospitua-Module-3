@@ -254,7 +254,15 @@ describe('RegisterCheckoutService', () => {
   });
 
   describe('fallas transitorias (NFR-005)', () => {
-    it.each(['MODULE2_UNAVAILABLE', 'VAT_RATE_UNAVAILABLE', 'DATABASE_UNAVAILABLE'])(
+    it.each([
+      'MODULE2_UNAVAILABLE',
+      'VAT_RATE_UNAVAILABLE',
+      'DATABASE_UNAVAILABLE',
+      // Al cotizar una reserva de Booking en el check-out (007).
+      'MODULE1_UNAVAILABLE',
+      'SEASON_RULES_UNAVAILABLE',
+      'SEASON_CALENDAR_UNAVAILABLE',
+    ])(
       '%s: publica a retry con x-retry-count incrementado, deja PENDING y hace ack',
       async (code) => {
         processor.outcome = new TestError(code);

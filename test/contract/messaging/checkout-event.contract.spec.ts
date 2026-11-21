@@ -95,7 +95,10 @@ describe('Contrato del evento facturacion.checkout', () => {
   it('solo las fallas transitorias de la sección 4 van a la cola de reintento', () => {
     expect([...TRANSIENT_CHECKOUT_ERROR_CODES].sort()).toEqual([
       'DATABASE_UNAVAILABLE',
+      'MODULE1_UNAVAILABLE',
       'MODULE2_UNAVAILABLE',
+      'SEASON_CALENDAR_UNAVAILABLE',
+      'SEASON_RULES_UNAVAILABLE',
       'VAT_RATE_UNAVAILABLE',
     ]);
   });

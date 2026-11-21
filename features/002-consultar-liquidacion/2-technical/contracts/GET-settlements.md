@@ -146,7 +146,7 @@ Los errores siguen la estructura `ApiError` del Plan Base.
 | 403 | `FORBIDDEN` | Token válido con rol distinto de OTA. |
 | 404 | `SETTLEMENT_NOT_FOUND` | No hay liquidaciones finales para la consulta OTA o la reserva es ajena/directa. |
 | 404 | `RESERVATION_NOT_FOUND` | No existe la reserva consultada para el cálculo informativo. |
-| 404 | `QUOTE_NOT_FOUND` | No existe cotización aplicable para el cálculo informativo. |
+| 404 | `QUOTE_NOT_FOUND` | No existe cotización aplicable para el cálculo informativo. También para una reserva de Booking antes de su check-out: Módulo 2 no la cotiza y el Módulo 3 solo la cotiza al registrar el check-out (FR-022 de 007), porque antes no conoce las fechas de la estancia. Después del check-out se devuelve su `FINAL`. |
 | 424 | `MODULE2_UNAVAILABLE` | Módulo 2 no responde o entrega una respuesta no utilizable durante el cálculo informativo. |
 | 409 | `MISSING_COMMISSION` | Reserva OTA sin comisión requerida para el cálculo informativo. |
 | 409 | `INVALID_COMMISSION` | Comisión de la reserva OTA inválida para el cálculo informativo. |

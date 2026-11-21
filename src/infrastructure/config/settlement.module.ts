@@ -24,6 +24,7 @@ import {
   SETTLEMENT_REPOSITORY,
   SettlementRepositoryPort,
 } from '../../domain/ports/out/settlement/settlement.repository.port';
+import { STAY_QUOTE, StayQuotePort } from '../../domain/ports/out/settlement/stay-quote.port';
 import { NoStoreMiddleware } from '../adapters/in/http/settlement/no-store.middleware';
 import { SettlementsController } from '../adapters/in/http/settlement/settlements.controller';
 import { Module2ReservationClient } from '../adapters/out/http/module2-reservation.client';
@@ -38,8 +39,9 @@ import { PricingModule } from './pricing.module';
 // Los servicios de aplicación no tienen decoradores de NestJS: se construyen aquí.
 // 007 no tiene endpoint propio (FR-001); el único controller es el de 002 (consulta).
 @Module({
-  // pricing exporta LODGING_QUOTE_QUERY: settlement lee las cotizaciones guardadas, nunca
-  // invoca el cálculo de la tarifa dinámica (plan base, regla 5). auth: los guards JWT de
+  // pricing exporta LODGING_QUOTE_QUERY: settlement lee las cotizaciones guardadas y no
+  // invoca el cálculo de la tarifa dinámica (plan base, regla 5), salvo para las reservas
+  // OTA sin quoteIds (Booking), que cotiza con STAY_QUOTE al registrar el check-out. auth: los guards JWT de
   // GET /api/settlements (002).
   imports: [AuthModule, HttpModule, PricingModule],
   controllers: [SettlementsController],
@@ -52,14 +54,15 @@ import { PricingModule } from './pricing.module';
     { provide: SETTLEMENT_REPOSITORY, useClass: PrismaSettlementRepository },
     {
       provide: GENERATE_SETTLEMENT_USE_CASE,
-      inject: [RESERVATION_CLIENT, LODGING_QUOTE_QUERY, SETTLEMENT_REPOSITORY],
+      inject: [RESERVATION_CLIENT, LODGING_QUOTE_QUERY, STAY_QUOTE, SETTLEMENT_REPOSITORY],
       useFactory: (
         reservations: ReservationClientPort,
         quotes: LodgingQuoteQueryPort,
+        stayQuotes: StayQuotePort,
         settlements: SettlementRepositoryPort,
       ) =>
         new LoggedGenerateSettlementUseCase(
-          new GenerateSettlementService(reservations, quotes, settlements),
+          new GenerateSettlementService(reservations, quotes, stayQuotes, settlements),
         ),
     },
 

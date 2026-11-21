@@ -9,7 +9,10 @@ import { ModifySeasonRuleService } from '../../application/services/pricing/modi
 import { ReplaceSeasonCalendarService } from '../../application/services/pricing/replace-season-calendar.service';
 import { ResolveSeasonByDateService } from '../../application/services/pricing/resolve-season-by-date.service';
 import { ReviewSeasonCalendarService } from '../../application/services/pricing/review-season-calendar.service';
-import { CREATE_LODGING_QUOTE_USE_CASE } from '../../domain/ports/in/pricing/create-lodging-quote.use-case';
+import {
+  CREATE_LODGING_QUOTE_USE_CASE,
+  CreateLodgingQuoteUseCase,
+} from '../../domain/ports/in/pricing/create-lodging-quote.use-case';
 import {
   GET_BASE_RATE_USE_CASE,
   GetBaseRateUseCase,
@@ -61,11 +64,13 @@ import {
   RESERVATION_CLIENT,
   ReservationClientPort,
 } from '../../domain/ports/out/settlement/reservation.client.port';
+import { STAY_QUOTE } from '../../domain/ports/out/settlement/stay-quote.port';
 import { DynamicRateController } from '../adapters/in/http/pricing/dynamic-rate.controller';
 import { LodgingQuoteController } from '../adapters/in/http/pricing/lodging-quote.controller';
 import { SeasonAdminController } from '../adapters/in/http/pricing/season-admin.controller';
 import { Module1BaseRateClient } from '../adapters/out/http/module1-base-rate.client';
 import { Module2ReservationClient } from '../adapters/out/http/module2-reservation.client';
+import { PricingStayQuoteAdapter } from '../adapters/out/pricing/pricing-stay-quote.adapter';
 import { SeasonRulesCatalogAdapter } from '../adapters/out/catalog/season-rules-catalog.adapter';
 import { PrismaLodgingQuoteRepository } from '../adapters/out/persistence/repositories/pricing/prisma-lodging-quote.repository';
 import { PrismaSeasonCalendarRepository } from '../adapters/out/persistence/repositories/pricing/prisma-season-calendar.repository';
@@ -99,7 +104,8 @@ import { AuthModule } from './auth.module';
     {
       provide: GET_EFFECTIVE_SEASON_RULES_USE_CASE,
       inject: [SEASON_RULE_REPOSITORY],
-      useFactory: (seasons: SeasonRuleRepositoryPort) => new GetEffectiveSeasonRulesService(seasons),
+      useFactory: (seasons: SeasonRuleRepositoryPort) =>
+        new GetEffectiveSeasonRulesService(seasons),
     },
 
     // 011 — calendario anual de temporadas
@@ -116,8 +122,10 @@ import { AuthModule } from './auth.module';
     {
       provide: REPLACE_SEASON_CALENDAR_USE_CASE,
       inject: [SEASON_CALENDAR_REPOSITORY, REVIEW_SEASON_CALENDAR_USE_CASE],
-      useFactory: (calendars: SeasonCalendarRepositoryPort, reviewer: ReviewSeasonCalendarUseCase) =>
-        new ReplaceSeasonCalendarService(calendars, reviewer),
+      useFactory: (
+        calendars: SeasonCalendarRepositoryPort,
+        reviewer: ReviewSeasonCalendarUseCase,
+      ) => new ReplaceSeasonCalendarService(calendars, reviewer),
     },
     {
       provide: RESOLVE_SEASON_BY_DATE_USE_CASE,
@@ -166,10 +174,19 @@ import { AuthModule } from './auth.module';
       useFactory: (calculator: DynamicRateCalculator, quotes: LodgingQuoteRepositoryPort) =>
         new LoggedCreateLodgingQuoteUseCase(new CreateLodgingQuoteService(calculator, quotes)),
     },
+    // 007 cotiza con este caso de uso las reservas OTA sin quoteIds (Booking) al registrar
+    // el check-out.
+    {
+      provide: STAY_QUOTE,
+      inject: [CREATE_LODGING_QUOTE_USE_CASE],
+      useFactory: (quotes: CreateLodgingQuoteUseCase) => new PricingStayQuoteAdapter(quotes),
+    },
   ],
   // 005 (tarifa dinámica) lee la tarifa base (004), las reglas de 009 y resuelve la temporada de cada fecha con 011.
-  // 007 (liquidación) lee las cotizaciones guardadas de 005 con LODGING_QUOTE_QUERY.
+  // 007 (liquidación) lee las cotizaciones guardadas de 005 con LODGING_QUOTE_QUERY y cotiza
+  // las reservas de Booking con STAY_QUOTE.
   exports: [
+    STAY_QUOTE,
     GET_BASE_RATE_USE_CASE,
     GET_EFFECTIVE_SEASON_RULES_USE_CASE,
     RESOLVE_SEASON_BY_DATE_USE_CASE,
