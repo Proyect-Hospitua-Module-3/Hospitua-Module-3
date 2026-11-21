@@ -89,7 +89,9 @@ describe('Reglas de dependencia de settlement (007)', () => {
     ).toEqual([]);
   });
 
-  it('settlement nunca invoca el cálculo de pricing: solo lee cotizaciones (regla 5 del plan base, FR-002)', () => {
+  // Booking (FR-022) se cotiza mediante el puerto propio StayQuotePort, que implementa pricing en
+  // infraestructura: settlement sigue sin importar servicios ni puertos de entrada de pricing.
+  it('settlement nunca importa el cálculo de pricing: solo lee cotizaciones o las pide por su puerto (regla 5 del plan base, FR-002, FR-022)', () => {
     const offending = sources
       .filter((file) => SETTLEMENT_FILES.test(file.path))
       .flatMap((file) =>

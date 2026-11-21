@@ -1,5 +1,6 @@
 // Feature 007 · Generar liquidación (T014, T023, T026, T029)
 import { GenerateSettlementService } from '../../../../src/application/services/settlement/generate-settlement.service';
+import { Module1UnavailableError } from '../../../../src/domain/errors/pricing/module1-unavailable.error';
 import { InvalidCheckoutDataError } from '../../../../src/domain/errors/settlement/invalid-checkout-data.error';
 import { InvalidCommissionError } from '../../../../src/domain/errors/settlement/invalid-commission.error';
 import { MissingCommissionError } from '../../../../src/domain/errors/settlement/missing-commission.error';
@@ -10,10 +11,12 @@ import { SettlementAlreadyExistsError } from '../../../../src/domain/errors/sett
 import { LodgingQuote } from '../../../../src/domain/model/pricing/lodging-quote';
 import { Settlement } from '../../../../src/domain/model/settlement/settlement';
 import {
+  BOOKING_QUOTE,
   checkoutCommand,
   directReservation,
   EVENT_ID,
   FakeReservationClient,
+  FakeStayQuotes,
   InMemoryLodgingQuotes,
   InMemorySettlementRepository,
   otaReservation,
@@ -32,11 +35,12 @@ describe('GenerateSettlementService', () => {
   let reservations: FakeReservationClient;
   let quotes: InMemoryLodgingQuotes;
   let settlements: InMemorySettlementRepository;
+  let stayQuotes: FakeStayQuotes;
   let ids: string[];
 
   function service(quoteList?: LodgingQuote[]): GenerateSettlementService {
     quotes = new InMemoryLodgingQuotes(quoteList);
-    return new GenerateSettlementService(reservations, quotes, settlements, () => {
+    return new GenerateSettlementService(reservations, quotes, stayQuotes, settlements, () => {
       const id = ids.shift();
       if (!id) throw new Error('sin ids de prueba');
       return id;
@@ -46,6 +50,7 @@ describe('GenerateSettlementService', () => {
   beforeEach(() => {
     reservations = new FakeReservationClient();
     settlements = new InMemorySettlementRepository();
+    stayQuotes = new FakeStayQuotes();
     ids = ['4e2b8c1d-9a7f-4f3e-b6d5-0c1a2b3d4e5f', '5f3c9d2e-0b8a-4a4f-87e6-1d2b3c4e5f6a'];
   });
 
@@ -225,6 +230,8 @@ describe('GenerateSettlementService', () => {
         QuoteNotFoundError,
       );
       expect(quotes.requests).toEqual([]);
+      // Solo las reservas OTA sin cotizaciones (Booking) se cotizan en el check-out.
+      expect(stayQuotes.requests).toEqual([]);
     });
 
     it('comando inválido → INVALID_CHECKOUT_EVENT antes de tocar Módulo 2 o la base (BR-007)', async () => {
@@ -253,6 +260,84 @@ describe('GenerateSettlementService', () => {
         otaCommissionPercentage: '15.00',
         otaCommissionAmount: '112500.00',
         netIncome: '637500.00',
+      });
+    });
+
+    it('OTA con cotizaciones: usa la guardada y no cotiza en el check-out', async () => {
+      reservations.respondWith(otaReservation());
+
+      await service().generate(checkoutCommand());
+
+      expect(stayQuotes.requests).toEqual([]);
+    });
+
+    describe('Booking: reserva OTA sin quoteIds, cotizada en el check-out', () => {
+      it('cotiza la habitación con las fechas reales y liquida con la comisión de la reserva', async () => {
+        reservations.respondWith(otaReservation({ quoteIds: [] }));
+
+        const settlement = await service().generate(
+          checkoutCommand({ checkInDate: '2026-12-20', checkOutDate: '2026-12-22' }),
+        );
+
+        expect(stayQuotes.requests).toEqual([
+          { roomId: ROOM_A, checkInDate: '2026-12-20', checkOutDate: '2026-12-22' },
+        ]);
+        expect(quotes.requests).toEqual([]);
+        expect(settlement).toMatchObject({
+          quoteId: BOOKING_QUOTE,
+          channel: 'OTA',
+          otaId: 'booking',
+          otaCommissionPercentage: '15.00',
+          lodgingAmount: '750000.00',
+          otaCommissionAmount: '112500.00',
+          netIncome: '637500.00',
+          currency: 'COP',
+        });
+        expect(settlements.inserts).toBe(1);
+      });
+
+      it('salida el mismo día de la entrada: cotiza una noche', async () => {
+        reservations.respondWith(otaReservation({ quoteIds: [] }));
+
+        await service().generate(
+          checkoutCommand({ checkInDate: '2026-12-20', checkOutDate: '2026-12-20' }),
+        );
+
+        expect(stayQuotes.requests).toEqual([
+          { roomId: ROOM_A, checkInDate: '2026-12-20', checkOutDate: '2026-12-21' },
+        ]);
+      });
+
+      it('reenvío idéntico: devuelve la existente sin volver a cotizar (FR-011)', async () => {
+        reservations.respondWith(otaReservation({ quoteIds: [] }));
+        const generator = service();
+        const first = await generator.generate(checkoutCommand());
+
+        const second = await generator.generate(checkoutCommand());
+
+        expect(second).toBe(first);
+        expect(stayQuotes.requests).toHaveLength(1);
+      });
+
+      it('Módulo 1 no responde al cotizar → MODULE1_UNAVAILABLE (reintentable) y no guarda nada', async () => {
+        reservations.respondWith(otaReservation({ quoteIds: [] }));
+        stayQuotes.respondWith(new Module1UnavailableError());
+
+        await expect(service().generate(checkoutCommand())).rejects.toBeInstanceOf(
+          Module1UnavailableError,
+        );
+        expect(settlements.inserts).toBe(0);
+      });
+
+      it('sin porcentaje → MISSING_COMMISSION y no guarda nada, como cualquier OTA', async () => {
+        reservations.respondWith(
+          otaReservation({ quoteIds: [], otaCommissionPercentage: undefined }),
+        );
+
+        await expect(service().generate(checkoutCommand())).rejects.toBeInstanceOf(
+          MissingCommissionError,
+        );
+        expect(settlements.inserts).toBe(0);
       });
     });
 
@@ -287,8 +372,10 @@ describe('GenerateSettlementService', () => {
       expect(settlement.netIncome).toBe(settlement.lodgingAmount);
     });
 
-    it('la cotización se valida antes que la comisión: sin cotización → QUOTE_NOT_FOUND', async () => {
-      reservations.respondWith(otaReservation({ quoteIds: [], otaCommissionPercentage: null }));
+    it('la cotización se valida antes que la comisión: sin cotización de la habitación → QUOTE_NOT_FOUND', async () => {
+      reservations.respondWith(
+        otaReservation({ quoteIds: [QUOTE_B], otaCommissionPercentage: null }),
+      );
 
       await expect(service().generate(checkoutCommand())).rejects.toBeInstanceOf(
         QuoteNotFoundError,
@@ -322,6 +409,7 @@ describe('GenerateSettlementService', () => {
       const winner = await new GenerateSettlementService(
         new FakeReservationClient(),
         new InMemoryLodgingQuotes(),
+        new FakeStayQuotes(),
         new InMemorySettlementRepository(),
         () => '0f0f0f0f-0000-4000-8000-000000000000',
       ).generate(checkoutCommand());
@@ -337,6 +425,7 @@ describe('GenerateSettlementService', () => {
       const winner: Settlement = await new GenerateSettlementService(
         new FakeReservationClient(),
         new InMemoryLodgingQuotes(),
+        new FakeStayQuotes(),
         new InMemorySettlementRepository(),
         () => '0f0f0f0f-0000-4000-8000-000000000000',
       ).generate(checkoutCommand({ checkOutDate: '2026-12-22' }));

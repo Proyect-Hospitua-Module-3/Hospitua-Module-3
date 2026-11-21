@@ -22,6 +22,7 @@ import {
   checkoutCommand,
   directReservation,
   FakeReservationClient,
+  FakeStayQuotes,
   InMemoryLodgingQuotes,
   InMemorySettlementRepository,
   otaReservation,
@@ -245,6 +246,7 @@ describe('GetSettlementService — HU2: Módulo 1 consulta la liquidación de un
       const generated = await new GenerateSettlementService(
         reservations,
         quotes,
+        new FakeStayQuotes(),
         new InMemorySettlementRepository(),
       ).generate(checkoutCommand({ roomId: ROOM_B, checkOutDate: '2026-12-22' }));
 

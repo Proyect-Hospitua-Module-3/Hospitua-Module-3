@@ -4,9 +4,11 @@ import { QuoteNotFoundError } from '../../../domain/errors/settlement/quote-not-
 import { SettlementAlreadyExistsError } from '../../../domain/errors/settlement/settlement-already-exists.error';
 import { LodgingQuote } from '../../../domain/model/pricing/lodging-quote';
 import { CheckoutData } from '../../../domain/model/settlement/checkout-data';
+import { CalendarDate } from '../../../domain/model/pricing/calendar-date.vo';
 import {
   assignedQuoteIdOf,
   channelTermsOf,
+  OTA_CHANNEL,
   ReservationData,
 } from '../../../domain/model/settlement/reservation-data';
 import { Settlement } from '../../../domain/model/settlement/settlement';
@@ -17,6 +19,10 @@ import {
 } from '../../../domain/ports/in/settlement/generate-settlement.use-case';
 import { LodgingQuoteQueryPort } from '../../../domain/ports/out/pricing/lodging-quote-query.port';
 import { ReservationClientPort } from '../../../domain/ports/out/settlement/reservation.client.port';
+import {
+  StayQuotePort,
+  StayQuoteRequest,
+} from '../../../domain/ports/out/settlement/stay-quote.port';
 import {
   SettlementRepositoryPort,
   STAY_ALREADY_SETTLED,
@@ -33,6 +39,8 @@ export class GenerateSettlementService implements GenerateSettlementUseCase {
   constructor(
     private readonly reservations: ReservationClientPort,
     private readonly quotes: LodgingQuoteQueryPort,
+    // Solo para las reservas OTA sin quoteIds (Booking): cotiza la estancia con 005.
+    private readonly stayQuotes: StayQuotePort,
     private readonly settlements: SettlementRepositoryPort,
     private readonly newSettlementId: () => string = randomUUID,
   ) {}
@@ -96,6 +104,11 @@ export class GenerateSettlementService implements GenerateSettlementUseCase {
     reservation: ReservationData,
     checkout: CheckoutData,
   ): Promise<LodgingQuote> {
+    // Booking: Módulo 2 no cotiza sus reservas (quoteIds siempre vacía en canal OTA). Se
+    // cotiza aquí la estancia real del check-out con el motor de precios de 005, en COP.
+    if (reservation.channel === OTA_CHANNEL && reservation.quoteIds.length === 0) {
+      return this.stayQuotes.create(stayOf(checkout));
+    }
     const assigned = assignedQuoteIdOf(reservation, checkout.roomId)?.toLowerCase();
     const ids = assigned ? [assigned] : [...reservation.quoteIds];
     const candidates = ids.length === 0 ? [] : await this.quotes.findByIds(ids);
@@ -111,6 +124,16 @@ export class GenerateSettlementService implements GenerateSettlementUseCase {
     }
     return quote;
   }
+}
+
+// Las fechas reales del check-out. Si el huésped sale el mismo día que entró, se cotiza una
+// noche: el motor de precios exige al menos una.
+function stayOf(checkout: CheckoutData): StayQuoteRequest {
+  const checkOutDate =
+    checkout.checkOutDate === checkout.checkInDate
+      ? CalendarDate.of(checkout.checkInDate).addDays(1).toString()
+      : checkout.checkOutDate;
+  return { roomId: checkout.roomId, checkInDate: checkout.checkInDate, checkOutDate };
 }
 
 function compareIds(a: string, b: string): number {

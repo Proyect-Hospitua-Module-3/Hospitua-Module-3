@@ -11,6 +11,10 @@ import {
   SettlementRepositoryPort,
   STAY_ALREADY_SETTLED,
 } from '../../../src/domain/ports/out/settlement/settlement.repository.port';
+import {
+  StayQuotePort,
+  StayQuoteRequest,
+} from '../../../src/domain/ports/out/settlement/stay-quote.port';
 
 export const EVENT_ID = '9b1f6d3e-2c4a-4f7b-8e5d-3a1c0b9d8e72';
 export const STAY_ID = 'c3a9e1b2-5f4d-4e6a-8b7c-1d2e3f4a5b6c';
@@ -19,6 +23,8 @@ export const ROOM_A = '5f0e8a47-1b2c-4d3e-9f6a-7b8c9d0e1f23';
 export const ROOM_B = '6a1f9b58-2c3d-4e4f-8a7b-8c9d0e1f2a34';
 export const QUOTE_A = 'a1f2c3d4-e5b6-4789-8a9b-0c1d2e3f4a5b';
 export const QUOTE_B = 'b7c8d9e0-f1a2-4b3c-8d4e-5f6a7b8c9d0e';
+// La que 005 crea en el check-out de una reserva de Booking.
+export const BOOKING_QUOTE = 'd1e2f3a4-b5c6-4d7e-8f9a-0b1c2d3e4f5a';
 export const GENERATED_AT = new Date('2026-12-23T16:04:58.000Z');
 
 export function checkoutCommand(
@@ -109,6 +115,27 @@ export class InMemoryLodgingQuotes implements LodgingQuoteQueryPort {
   async findByIds(quoteIds: string[]): Promise<LodgingQuote[]> {
     this.requests.push([...quoteIds]);
     return this.quotes.filter((quote) => quoteIds.includes(quote.quoteId));
+  }
+}
+
+// Cotización de la estancia de una reserva de Booking (StayQuotePort). Registra cada pedido;
+// responde con la cotización indicada o con el error indicado.
+export class FakeStayQuotes implements StayQuotePort {
+  readonly requests: StayQuoteRequest[] = [];
+  private reply: LodgingQuote | Error;
+
+  constructor(reply: LodgingQuote | Error = storedQuote(BOOKING_QUOTE, ROOM_A)) {
+    this.reply = reply;
+  }
+
+  respondWith(reply: LodgingQuote | Error): void {
+    this.reply = reply;
+  }
+
+  async create(request: StayQuoteRequest): Promise<LodgingQuote> {
+    this.requests.push(request);
+    if (this.reply instanceof Error) throw this.reply;
+    return this.reply;
   }
 }
 
