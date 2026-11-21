@@ -18,7 +18,7 @@ Enfoque técnico: el caso de uso `GenerateSettlementUseCase` recibe los datos de
 **Testing**: Jest (unitarias de dominio y del servicio con puertos mockeados), Jest + Testcontainers (repositorio contra Postgres real), Jest + servidor HTTP simulado (cliente de Módulo 2: 200, 404, timeout, 5xx, circuito abierto)
 **Target Platform**: Servicio backend Linux en contenedor Docker
 **Project Type**: Servicio backend único (monolito modular hexagonal) — sin frontend en este repositorio
-**Performance Goals**: la generación (consulta a Módulo 2 + lectura de la cotización + cálculo + guardado) debe caber en el objetivo de 800 ms que Módulo 1 exige a `GET /api/settlements`, porque la feature 002 reutiliza el mismo cálculo para la liquidación informativa. Por eso el timeout de la llamada a Módulo 2 es de 500 ms [NFR-002]
+**Performance Goals**: la generación (consulta a Módulo 2 + lectura de la cotización + cálculo + guardado) debe caber en el objetivo de 800 ms que Módulo 1 exige a `GET /api/settlements`, porque la feature 002 reutiliza el mismo cálculo para la liquidación informativa. Por eso el timeout de la llamada a Módulo 2 es de 500 ms por defecto [NFR-002]; en Render se configura `MODULE2_TIMEOUT_MS=1500` porque la llamada va por internet, y sigue por debajo de los 3 s que Módulo 1 espera a Módulo 3
 **Constraints**: determinismo (NFR-001); una única liquidación `Final` por estancia (FR-010, BR-006); nunca recalcular la tarifa dinámica (FR-002, BR-004); nunca liquidar con datos supuestos si falta la reserva, la cotización o la comisión, o si Módulo 2 no responde (FR-014, FR-021, BR-007); sin IVA en el ingreso neto (FR-013); sin datos migratorios ni personales del huésped (NFR-006)
 **Scale/Scope**: 3 historias de usuario, 1 caso de uso sin endpoint propio, 1 servicio de dominio de cálculo, 1 cliente HTTP saliente (Módulo 2), 1 tabla propia (`settlement`)
 
@@ -234,10 +234,11 @@ La tabla no tiene `UPDATE` en ningún camino de código: la liquidación es inmu
 ### Cliente de Módulo 2
 
 - `GET {MODULE2_BASE_URL}/api/reservations/{reservationRef}`, sin token, por la red interna (contrato del plan base).
-- Timeout de 500 ms y circuit breaker `opossum` (se abre tras 5 fallos seguidos y vuelve a probar a los 30 s).
+- Cabeceras `X-Client: MODULE3` y, si `OUTBOUND_KEY_MODULE2` tiene valor, `X-Internal-Key` [BASE].
+- Timeout `MODULE2_TIMEOUT_MS` (500 ms por defecto, 1500 ms en Render) y circuit breaker `opossum` (se abre tras 5 fallos seguidos y vuelve a probar a los 30 s).
 - 200 → `ReservationData` (`reservationRef`, `quoteIds`, `channel` y, si es OTA, `otaId`, `otaConfirmationCode`, `otaCommissionPercentage`).
 - 404 → `ReservationNotFoundError`. Timeout, 5xx o circuito abierto → `Module2UnavailableError`.
-- Configuración en `.env`: `MODULE2_BASE_URL`, `MODULE2_TIMEOUT_MS=500`.
+- Configuración en `.env`: `MODULE2_BASE_URL`, `MODULE2_TIMEOUT_MS=500`, `OUTBOUND_KEY_MODULE2`.
 
 ### Errores y qué hace quien llama
 

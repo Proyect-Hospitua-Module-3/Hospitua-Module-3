@@ -87,7 +87,7 @@ Si no hay una tarifa utilizable, **detiene el cálculo** con un error tipado; nu
 |---|---|
 | [module1-base-rate.client.ts](../../../src/infrastructure/adapters/out/http/module1-base-rate.client.ts) | Axios + circuit breaker `opossum`: timeout de 500 ms, se abre con 5 fallos seguidos y prueba de nuevo a los 30 s. Valida la respuesta y traduce cada caso a su error. Exige `MODULE1_BASE_URL` y `MODULE1_TIMEOUT_MS` al arrancar. Es el único archivo con dependencias HTTP |
 | [pricing.module.ts](../../../src/infrastructure/config/pricing.module.ts) | Registra el adaptador con el token `BASE_RATE_CLIENT`, construye el servicio con `useFactory` y exporta `GET_BASE_RATE_USE_CASE` |
-| `.env.example` | `MODULE1_BASE_URL` y `MODULE1_TIMEOUT_MS=500` |
+| `.env.example` | `MODULE1_BASE_URL`, `MODULE1_TIMEOUT_MS=500` (en Render, 1500) y `OUTBOUND_KEY_MODULE1` (clave `X-Internal-Key` que se envía a Módulo 1; vacía = no se envía) |
 | `package.json`, `package-lock.json` | Versiones fijadas de `@nestjs/axios`, `axios`, `opossum` y `@types/opossum` |
 
 ### Base de datos
@@ -132,7 +132,7 @@ npm run test:e2e -- --runTestsByPath test/e2e/pricing/base-rate.e2e-spec.ts
 | BR-002 Sin valor sustituto | `BaseRate.create` exige importe > 0; ningún camino devuelve 0 | base-rate; cliente |
 | BR-003 / BR-004 Cambios no retroactivos; la liquidación no consulta la tarifa base | La 004 no guarda nada; 007 usa la cotización guardada de 005 | (lo cubren 005 y la prueba de arquitectura de 007) |
 | NFR-001 Determinismo | Sin estado: mismo dato de Módulo 1 → mismo resultado | servicio ("same amount for identical queries") |
-| NFR-002 500 ms | Timeout de Axios y del circuit breaker | cliente ("beyond 500 ms") |
+| NFR-002 tiempo máximo (500 ms por defecto, 1500 ms en Render) | Timeout de Axios y del circuit breaker con `MODULE1_TIMEOUT_MS` | cliente ("beyond 500 ms", con la configuración de prueba) |
 | SC-001 Devuelve el importe de Módulo 1 | `BaseRate.create(baseRate)` sin transformarlo | cliente; contrato |
 
 ---

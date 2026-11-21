@@ -104,7 +104,7 @@ test/
 
 | Quién llama | Cómo se identifica | Alcance |
 |---|---|---|
-| Módulo 2 | Red interna, sin token (plan base) | Cualquier `otaId` |
+| Módulo 2 | Sin token, con `X-Internal-Key` (plan base) | Cualquier `otaId` |
 | OTA | JWT con `role = OTA` y claim `otaId` | Solo su propio `otaId` |
 | Administrador u otro rol | JWT de otro rol | Rechazado (403) |
 

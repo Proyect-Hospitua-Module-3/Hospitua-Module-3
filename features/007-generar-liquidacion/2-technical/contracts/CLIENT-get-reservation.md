@@ -18,17 +18,20 @@ Obtener de la reserva indicada en el evento de check-out sus cotizaciones (`quot
 
 | Elemento | Valor | Origen |
 |---|---|---|
-| Autenticación | Ninguna: red interna entre módulos, sin token | [BASE] |
+| Autenticación | Sin token. Cabecera `X-Internal-Key` con `OUTBOUND_KEY_MODULE2`, la clave que Módulo 2 asignó a Módulo 3; sin valor no se envía. Sin ella, o con una incorrecta, Módulo 2 responde `401 INVALID_INTERNAL_KEY` | [BASE] |
+| `X-Client` | `MODULE3`. Módulo 2 exige identificar al módulo que llama; sin ella responde `400 INVALID_CLIENT` | [BASE] |
 | `Accept` | `application/json` | [CONV] |
 | `X-Correlation-Id` | Se propaga el identificador de correlación de la generación | [CONV] |
 | Path param `reservationRef` | string, p. ej. `RES-000123`, codificado en URL | [BASE] |
-| Timeout | `MODULE2_TIMEOUT_MS = 500` | [PLAN] |
+| Timeout | `MODULE2_TIMEOUT_MS`: 500 ms por defecto (`.env.example` y pruebas); 1500 ms en el despliegue de Render, porque la primera llamada por internet con TLS supera los 500 ms. Siempre por debajo de los 3 s que Módulo 1 y Módulo 2 esperan a Módulo 3 | [PLAN] |
 | Circuit breaker | `opossum`: se abre tras 5 fallos seguidos y prueba de nuevo a los 30 s | [PLAN] |
 | Reintentos propios | Ninguno; el reintento lo hace 010 con la cola de reintento del evento (30 s, hasta 5 veces) | [PLAN] [BASE] |
 
 ```http
 GET /api/reservations/RES-000123
 Accept: application/json
+X-Client: MODULE3
+X-Internal-Key: <clave asignada por Módulo 2>
 X-Correlation-Id: 9b1f6d3e-2c4a-4f7b-8e5d-3a1c0b9d8e72
 ```
 
@@ -103,9 +106,9 @@ Los campos desconocidos se ignoran. Cualquier `channel` distinto de `OTA` se tra
 | `200` de canal directo con `quoteIds` vacío, sin ninguna cuyo `roomId` coincida con el del check-out o con un `quoteId` de `rooms` que no está guardado | `QUOTE_NOT_FOUND` (lo lanza el servicio) | No | [SPEC FR-014] |
 | `200` con cuerpo que no cumple esta forma (falta `reservationRef` o `quoteIds`, tipos incorrectos, `rooms` que no es una lista de `{ roomId, quoteId UUID }`) | `MODULE2_UNAVAILABLE`; se registra la discrepancia de contrato | Sí | [CONV] |
 | `404` | `RESERVATION_NOT_FOUND` | No | [BASE] [SPEC FR-014] |
-| Timeout (500 ms), `5xx` o fallo de red | `MODULE2_UNAVAILABLE` | Sí | [SPEC FR-021] [BASE] |
+| Timeout (`MODULE2_TIMEOUT_MS`), `5xx` o fallo de red | `MODULE2_UNAVAILABLE` | Sí | [SPEC FR-021] [BASE] |
 | Circuito abierto | `MODULE2_UNAVAILABLE` sin llamar a Módulo 2 | Sí | [PLAN] |
-| Otro `4xx` (400, 401, 403) | `MODULE2_UNAVAILABLE`; indica un problema de configuración o de contrato, no de negocio | Sí | [CONV] |
+| Otro `4xx` (400 `INVALID_CLIENT` o `INVALID_RESERVATION_CODE`, 401 `INVALID_INTERNAL_KEY`, 403) | `MODULE2_UNAVAILABLE`; indica un problema de configuración o de contrato, no de negocio | Sí | [CONV] [BASE] |
 
 Un `404` no cuenta como fallo para el circuit breaker; timeout, `5xx` y errores de red sí [CONV]. La falla de comunicación y la reserva inexistente nunca se confunden ni se sustituyen por datos supuestos [SPEC FR-021, BR-007].
 
@@ -114,7 +117,7 @@ Un `404` no cuenta como fallo para el circuit breaker; timeout, `5xx` y errores 
 - **Sin datos personales**: de la respuesta solo se usan los campos de la tabla; el resto se descarta y no se registra en logs [SPEC NFR-006].
 - **Solo lectura**: la consulta no modifica nada en Módulo 2 [CONV].
 - **Sin caché**: cada generación consulta la reserva, porque el canal o la comisión pueden corregirse hasta el check-out [PLAN] [SPEC casos límite].
-- **Configuración**: `MODULE2_BASE_URL` y `MODULE2_TIMEOUT_MS=500` en `.env` [PLAN].
+- **Configuración**: `MODULE2_BASE_URL`, `MODULE2_TIMEOUT_MS` (500 por defecto, 1500 en Render) y `OUTBOUND_KEY_MODULE2` en `.env` [PLAN] [BASE].
 
 ## 6. Contract test
 

@@ -21,7 +21,7 @@ No se expone endpoint ni se captura información tributaria por separado. `check
 **Testing**: Jest para dominio y aplicación; Jest + PostgreSQL mediante `TEST_DATABASE_URL` para concurrencia, atomicidad e idempotencia de persistencia; pruebas de integración para los casos de uso 001 y 007 con puertos simulados
 **Target Platform**: Servicio backend Linux en contenedor Docker
 **Project Type**: Servicio backend único (monolito modular hexagonal), bounded context `billing`, sin frontend
-**Performance Goals**: La factura se emite durante el procesamiento asíncrono del check-out; las operaciones de aplicación y persistencia deben completarse sin esperas externas adicionales. Se conserva el timeout de 500 ms de Módulo 2 definido por 007 cuando sea necesario generar la liquidación.
+**Performance Goals**: La factura se emite durante el procesamiento asíncrono del check-out; las operaciones de aplicación y persistencia deben completarse sin esperas externas adicionales. Se conserva el timeout de Módulo 2 definido por 007 (`MODULE2_TIMEOUT_MS`: 500 ms por defecto, 1500 ms en Render) cuando sea necesario generar la liquidación.
 **Constraints**: Una sola factura por liquidación; números oficiales únicos, estrictamente ordenados y sin huecos por fallos de transacción; idempotencia concurrente por estancia; factura inmutable; IVA fotografiado al emitir; datos tributarios completos antes de reservar número; `totalAmount = lodgingAmount + vatAmount`; comisión OTA solo informativa.
 **Scale/Scope**: Un caso de uso interno, una entidad persistida (`invoice`), consumo de los casos de uso internos 007 y 001 y ningún endpoint o cliente HTTP nuevo.
 

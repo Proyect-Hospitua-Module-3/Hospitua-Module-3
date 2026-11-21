@@ -31,7 +31,7 @@ El stack descrito (arquitectura hexagonal + NestJS + PostgreSQL + RabbitMQ) es e
 - **Project Type**: Servicio backend único (microservicio de dominio)
 - **API**: REST/HTTP JSON, con contratos versionados (OpenAPI)
 - **Frontend**: pantallas del Administrador en `frontend/` (React 18 + Vite), con su propio `package.json`. El servicio backend no depende de él
-- **Authentication/Authorization**: JWT de usuario con rol (`Administrador`, `OTA`), validado con Guards de NestJS (Passport-JWT). Las llamadas entre módulos (M1, M2) no usan token: viajan por la red interna (ver [Autenticación](#autenticación))
+- **Authentication/Authorization**: JWT de usuario con rol (`Administrador`, `OTA`), validado con Guards de NestJS (Passport-JWT). Las llamadas entre módulos (M1, M2) no usan JWT: se identifican con la clave compartida `X-Internal-Key` (ver [Autenticación](#autenticación))
 - **Version Control**: Git + GitHub (ramas `feature/*` hacia `develop`)
 - **Performance Goals**:
   - Consultas de lectura (tarifa dinámica, liquidación, factura) sin demoras perceptibles para operación de front-desk (NFR-002 de varias specs).
@@ -171,7 +171,7 @@ Módulo 3 calcula el valor del hospedaje en el momento de la reserva, para que e
 - `POST /pricing/quotes` recibe `{ roomId, checkInDate, checkOutDate }` y responde `{ quoteId, currency: "COP", nightlyRates: [{ date, rate }], lodgingAmount }`. Módulo 2 muestra `lodgingAmount` al cliente (la suma de todas, si hay varias habitaciones).
 - **Salida anticipada**: no genera una nueva cotización; se liquida lo cotizado, porque es lo que el cliente aceptó al confirmar (no es una penalización).
 - `GET /api/reservations/{reservationRef}` devuelve `reservationRef`, `quoteIds: ["UUID", ...]`, `channel` y, si `channel = OTA`, `otaId`, `otaConfirmationCode` y `otaCommissionPercentage`. Si la reserva no existe, Módulo 2 responde 404.
-- Módulo 3 llama a Módulo 2 sin token, por la red interna (ver [Autenticación](#autenticación)).
+- Módulo 3 llama a Módulo 2 sin JWT, con las cabeceras `X-Client: MODULE3` y `X-Internal-Key` (ver [Autenticación](#autenticación)).
 - Para liquidar una habitación, `settlement` elige entre los `quoteIds` de la reserva la cotización cuyo `roomId` coincide con el `roomId` que envía Módulo 1 (en el evento y en la consulta de liquidación). Cada habitación tiene su propia cotización, así que no hay ambigüedad. Si ninguna coincide, se rechaza con `QUOTE_NOT_FOUND` (el evento va a dead-letter).
 
 #### Desglose de tarifa dinámica en la liquidación
@@ -202,7 +202,19 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 
 ### Autenticación
 
-- **Entre módulos (M1 ↔ M3, M2 ↔ M3): sin token.** Los 3 servicios corren en la misma red interna (red de Docker Compose) y confían en ella. Los endpoints que consumen Módulo 1 y Módulo 2 no se publican fuera de esa red. Ninguna regla de negocio depende de saber qué módulo llama.
+- **Entre módulos (M1 ↔ M3, M2 ↔ M3): sin JWT, con clave compartida `X-Internal-Key`.** Los 3 módulos se despliegan por separado (Módulo 2 y Módulo 3 en Render, Módulo 1 en su propio servidor) y se llaman por internet, así que no hay una red interna en la que confiar. Cada llamada entre módulos lleva la cabecera `X-Internal-Key` con la clave del módulo que llama: una clave por módulo y por sentido, para poder revocarlas por separado (acordado con Módulo 1 y Módulo 2). Las claves se intercambian por privado, viven solo en variables de entorno y nunca se versionan:
+
+  | Variable de Módulo 3 | Sentido | Ruta |
+  |---|---|---|
+  | `OUTBOUND_KEY_MODULE1` | M3 → M1 | `GET /api/rooms/{roomId}/base-rate` |
+  | `OUTBOUND_KEY_MODULE2` | M3 → M2 | `GET /api/reservations/{reservationRef}` |
+  | `INBOUND_KEY_MODULE1` | M1 → M3 | `GET /api/settlements` |
+  | `INBOUND_KEY_MODULE2` | M2 → M3 | `POST /pricing/quotes`, la única ruta de Módulo 3 que llama Módulo 2. Cubre también las llamadas sin token a `GET /pricing/dynamic-rate` y `GET /ota-commission/{otaId}` |
+
+  - **Entrada**: `Module1InternalKeyGuard` y `Module2InternalKeyGuard` (`adapters/in/http/auth/internal-key.guard.ts`) van después del guard de acceso de cada ruta. Con cabecera `Authorization` no revisan la clave: es la OTA (o un rol rechazado) y ya lo resolvieron los otros guards. Sin `Authorization` es una llamada interna: si la variable tiene valor, la cabecera debe coincidir; si falta o no coincide → `401 UNAUTHENTICATED`. Con la variable vacía la clave no se exige, para activarla en el momento en que el otro módulo empieza a enviarla sin desplegar código.
+  - **Salida**: si la variable tiene valor, el cliente HTTP envía la cabecera; si está vacía, no la envía. Si el otro módulo responde `401` por clave ausente o incorrecta, se trata como cualquier otro `4xx` inesperado: falla de dependencia (`MODULE1_UNAVAILABLE` o `MODULE2_UNAVAILABLE`), reintentable.
+  - **Módulo 2** exige además `X-Client: MODULE3` en las llamadas que le hace Módulo 3; sin ella responde `400 INVALID_CLIENT`.
+  - Ninguna regla de negocio depende de saber qué módulo llama.
 - **Personas y OTA: JWT de usuario emitido por Módulo 3.** Módulo 3 tiene su propio login: `POST /auth/login` recibe `{ username, password }` y responde `{ accessToken, expiresIn }`. Las credenciales están en la tabla `app_user` (contraseña con hash bcrypt) y se crean por seed: no hay feature de gestión de usuarios. El token se firma con `@nestjs/jwt` usando un secreto que se carga desde variable de entorno y nunca se versiona, y se valida con Passport-JWT. Claims:
   - `sub`: identificador del usuario.
   - `role`: `Administrador` u `OTA`.
@@ -214,11 +226,12 @@ Módulo 1 consulta la liquidación en el paso 2 del Check-Out, **antes** de conf
 |---|---|
 | `POST /auth/login` | Público (Administrador u OTA con sus credenciales) |
 | `/admin/*`, `/invoices*` | Solo JWT con `role = Administrador` |
-| `POST /pricing/quotes` | Solo Módulo 2 (red interna, sin token) |
-| `GET /pricing/dynamic-rate` | Módulo 2 por la red interna sin token, u OTA con JWT `role = OTA` |
-| `GET /ota-commission/{otaId}`, `GET /api/settlements` | Módulo 1 / Módulo 2 por la red interna sin token, u OTA con JWT `role = OTA` |
+| `POST /pricing/quotes` | Solo Módulo 2 (sin token, con `X-Internal-Key`) |
+| `GET /pricing/dynamic-rate` | Llamada interna sin token con la clave de Módulo 2, u OTA con JWT `role = OTA` |
+| `GET /ota-commission/{otaId}` | Llamada interna sin token con la clave de Módulo 2, u OTA con JWT `role = OTA` |
+| `GET /api/settlements` | Módulo 1 sin token con su `X-Internal-Key`, u OTA con JWT `role = OTA` |
 
-- Cada controller declara los roles permitidos con `@Roles(...)` y un Guard valida el claim `role`. En los endpoints compartidos con la OTA, si llega un token se valida y se aplican las reglas de OTA; si no llega, se trata como llamada interna de un módulo.
+- Cada controller declara los roles permitidos con `@Roles(...)` y un Guard valida el claim `role`. En los endpoints compartidos con la OTA, si llega un token se valida y se aplican las reglas de OTA; si no llega, se trata como llamada interna de un módulo y se exige su `X-Internal-Key`.
 - Las reglas que dependen de datos de negocio (p. ej. que la reserva consultada sea de la OTA del token) se validan en el caso de uso, no solo en el Guard.
 - Una OTA solo ve lo suyo en todos los endpoints que comparte: sus liquidaciones, su comisión y la tarifa dinámica de las habitaciones de sus propias reservas. No accede a datos de reservas de otras OTA ni del canal directo.
   - En `GET /pricing/dynamic-rate`, la OTA envía además `reservationRef`. El caso de uso consulta la reserva a Módulo 2 (`GET /api/reservations/{reservationRef}`, el mismo cliente de `settlement`), comprueba que su `otaId` sea el del token y que el `roomId` consultado corresponda a una de sus cotizaciones (`quoteIds`). Si algo no coincide responde `403 FORBIDDEN`, con el mismo mensaje exista o no la reserva: el 404 de Módulo 2 se traduce a 403 y la OTA nunca recibe `RESERVATION_NOT_FOUND`. Si la OTA no envía `reservationRef`, responde `400 INVALID_QUERY_PARAMS`. Módulo 2 no envía `reservationRef`; si lo envía en una llamada interna (sin token) se ignora, porque esta validación solo aplica con `role = OTA`.

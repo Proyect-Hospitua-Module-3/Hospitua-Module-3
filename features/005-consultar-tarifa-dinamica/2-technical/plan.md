@@ -135,7 +135,7 @@ Parámetros: `roomId`, y `checkInDate` + `checkOutDate` (fecha de salida **exclu
 
 La OTA envía además `reservationRef` (obligatorio para ella; en una llamada interna se ignora).
 
-Autorización (FR-010, BR-002, plan base "Autorización por rol"): Módulo 2 por la red interna sin token, u OTA con JWT `role = OTA`. Cuando llega token, el guard del controller exige `role = OTA` (ver Decisiones de implementación); sin token, la llamada es interna. La regla "la OTA solo consulta habitaciones de sus reservas" se valida en el caso de uso: después de validar el rango y antes de calcular, consulta la reserva a Módulo 2 (`ReservationClientPort`), exige que sea de canal `OTA`, que su `otaId` sea el del token y que alguna de sus cotizaciones (`LodgingQuoteQueryPort.findByIds`) tenga el `roomId` consultado; si no, `DynamicRateAccessDeniedError` → 403. El 404 de Módulo 2 también termina en 403, con el mismo mensaje.
+Autorización (FR-010, BR-002, plan base "Autorización por rol"): Módulo 2 sin token con su `X-Internal-Key` (`Module2InternalKeyGuard`, `INBOUND_KEY_MODULE2`), u OTA con JWT `role = OTA`. Cuando llega token, el guard del controller exige `role = OTA` (ver Decisiones de implementación); sin token, la llamada es interna. La regla "la OTA solo consulta habitaciones de sus reservas" se valida en el caso de uso: después de validar el rango y antes de calcular, consulta la reserva a Módulo 2 (`ReservationClientPort`), exige que sea de canal `OTA`, que su `otaId` sea el del token y que alguna de sus cotizaciones (`LodgingQuoteQueryPort.findByIds`) tenga el `roomId` consultado; si no, `DynamicRateAccessDeniedError` → 403. El 404 de Módulo 2 también termina en 403, con el mismo mensaje.
 
 ```json
 {

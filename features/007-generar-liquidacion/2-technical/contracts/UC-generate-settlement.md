@@ -143,7 +143,7 @@ Los importes son decimales exactos (`Money`), nunca `number` de JavaScript; si s
 | `MissingCommissionError` | `MISSING_COMMISSION` | Canal OTA sin `otaCommissionPercentage` | No | Dead-letter | [SPEC FR-014, HU2 escenario 3] [BASE] |
 | `InvalidCommissionError` | `INVALID_COMMISSION` | Porcentaje menor a 0 o mayor a 100 | No | Dead-letter | [SPEC casos límite] [PLAN] |
 | `SettlementAlreadyExistsError` | `SETTLEMENT_ALREADY_EXISTS` | Ya existe liquidación para el `stayId` con datos de check-out distintos | No | Dead-letter | [SPEC FR-010, HU3 escenario 2] [BASE] |
-| `Module2UnavailableError` | `MODULE2_UNAVAILABLE` | Timeout (500 ms), 5xx o circuito abierto al consultar Módulo 2 | **Sí** | Cola de reintento `modulo3.checkout.retry.30s` (cada 30 s, hasta 5 veces); agotados, dead-letter | [SPEC FR-021] [BASE] |
+| `Module2UnavailableError` | `MODULE2_UNAVAILABLE` | Timeout (`MODULE2_TIMEOUT_MS`), 4xx distinto de 404 (p. ej. 401 por clave), 5xx o circuito abierto al consultar Módulo 2 | **Sí** | Cola de reintento `modulo3.checkout.retry.30s` (cada 30 s, hasta 5 veces); agotados, dead-letter | [SPEC FR-021] [BASE] |
 | Errores de la cotización de Booking | `MODULE1_UNAVAILABLE`, `SEASON_RULES_UNAVAILABLE`, `SEASON_CALENDAR_UNAVAILABLE` | **Sí** | Módulo 1 o la configuración de temporadas no responden al cotizar la estancia | Cola de reintento, igual que `MODULE2_UNAVAILABLE` | [SPEC FR-022] |
 | Errores de la cotización de Booking | `ROOM_NOT_FOUND`, `INVALID_BASE_RATE` u otro error de configuración de precios | No | La habitación no existe en Módulo 1 o la configuración de precios es inválida | Dead-letter | [SPEC FR-022] |
 
@@ -170,4 +170,4 @@ Un comando con campos obligatorios faltantes o fechas inconsistentes es un error
 - **Una liquidación por estancia**: nunca existen dos `FINAL` para el mismo `stayId` [SPEC FR-010, SC-008].
 - **Sin datos supuestos**: ante cualquier error no se guarda liquidación ni se produce ingreso neto parcial [SPEC BR-007, SC-004].
 - **Sin transacción compartida con 006**: si 006 falla después de que 007 guardó, el reintento del evento vuelve a llamar a `generate`, que devuelve la existente, y 006 se reintenta [PLAN].
-- **Rendimiento**: la generación cabe en 800 ms con Módulo 2 respondiendo, porque el timeout hacia Módulo 2 es de 500 ms [SPEC NFR-002] [PLAN].
+- **Rendimiento**: la generación cabe en 800 ms con Módulo 2 respondiendo, porque el timeout hacia Módulo 2 es de 500 ms por defecto. En Render es de 1500 ms por la latencia de internet; ahí los 800 ms se cumplen con Módulo 2 despierto y respondiendo rápido, y el tope garantizado es el timeout [SPEC NFR-002] [PLAN].

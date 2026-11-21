@@ -15,7 +15,7 @@ Permite a Módulo 1 consultar una liquidación informativa o final de una habita
 
 ### Ruta y autenticación
 
-`GET /api/settlements` [BASE]. Una petición sin cabecera `Authorization` es la llamada interna de Módulo 1 y exige `reservationRef` y `roomId`; si falta alguno de esos dos parámetros responde `400 INVALID_QUERY_PARAMS` sin información financiera [SPEC FR-013]. `categoryRoom` es opcional e informativo para Módulo 1; su ausencia no impide la consulta. Una petición con cabecera `Authorization` valida el token y requiere `role = OTA` y claim `otaId`; cualquier otro rol recibe `403 FORBIDDEN` [BASE]. El 95% de las consultas responde en menos de 800 ms en condiciones normales [SPEC NFR-001].
+`GET /api/settlements` [BASE]. Una petición sin cabecera `Authorization` es la llamada interna de Módulo 1: debe traer la cabecera `X-Internal-Key` con `INBOUND_KEY_MODULE1` cuando esa variable tiene valor (si falta o no coincide → `401 UNAUTHENTICATED`, antes de validar parámetros) [BASE], y exige `reservationRef` y `roomId`; si falta alguno de esos dos parámetros responde `400 INVALID_QUERY_PARAMS` sin información financiera [SPEC FR-013]. `categoryRoom` es opcional e informativo para Módulo 1; su ausencia no impide la consulta. Una petición con cabecera `Authorization` valida el token y requiere `role = OTA` y claim `otaId`; cualquier otro rol recibe `403 FORBIDDEN` [BASE]. El 95% de las consultas responde en menos de 800 ms en condiciones normales [SPEC NFR-001].
 
 ### Parámetros
 
@@ -34,6 +34,7 @@ Ejemplos:
 
 ```http
 GET /api/settlements?reservationRef=RES-000123&roomId=f47ac10b-58cc-4372-a567-0e02b2c3d479
+X-Internal-Key: <clave de Módulo 1>
 ```
 
 ```http
@@ -142,7 +143,7 @@ Los errores siguen la estructura `ApiError` del Plan Base.
 | HTTP | Código | Condición |
 |---:|---|---|
 | 400 | `INVALID_QUERY_PARAMS` | Falta o tiene formato inválido un parámetro obligatorio para el actor. |
-| 401 | `UNAUTHENTICATED` | Token inválido en una petición autenticada, o token OTA sin claim `otaId`. |
+| 401 | `UNAUTHENTICATED` | Token inválido en una petición autenticada, token OTA sin claim `otaId`, o llamada sin token con `X-Internal-Key` ausente o incorrecta (cuando `INBOUND_KEY_MODULE1` tiene valor). |
 | 403 | `FORBIDDEN` | Token válido con rol distinto de OTA. |
 | 404 | `SETTLEMENT_NOT_FOUND` | No hay liquidaciones finales para la consulta OTA o la reserva es ajena/directa. |
 | 404 | `RESERVATION_NOT_FOUND` | No existe la reserva consultada para el cálculo informativo. |
