@@ -39,6 +39,8 @@ export class Module2ReservationClient implements ReservationClientPort {
   private readonly logger = new Logger(Module2ReservationClient.name);
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
+  // Clave que Módulo 2 nos asignó para X-Internal-Key; sin valor no se envía la cabecera.
+  private readonly internalKey: string | undefined;
   private consecutiveFailures = 0;
   private readonly breaker: CircuitBreaker;
 
@@ -60,6 +62,7 @@ export class Module2ReservationClient implements ReservationClientPort {
     }
     this.baseUrl = configuredBaseUrl.replace(/\/$/, '');
     this.timeoutMs = timeout;
+    this.internalKey = config.get<string>('OUTBOUND_KEY_MODULE2')?.trim() || undefined;
     this.breaker = new CircuitBreaker(
       (reservationRef: string, correlationId?: string) =>
         this.request(reservationRef, correlationId),
@@ -114,6 +117,8 @@ export class Module2ReservationClient implements ReservationClientPort {
               Accept: 'application/json',
               // Módulo 2 exige identificar al módulo que llama; sin ella responde 400 INVALID_CLIENT.
               'X-Client': 'MODULE3',
+              // Sin ella, cuando Módulo 2 la exija, responde 401 INVALID_INTERNAL_KEY.
+              ...(this.internalKey ? { 'X-Internal-Key': this.internalKey } : {}),
               ...(correlationId ? { 'X-Correlation-Id': correlationId } : {}),
             },
             // Este timeout cancela la petición HTTP; el del circuito (arriba) también sigue activo.
